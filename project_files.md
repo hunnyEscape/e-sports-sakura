@@ -1,4 +1,105 @@
 -e 
+### FILE: ./src/lib/stripe-payment-methods.ts
+
+// src/lib/stripe-payment-methods.ts
+import { loadStripe, Stripe } from '@stripe/stripe-js';
+
+// Google Pay関連の定数
+export const GOOGLE_PAY_CONFIG = {
+  apiVersion: 2,
+  apiVersionMinor: 0,
+  allowedPaymentMethods: [{
+    type: 'CARD',
+    parameters: {
+      allowedAuthMethods: ['PAN_ONLY', 'CRYPTOGRAM_3DS'],
+      allowedCardNetworks: ['AMEX', 'DISCOVER', 'JCB', 'MASTERCARD', 'VISA'],
+    },
+    tokenizationSpecification: {
+      type: 'PAYMENT_GATEWAY',
+      parameters: {
+        gateway: 'stripe',
+        'stripe:version': '2023-10-16',
+        'stripe:publishableKey': process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
+      },
+    },
+  }],
+  merchantInfo: {
+    merchantName: 'E-Sports Sakura',
+    merchantId: process.env.NEXT_PUBLIC_GOOGLE_MERCHANT_ID || '',
+  },
+};
+
+// Apple Pay関連の定数
+export const APPLE_PAY_CONFIG = {
+  merchantIdentifier: process.env.NEXT_PUBLIC_APPLE_MERCHANT_ID || '',
+  merchantCapabilities: ['supports3DS'],
+  countryCode: 'JP',
+  currencyCode: 'JPY',
+  supportedNetworks: ['amex', 'discover', 'jcb', 'masterCard', 'visa'],
+};
+
+// 利用可能な支払い方法とその表示に関する設定
+export const PAYMENT_METHODS = {
+  card: {
+    name: 'クレジット/デビットカード',
+    icon: '/images/card-icon.svg',
+    supportedBrands: ['visa', 'mastercard', 'amex', 'jcb'],
+  },
+  googlePay: {
+    name: 'Google Pay',
+    icon: '/images/google-pay-icon.svg',
+    isAvailable: false, // 初期値、後で動的に判定
+  },
+  applePay: {
+    name: 'Apple Pay',
+    icon: '/images/apple-pay-icon.svg',
+    isAvailable: false, // 初期値、後で動的に判定
+  },
+};
+
+// 利用可能な支払い方法を確認するためのユーティリティ関数
+export async function checkAvailablePaymentMethods(stripe: Stripe | null) {
+  const result = {
+    card: true, // カードは常に利用可能
+    googlePay: false,
+    applePay: false,
+  };
+
+  // Google Payの利用可能性をチェック
+  if (window?.PaymentRequest) {
+    try {
+      const request = new PaymentRequest(
+        [{ supportedMethods: 'https://google.com/pay' }],
+        { total: { label: 'Test', amount: { currency: 'JPY', value: '0' } } }
+      );
+      result.googlePay = await request.canMakePayment();
+    } catch (e) {
+      console.error('Google Pay check failed:', e);
+    }
+  }
+
+  // Apple Payの利用可能性をチェック
+  if (stripe && window?.ApplePaySession && typeof window.ApplePaySession.canMakePayments === 'function') {
+    try {
+      result.applePay = window.ApplePaySession.canMakePayments();
+    } catch (e) {
+      console.error('Apple Pay check failed:', e);
+    }
+  }
+
+  return result;
+}
+
+// Stripeを初期化し、支払い方法の利用可能性をチェックするラッパー関数
+export async function initializeStripeWithPaymentMethods() {
+  const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
+  const availableMethods = await checkAvailablePaymentMethods(stripe);
+  
+  return {
+    stripe,
+    availableMethods,
+  };
+}-e 
 ### FILE: ./src/lib/firebase.ts
 
 import { initializeApp, getApps } from 'firebase/app';
@@ -262,6 +363,161 @@ export interface VeriffSession {
   createdAt?: string;
   updatedAt?: string;
 }-e 
+### FILE: ./src/lib/stripe-service.ts
+
+// src/lib/stripe-service.ts
+import Stripe from 'stripe';
+import { stripe } from '@/lib/stripe';
+
+// 支払い方法のタイプ
+export type PaymentMethodType = 'card' | 'google_pay' | 'apple_pay';
+
+// 顧客情報のインターフェース
+interface CustomerData {
+	userId: string;
+	email: string;
+	name?: string;
+}
+
+/**
+ * Stripe顧客を作成または取得する
+ */
+export async function getOrCreateCustomer(userId: string, email: string, name?: string): Promise<Stripe.Customer> {
+	try {
+		// 既存の顧客を検索
+		const customers = await stripe.customers.list({
+			email: email,
+			limit: 1,
+		});
+
+		if (customers.data.length > 0) {
+			// 既存顧客が見つかった場合、metadataを更新
+			const customer = customers.data[0];
+			await stripe.customers.update(customer.id, {
+				metadata: {
+					...customer.metadata,
+					userId: userId
+				}
+			});
+			return customer;
+		}
+
+		// 新規顧客を作成
+		const newCustomer = await stripe.customers.create({
+			email: email,
+			name: name,
+			metadata: {
+				userId: userId,
+			},
+		});
+
+		return newCustomer;
+	} catch (error) {
+		console.error('Error in getOrCreateCustomer:', error);
+		throw error;
+	}
+}
+
+/**
+ * Setup Intentを作成する
+ */
+export async function createSetupIntent(
+	customerId: string,
+	paymentMethods: PaymentMethodType[] = ['card']
+): Promise<Stripe.SetupIntent> {
+	try {
+		const setupIntent = await stripe.setupIntents.create({
+			customer: customerId,
+			payment_method_types: paymentMethods,
+		});
+		return setupIntent;
+	} catch (error) {
+		console.error('Error creating Setup Intent:', error);
+		throw error;
+	}
+}
+
+/**
+ * 支払い方法をデフォルトとして設定
+ */
+export async function setDefaultPaymentMethod(
+	customerId: string,
+	paymentMethodId: string
+): Promise<Stripe.Customer> {
+	try {
+		const customer = await stripe.customers.update(customerId, {
+			invoice_settings: {
+				default_payment_method: paymentMethodId,
+			},
+		});
+		return customer;
+	} catch (error) {
+		console.error('Error setting default payment method:', error);
+		throw error;
+	}
+}
+
+/**
+ * 利用に基づく請求書を作成
+ */
+export async function createInvoiceForUsage(
+	customerId: string,
+	durationMinutes: number,
+	description: string = 'E-Sports Sakura利用料金'
+): Promise<Stripe.Invoice> {
+	try {
+		// 10分単位で料金計算（10分あたり120円）
+		const units = Math.ceil(durationMinutes / 10);
+		const amountYen = units * 120;
+
+		// 請求書の作成
+		const invoice = await stripe.invoices.create({
+			customer: customerId,
+			auto_advance: true, // 自動的に確定・支払い
+			description: description,
+			metadata: {
+				durationMinutes: String(durationMinutes),
+				units: String(units),
+			},
+		});
+
+		// 請求項目の追加
+		await stripe.invoiceItems.create({
+			customer: customerId,
+			amount: amountYen * 100, // 日本円をセントに変換
+			currency: 'jpy',
+			description: `利用時間: ${durationMinutes}分（${units}単位）`,
+			invoice: invoice.id,
+		});
+
+		// 請求書の確定
+		const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
+
+		// 支払い処理
+		return await stripe.invoices.pay(finalizedInvoice.id);
+	} catch (error) {
+		console.error('Error creating invoice for usage:', error);
+		throw error;
+	}
+}
+
+/**
+ * 顧客の支払い方法一覧を取得
+ */
+export async function getCustomerPaymentMethods(
+	customerId: string
+): Promise<Stripe.PaymentMethod[]> {
+	try {
+		const paymentMethods = await stripe.paymentMethods.list({
+			customer: customerId,
+			type: 'card',
+		});
+		return paymentMethods.data;
+	} catch (error) {
+		console.error('Error getting customer payment methods:', error);
+		throw error;
+	}
+}-e 
 ### FILE: ./src/app/login/page.tsx
 
 'use client';
@@ -406,6 +662,7 @@ export default function LoginPage() {
 }-e 
 ### FILE: ./src/app/dashboard/page.tsx
 
+// src/app/dashboard/page.tsx
 'use client';
 
 import { useState } from 'react';
@@ -416,7 +673,8 @@ import { useAuth } from '@/context/auth-context';
 import ProtectedRoute from '@/components/auth/protected-route';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
-import QrCodeDisplay from '@/components/dashboard/qr-code'; // 追加
+import QrCodeDisplay from '@/components/dashboard/qr-code';
+import UsageHistory from '@/components/dashboard/usage-history';
 
 export default function DashboardPage() {
 	const { user, userData, signOut } = useAuth();
@@ -504,12 +762,8 @@ export default function DashboardPage() {
 								<QrCodeDisplay />
 							</div>
 
-							<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-								<h2 className="text-lg font-semibold mb-4">利用状況</h2>
-								<p className="text-foreground/70">
-									まだ利用履歴はありません。
-								</p>
-							</div>
+							{/* 利用履歴コンポーネント */}
+							<UsageHistory />
 						</div>
 					)}
 				</main>
@@ -1134,6 +1388,206 @@ export async function POST(request: NextRequest) {
 		);
 	}
 }-e 
+### FILE: ./src/app/api/billing/history/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
+import { initAdminApp } from '@/lib/firebase-admin';
+
+// Firebase Admin初期化
+initAdminApp();
+
+export async function GET(request: NextRequest) {
+	try {
+		// トークンの検証
+		const authHeader = request.headers.get('Authorization');
+		if (!authHeader || !authHeader.startsWith('Bearer ')) {
+			return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+		}
+
+		const token = authHeader.split('Bearer ')[1];
+		if (!token) {
+			return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+		}
+
+		// Firebaseでトークンを検証
+		const decodedToken = await getAuth().verifyIdToken(token);
+		const userId = decodedToken.uid;
+
+		// クエリパラメータを取得
+		const searchParams = request.nextUrl.searchParams;
+		const limit = parseInt(searchParams.get('limit') || '10');
+		const page = parseInt(searchParams.get('page') || '1');
+		const offset = (page - 1) * limit;
+
+		// Firestoreから利用履歴を取得
+		const db = getFirestore();
+
+		// 件数の取得
+		const countSnapshot = await db.collection('usageHistory')
+			.where('userId', '==', userId)
+			.count()
+			.get();
+
+		const totalCount = countSnapshot.data().count;
+
+		// 履歴データの取得
+		const historySnapshot = await db.collection('usageHistory')
+			.where('userId', '==', userId)
+			.orderBy('timestamp', 'desc')
+			.limit(limit)
+			.offset(offset)
+			.get();
+
+		const history = historySnapshot.docs.map(doc => ({
+			id: doc.id,
+			...doc.data(),
+			// Firebaseのタイムスタンプを文字列に変換
+			timestamp: doc.data().timestamp instanceof Date
+				? doc.data().timestamp.toISOString()
+				: doc.data().timestamp
+		}));
+
+		return NextResponse.json({
+			history,
+			pagination: {
+				total: totalCount,
+				page,
+				limit,
+				pages: Math.ceil(totalCount / limit)
+			}
+		});
+
+	} catch (error) {
+		console.error('Error fetching billing history:', error);
+		return NextResponse.json(
+			{ error: 'Internal server error' },
+			{ status: 500 }
+		);
+	}
+}-e 
+### FILE: ./src/app/api/billing/mock-charge/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
+import { initAdminApp } from '@/lib/firebase-admin';
+import { stripe } from '@/lib/stripe';
+
+// Firebase Admin初期化
+initAdminApp();
+
+/**
+ * 開発環境用のモック課金API
+ * 実際の環境では入退室管理システムから自動的に課金処理されます
+ */
+export async function POST(request: NextRequest) {
+	// 本番環境では使用不可
+	if (process.env.NODE_ENV === 'production') {
+		return NextResponse.json(
+			{ error: 'This endpoint is only available in development mode' },
+			{ status: 403 }
+		);
+	}
+
+	try {
+		// トークンの検証
+		const authHeader = request.headers.get('Authorization');
+		if (!authHeader || !authHeader.startsWith('Bearer ')) {
+			return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+		}
+
+		const token = authHeader.split('Bearer ')[1];
+		if (!token) {
+			return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+		}
+
+		// Firebaseでトークンを検証
+		const decodedToken = await getAuth().verifyIdToken(token);
+		const userId = decodedToken.uid;
+
+		// リクエストボディを取得
+		const body = await request.json();
+		const { durationMinutes = 60, description = 'テスト利用' } = body;
+
+		// 料金計算 (10分あたり120円)
+		const amountYen = Math.ceil(durationMinutes / 10) * 120;
+
+		// Firestoreからユーザーデータを取得
+		const db = getFirestore();
+		const userRef = db.collection('users').doc(userId);
+		const userDoc = await userRef.get();
+
+		if (!userDoc.exists) {
+			return NextResponse.json({ error: 'User not found' }, { status: 404 });
+		}
+
+		const userData = userDoc.data();
+
+		// Stripe顧客IDを確認
+		if (!userData?.stripe?.customerId) {
+			return NextResponse.json(
+				{ error: 'Stripe customer not found' },
+				{ status: 400 }
+			);
+		}
+
+		// Stripeで請求書を作成（テスト用）
+		const invoice = await stripe.invoices.create({
+			customer: userData.stripe.customerId,
+			auto_advance: true, // 自動的に確定する
+			description: description,
+			metadata: {
+				userId: userId,
+				durationMinutes: String(durationMinutes),
+				testMode: 'true'
+			}
+		});
+
+		// 請求項目を追加
+		await stripe.invoiceItems.create({
+			customer: userData.stripe.customerId,
+			amount: amountYen * 100, // 日本円をセントに変換（100倍）
+			currency: 'jpy',
+			description: `利用時間: ${durationMinutes}分`,
+			invoice: invoice.id,
+		});
+
+		// 請求書を確定
+		const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
+
+		// 請求書を支払う（テスト用）
+		const paidInvoice = await stripe.invoices.pay(invoice.id);
+
+		// 利用履歴に記録
+		await db.collection('usageHistory').add({
+			userId,
+			invoiceId: paidInvoice.id,
+			amount: amountYen,
+			durationMinutes,
+			status: 'paid',
+			timestamp: new Date().toISOString(),
+			description: description,
+			isTest: true
+		});
+
+		return NextResponse.json({
+			success: true,
+			invoiceId: paidInvoice.id,
+			amount: amountYen,
+			durationMinutes,
+			paidAt: new Date().toISOString()
+		});
+
+	} catch (error) {
+		console.error('Error in mock billing:', error);
+		return NextResponse.json(
+			{ error: 'Internal server error' },
+			{ status: 500 }
+		);
+	}
+}-e 
 ### FILE: ./src/app/api/stripe/create-setup-intent/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -1425,6 +1879,170 @@ export async function POST(request: NextRequest) {
 		);
 	}
 }-e 
+### FILE: ./src/app/api/stripe/webhook/route.ts
+
+// src/app/api/stripe/webhook/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { headers } from 'next/headers';
+import { initAdminApp } from '@/lib/firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
+import { stripe } from '@/lib/stripe';
+
+// Firebase Admin初期化
+initAdminApp();
+
+// Stripeウェブフックシークレット
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+
+export async function POST(request: NextRequest) {
+	try {
+		// リクエストのRawボディを取得
+		const payload = await request.text();
+		const headersList = headers();
+		const sig = headersList.get('stripe-signature') || '';
+
+		let event;
+
+		// シグネチャの検証
+		try {
+			event = stripe.webhooks.constructEvent(payload, sig, endpointSecret);
+		} catch (err) {
+			console.error('Webhook signature verification failed:', err);
+			return NextResponse.json({ error: 'Webhook signature verification failed' }, { status: 400 });
+		}
+
+		// Firestore参照
+		const db = getFirestore();
+
+		// イベントタイプに基づいて処理
+		switch (event.type) {
+			// 支払い方法が追加された時
+			case 'payment_method.attached':
+				const paymentMethod = event.data.object;
+				// 顧客IDを取得
+				const customerId = paymentMethod.customer;
+
+				if (customerId) {
+					// 顧客IDに基づいてユーザーを検索
+					const usersSnapshot = await db.collection('users')
+						.where('stripe.customerId', '==', customerId)
+						.limit(1)
+						.get();
+
+					if (!usersSnapshot.empty) {
+						const userDoc = usersSnapshot.docs[0];
+						// ユーザーのStripe情報を更新
+						await userDoc.ref.update({
+							'stripe.paymentMethodId': paymentMethod.id,
+							'stripe.updatedAt': new Date().toISOString(),
+							'stripe.paymentSetupCompleted': true,
+							'stripe.paymentMethodType': paymentMethod.type,
+							'stripe.paymentMethodBrand': paymentMethod.card?.brand || '',
+							'stripe.paymentMethodLast4': paymentMethod.card?.last4 || '',
+						});
+					}
+				}
+				break;
+
+			// 請求書の支払いが成功した時
+			case 'invoice.paid':
+				const invoice = event.data.object;
+				// 利用履歴に記録
+				if (invoice.customer) {
+					const usersSnapshot = await db.collection('users')
+						.where('stripe.customerId', '==', invoice.customer)
+						.limit(1)
+						.get();
+
+					if (!usersSnapshot.empty) {
+						const userDoc = usersSnapshot.docs[0];
+						const userId = userDoc.id;
+
+						// 利用履歴に追加
+						await db.collection('usageHistory').add({
+							userId,
+							invoiceId: invoice.id,
+							amount: invoice.amount_paid / 100, // セントから円に変換
+							status: 'paid',
+							timestamp: new Date().toISOString(),
+							description: invoice.description || '利用料金',
+							metadata: invoice.metadata || {},
+							paymentMethodType: invoice.default_payment_method
+								? await getPaymentMethodType(invoice.default_payment_method)
+								: 'unknown',
+							durationMinutes: invoice.metadata?.durationMinutes
+								? parseInt(invoice.metadata.durationMinutes)
+								: undefined
+						});
+
+						// ユーザーの請求履歴にも追加
+						await userDoc.ref.update({
+							'billingHistory': db.FieldValue.arrayUnion({
+								invoiceId: invoice.id,
+								amount: invoice.amount_paid / 100,
+								date: new Date().toISOString(),
+								status: 'paid'
+							})
+						});
+					}
+				}
+				break;
+
+			// 請求書の支払いが失敗した時
+			case 'invoice.payment_failed':
+				const failedInvoice = event.data.object;
+				// 支払い失敗を記録
+				if (failedInvoice.customer) {
+					const usersSnapshot = await db.collection('users')
+						.where('stripe.customerId', '==', failedInvoice.customer)
+						.limit(1)
+						.get();
+
+					if (!usersSnapshot.empty) {
+						const userDoc = usersSnapshot.docs[0];
+						const userId = userDoc.id;
+
+						// 失敗記録を追加
+						await db.collection('paymentFailures').add({
+							userId,
+							invoiceId: failedInvoice.id,
+							amount: failedInvoice.amount_due / 100, // セントから円に変換
+							timestamp: new Date().toISOString(),
+							reason: failedInvoice.last_payment_error?.message || '不明なエラー'
+						});
+
+						// ユーザーの支払い状態を更新
+						await userDoc.ref.update({
+							'stripe.paymentStatus': 'failed',
+							'stripe.lastPaymentError': failedInvoice.last_payment_error?.message,
+							'stripe.lastPaymentErrorAt': new Date().toISOString()
+						});
+					}
+				}
+				break;
+
+			// その他のイベント
+			default:
+				console.log(`Unhandled event type: ${event.type}`);
+		}
+
+		return NextResponse.json({ received: true });
+	} catch (error) {
+		console.error('Error processing webhook:', error);
+		return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+	}
+}
+
+// 支払い方法のタイプを取得するヘルパー関数
+async function getPaymentMethodType(paymentMethodId: string): Promise<string> {
+	try {
+		const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+		return paymentMethod.type;
+	} catch (error) {
+		console.error('Error retrieving payment method:', error);
+		return 'unknown';
+	}
+}-e 
 ### FILE: ./src/app/register/complete/page.tsx
 
 'use client';
@@ -1710,14 +2328,20 @@ export default function PersonalInfoRedirectPage() {
 }-e 
 ### FILE: ./src/app/register/payment/page.tsx
 
+// src/app/register/payment/page.tsx
 'use client';
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Elements } from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
 import { useAuth } from '@/context/auth-context';
-import CardForm from '@/components/payment/card-form';
+import EnhancedCardForm from '@/components/payment/enhanced-card-form';
 import LoadingSpinner from '@/components/ui/loading-spinner';
+
+// Stripeの公開キーを使用してStripeをロード
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
 
 export default function PaymentPage() {
 	const { user, userData, loading } = useAuth();
@@ -1777,8 +2401,9 @@ export default function PaymentPage() {
 					</div>
 
 					<div>
-						<h3 className="text-lg font-medium mb-3">支払い方法</h3>
-						<CardForm />
+						<Elements stripe={stripePromise}>
+							<EnhancedCardForm />
+						</Elements>
 					</div>
 				</div>
 
@@ -3373,8 +3998,284 @@ export default function LoadingSpinner({ size = 'default' }: { size?: 'small' | 
 		</div>
 	);
 }-e 
+### FILE: ./src/components/dashboard/usage-history.tsx
+
+// src/components/dashboard/usage-history.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/context/auth-context';
+import LoadingSpinner from '@/components/ui/loading-spinner';
+import Button from '@/components/ui/button';
+
+interface HistoryItem {
+	id: string;
+	amount: number;
+	durationMinutes?: number;
+	description: string;
+	timestamp: string;
+	status: string;
+	invoiceId: string;
+	isTest?: boolean;
+}
+
+interface Pagination {
+	total: number;
+	page: number;
+	limit: number;
+	pages: number;
+}
+
+export default function UsageHistory() {
+	const { user } = useAuth();
+	const [history, setHistory] = useState<HistoryItem[]>([]);
+	const [pagination, setPagination] = useState<Pagination>({
+		total: 0,
+		page: 1,
+		limit: 5,
+		pages: 0
+	});
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+
+	const fetchHistory = async (page = 1) => {
+		if (!user) return;
+
+		try {
+			setLoading(true);
+			setError(null);
+
+			const idToken = await user.getIdToken();
+			const response = await fetch(`/api/billing/history?page=${page}&limit=${pagination.limit}`, {
+				headers: {
+					'Authorization': `Bearer ${idToken}`
+				}
+			});
+
+			if (!response.ok) {
+				throw new Error('履歴データの取得に失敗しました');
+			}
+
+			const data = await response.json();
+			setHistory(data.history);
+			setPagination(data.pagination);
+		} catch (err) {
+			console.error('Error fetching history:', err);
+			setError(err instanceof Error ? err.message : '履歴の取得中にエラーが発生しました');
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	// 初回読み込み
+	useEffect(() => {
+		if (user) {
+			fetchHistory();
+		}
+	}, [user]);
+
+	// ページネーション
+	const handlePageChange = (newPage: number) => {
+		if (newPage < 1 || newPage > pagination.pages) return;
+		fetchHistory(newPage);
+	};
+
+	// テスト決済のシミュレーション (開発環境のみ)
+	const simulatePayment = async (minutes: number) => {
+		if (!user || process.env.NODE_ENV === 'production') return;
+
+		try {
+			setLoading(true);
+			const idToken = await user.getIdToken();
+
+			const response = await fetch('/api/billing/mock-charge', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${idToken}`
+				},
+				body: JSON.stringify({
+					durationMinutes: minutes,
+					description: `テスト利用 (${minutes}分)`
+				})
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				throw new Error(errorData.error || 'テスト決済に失敗しました');
+			}
+
+			// 履歴を再読み込み
+			await fetchHistory();
+
+		} catch (err) {
+			console.error('Error simulating payment:', err);
+			setError(err instanceof Error ? err.message : 'テスト決済中にエラーが発生しました');
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	// 日付フォーマット
+	const formatDate = (dateString: string) => {
+		try {
+			const date = new Date(dateString);
+			return date.toLocaleString('ja-JP', {
+				year: 'numeric',
+				month: '2-digit',
+				day: '2-digit',
+				hour: '2-digit',
+				minute: '2-digit'
+			});
+		} catch (e) {
+			return dateString;
+		}
+	};
+
+	// 金額フォーマット
+	const formatCurrency = (amount: number) => {
+		return new Intl.NumberFormat('ja-JP', {
+			style: 'currency',
+			currency: 'JPY'
+		}).format(amount);
+	};
+
+	return (
+		<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+			<h2 className="text-lg font-semibold mb-4">利用履歴</h2>
+
+			{error && (
+				<div className="bg-red-500/10 text-red-500 p-4 rounded-lg mb-4">
+					{error}
+				</div>
+			)}
+
+			{/* テスト決済ボタン (開発環境のみ) */}
+			{process.env.NODE_ENV === 'development' && (
+				<div className="mb-6 p-4 bg-orange-500/10 text-orange-600 rounded-lg">
+					<p className="text-sm mb-2">開発環境: テスト決済をシミュレート</p>
+					<div className="flex flex-wrap gap-2">
+						<Button
+							onClick={() => simulatePayment(30)}
+							disabled={loading}
+							variant="outline"
+							size="sm"
+						>
+							30分利用 (¥360)
+						</Button>
+						<Button
+							onClick={() => simulatePayment(60)}
+							disabled={loading}
+							variant="outline"
+							size="sm"
+						>
+							1時間利用 (¥700)
+						</Button>
+						<Button
+							onClick={() => simulatePayment(120)}
+							disabled={loading}
+							variant="outline"
+							size="sm"
+						>
+							2時間利用 (¥1,400)
+						</Button>
+					</div>
+				</div>
+			)}
+
+			{loading ? (
+				<div className="flex justify-center items-center py-12">
+					<LoadingSpinner size="large" />
+				</div>
+			) : history.length === 0 ? (
+				<div className="text-center py-8 text-foreground/70">
+					<p>まだ利用履歴はありません。</p>
+				</div>
+			) : (
+				<>
+					<div className="overflow-x-auto">
+						<table className="w-full">
+							<thead>
+								<tr className="text-left text-foreground/70 border-b border-border">
+									<th className="pb-2">日時</th>
+									<th className="pb-2">内容</th>
+									<th className="pb-2 text-right">料金</th>
+									<th className="pb-2 text-right">ステータス</th>
+								</tr>
+							</thead>
+							<tbody>
+								{history.map((item) => (
+									<tr key={item.id} className="border-b border-border/20">
+										<td className="py-3">{formatDate(item.timestamp)}</td>
+										<td className="py-3">
+											{item.description}
+											{item.durationMinutes && (
+												<span className="text-foreground/60 text-sm block">
+													{item.durationMinutes}分間の利用
+												</span>
+											)}
+											{item.isTest && (
+												<span className="inline-block bg-blue-500/10 text-blue-500 text-xs px-2 py-0.5 rounded">
+													テスト
+												</span>
+											)}
+										</td>
+										<td className="py-3 text-right font-medium">
+											{formatCurrency(item.amount)}
+										</td>
+										<td className="py-3 text-right">
+											{item.status === 'paid' ? (
+												<span className="inline-block bg-green-500/10 text-green-500 text-xs px-2 py-0.5 rounded">
+													支払済
+												</span>
+											) : (
+												<span className="inline-block bg-red-500/10 text-red-500 text-xs px-2 py-0.5 rounded">
+													{item.status}
+												</span>
+											)}
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+
+					{/* ページネーション */}
+					{pagination.pages > 1 && (
+						<div className="flex justify-center mt-6">
+							<div className="flex space-x-1">
+								<Button
+									onClick={() => handlePageChange(pagination.page - 1)}
+									disabled={pagination.page === 1 || loading}
+									variant="outline"
+									size="sm"
+								>
+									前へ
+								</Button>
+
+								<div className="flex items-center px-3 py-2 text-sm">
+									{pagination.page} / {pagination.pages}
+								</div>
+
+								<Button
+									onClick={() => handlePageChange(pagination.page + 1)}
+									disabled={pagination.page === pagination.pages || loading}
+									variant="outline"
+									size="sm"
+								>
+									次へ
+								</Button>
+							</div>
+						</div>
+					)}
+				</>
+			)}
+		</div>
+	);
+}-e 
 ### FILE: ./src/components/dashboard/qr-code.tsx
 
+// src/components/dashboard/qr-code.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -3383,8 +4284,8 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/auth-context';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
+import { createHash } from 'crypto';
 
-// シンプルなQRコード表示コンポーネント（実際はQRコードライブラリを使用）
 export default function QrCodeDisplay() {
 	const { user } = useAuth();
 	const [qrValue, setQrValue] = useState<string | null>(null);
@@ -3393,6 +4294,27 @@ export default function QrCodeDisplay() {
 	const [refreshing, setRefreshing] = useState(false);
 
 	// QRコードをロード
+	/*
+	const loadQrCode = async () => {
+		if (!user) return;
+
+		try {
+			console.log('Attempting to load QR code for user:', user.uid);
+
+			const qrDocRef = doc(db, 'memberQRs', user.uid);
+			console.log('QR Document Reference:', qrDocRef.path);
+
+			const qrDoc = await getDoc(qrDocRef);
+			console.log('QR Doc exists:', qrDoc.exists());
+
+			if (qrDoc.exists()) {
+				console.log('QR Doc data:', qrDoc.data());
+			}
+		} catch (err) {
+			console.error('Detailed error loading QR code:', err);
+		}
+	};*/
+
 	const loadQrCode = async () => {
 		if (!user) return;
 
@@ -3418,7 +4340,43 @@ export default function QrCodeDisplay() {
 		}
 	};
 
-	// QRコードを生成（実際はCloud Functionsで行うべき処理）
+
+
+	// QRコードを生成（実際はCloud Functionsで行うべき処理
+
+	const generateQrCode = async () => {
+		if (!user) return;
+
+		try {
+			setLoading(true);
+			setError(null);
+
+			// ソルト（秘密の文字列）を追加してハッシュ化
+			const salt = process.env.QR_SALT || 'your_secret_salt';
+			const qrValue = createHash('sha256')
+				.update(user.uid + salt)
+				.digest('hex')
+				.substring(0, 16); // 16文字に制限
+
+			// Firestoreに保存
+			const qrDocRef = doc(db, 'memberQRs', user.uid);
+			await setDoc(qrDocRef, {
+				userId: user.uid,
+				qrValue: qrValue, // ハッシュ化されたQRコード値
+				createdAt: new Date().toISOString(),
+				expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30日後
+				isActive: true
+			});
+
+			setQrValue(qrValue);
+		} catch (err) {
+			console.error('Error generating QR code:', err);
+			setError('QRコードの生成に失敗しました。');
+		} finally {
+			setLoading(false);
+		}
+	};
+	/*
 	const generateQrCode = async () => {
 		if (!user) return;
 
@@ -3447,6 +4405,7 @@ export default function QrCodeDisplay() {
 			setLoading(false);
 		}
 	};
+	*/
 
 	// QRコードをリフレッシュ
 	const refreshQrCode = async () => {
@@ -3493,11 +4452,77 @@ export default function QrCodeDisplay() {
 		<div className="text-center">
 			{qrValue ? (
 				<>
-					{/* シンプルなQRコード表示（実際はQRコードライブラリを使用） */}
-					<div className="bg-white p-4 rounded-lg w-48 h-48 mx-auto mb-4 flex items-center justify-center border-2 border-accent">
-						<div className="text-black text-xs break-all overflow-hidden">
-							QRコード: {qrValue}
-						</div>
+					{/* QRコード表示（SVGでリアルなQRコード風に表示） */}
+					<div className="bg-white p-4 rounded-lg w-64 h-64 mx-auto mb-4 flex items-center justify-center border-2 border-accent">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 200 200"
+							width="200"
+							height="200"
+							className="w-full h-full"
+						>
+							{/* QRコードSVGパターン */}
+							<rect width="100%" height="100%" fill="white" />
+
+							{/* 外枠 */}
+							<rect x="10" y="10" width="20" height="20" fill="black" />
+							<rect x="15" y="15" width="10" height="10" fill="white" />
+
+							<rect x="170" y="10" width="20" height="20" fill="black" />
+							<rect x="175" y="15" width="10" height="10" fill="white" />
+
+							<rect x="10" y="170" width="20" height="20" fill="black" />
+							<rect x="15" y="175" width="10" height="10" fill="white" />
+
+							{/* QRコード中央パターン（シンプルな例） */}
+							{Array.from({ length: 10 }).map((_, row) => (
+								Array.from({ length: 10 }).map((_, col) => {
+									// 角のパターンは除外
+									if ((row < 3 && col < 3) || (row < 3 && col > 6) || (row > 6 && col < 3)) {
+										return null;
+									}
+
+									// UIDのハッシュを使って黒マスを配置
+									const hash = qrValue.charCodeAt((row * 10 + col) % qrValue.length);
+									const shouldFill = hash % 3 === 0;
+
+									return shouldFill ? (
+										<rect
+											key={`${row}-${col}`}
+											x={30 + col * 14}
+											y={30 + row * 14}
+											width="14"
+											height="14"
+											fill="black"
+										/>
+									) : null;
+								})
+							))}
+
+							{/* QR内容テキスト表示 */}
+							<text
+								x="100"
+								y="95"
+								textAnchor="middle"
+								fontSize="8"
+								fill="black"
+								fontFamily="monospace"
+							>
+								{qrValue} {/* UIDを直接表示 */}
+							</text>
+
+							{/* QR内容テキスト表示 */}
+							<text
+								x="100"
+								y="95"
+								textAnchor="middle"
+								fontSize="8"
+								fill="black"
+								fontFamily="monospace"
+							>
+								E-Sports Sakura
+							</text>
+						</svg>
 					</div>
 
 					<p className="text-sm text-foreground/70 mb-4">
@@ -4952,6 +5977,518 @@ export default function ProgressTracker() {
 					);
 				})}
 			</ol>
+		</div>
+	);
+}-e 
+### FILE: ./src/components/payment/enhanced-card-form.tsx
+
+// src/components/payment/enhanced-card-form.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useStripe, useElements, CardElement, PaymentRequestButtonElement } from '@stripe/react-stripe-js';
+import { useAuth } from '@/context/auth-context';
+import { useRouter } from 'next/navigation';
+import Button from '@/components/ui/button';
+import LoadingSpinner from '@/components/ui/loading-spinner';
+import PaymentMethodSelector from './payment-method-selector';
+
+type PaymentMethodType = 'card' | 'googlePay' | 'applePay';
+
+const cardStyle = {
+	style: {
+		base: {
+			color: '#32325d',
+			fontFamily: '"Helvetica Neue", Helvetica, sans-serif',
+			fontSmoothing: 'antialiased',
+			fontSize: '16px',
+			'::placeholder': {
+				color: '#aab7c4'
+			}
+		},
+		invalid: {
+			color: '#fa755a',
+			iconColor: '#fa755a'
+		}
+	}
+};
+
+export default function EnhancedCardForm({ onSuccess }: { onSuccess?: () => void }) {
+	const { user } = useAuth();
+	const stripe = useStripe();
+	const elements = useElements();
+	const router = useRouter();
+
+	const [clientSecret, setClientSecret] = useState('');
+	const [error, setError] = useState<string | null>(null);
+	const [cardComplete, setCardComplete] = useState(false);
+	const [processing, setProcessing] = useState(false);
+	const [succeeded, setSucceeded] = useState(false);
+	const [selectedMethod, setSelectedMethod] = useState<PaymentMethodType>('card');
+	const [paymentRequest, setPaymentRequest] = useState<any>(null);
+
+	// Setup Intentの取得
+	useEffect(() => {
+		const getSetupIntent = async () => {
+			if (!user) return;
+
+			try {
+				// まずStripe顧客を作成/取得
+				const createCustomerResponse = await fetch('/api/stripe/create-customer', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': `Bearer ${await user.getIdToken()}`
+					}
+				});
+
+				if (!createCustomerResponse.ok) {
+					throw new Error('Failed to create Stripe customer');
+				}
+
+				// Setup Intentを作成
+				const setupIntentResponse = await fetch('/api/stripe/create-setup-intent', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': `Bearer ${await user.getIdToken()}`
+					}
+				});
+
+				if (!setupIntentResponse.ok) {
+					throw new Error('Failed to create Setup Intent');
+				}
+
+				const { clientSecret } = await setupIntentResponse.json();
+				setClientSecret(clientSecret);
+
+				// PaymentRequestボタンの設定（Google Pay、Apple Pay用）
+				if (stripe) {
+					const pr = stripe.paymentRequest({
+						country: 'JP',
+						currency: 'jpy',
+						total: {
+							label: 'E-Sports Sakura会員登録',
+							amount: 0, // Setup Intentのため金額は0
+						},
+						requestPayerName: true,
+						requestPayerEmail: true,
+					});
+
+					// PaymentRequestがサポートされているか確認
+					const result = await pr.canMakePayment();
+					if (result) {
+						setPaymentRequest(pr);
+					}
+
+					// PaymentRequestのイベントリスナー設定
+					pr.on('paymentmethod', async (ev) => {
+						if (!clientSecret) return;
+
+						setProcessing(true);
+
+						// PaymentMethodをSetup Intentに付与
+						const { setupIntent, error: confirmError } = await stripe.confirmCardSetup(
+							clientSecret,
+							{ payment_method: ev.paymentMethod.id }
+						);
+
+						if (confirmError) {
+							// エラーがある場合は取引を完了
+							ev.complete('fail');
+							setError(confirmError.message || 'カード情報の処理中にエラーが発生しました。');
+							setProcessing(false);
+							return;
+						}
+
+						// 成功時
+						ev.complete('success');
+						if (setupIntent?.status === 'succeeded') {
+							await handleSetupSuccess(setupIntent);
+						}
+					});
+				}
+
+			} catch (err) {
+				console.error('Error fetching Setup Intent:', err);
+				setError('決済情報の初期化中にエラーが発生しました。後でもう一度お試しください。');
+			}
+		};
+
+		getSetupIntent();
+	}, [user, stripe]);
+
+	// カード情報の処理
+	const handleSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+
+		if (!stripe || !elements || !clientSecret) {
+			// Stripeがまだロードされていない場合
+			return;
+		}
+
+		setProcessing(true);
+		setError(null);
+
+		try {
+			const cardElement = elements.getElement(CardElement);
+			if (!cardElement) {
+				throw new Error('Card Element not found');
+			}
+
+			// カード情報を送信
+			const { error: stripeError, setupIntent } = await stripe.confirmCardSetup(clientSecret, {
+				payment_method: {
+					card: cardElement,
+					billing_details: {
+						email: user?.email || '',
+					},
+				}
+			});
+
+			if (stripeError) {
+				setError(stripeError.message || 'カード情報の処理中にエラーが発生しました。');
+				setProcessing(false);
+				return;
+			}
+
+			// セットアップ成功時の処理
+			if (setupIntent) {
+				await handleSetupSuccess(setupIntent);
+			}
+
+		} catch (err) {
+			console.error('Error processing card:', err);
+			setError('カード情報の処理中にエラーが発生しました。もう一度お試しください。');
+			setProcessing(false);
+		}
+	};
+
+	// セットアップ成功時の処理
+	const handleSetupSuccess = async (setupIntent: any) => {
+		setSucceeded(true);
+
+		// Firestoreに支払い状態を更新
+		if (user) {
+			try {
+				await fetch('/api/stripe/confirm-payment-setup', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': `Bearer ${await user.getIdToken()}`
+					},
+					body: JSON.stringify({
+						setupIntentId: setupIntent?.id,
+						paymentMethodId: setupIntent?.payment_method
+					})
+				});
+			} catch (err) {
+				console.error('Error confirming payment setup:', err);
+				// ここではエラーを表示せず、成功として扱う
+			}
+		}
+
+		// 成功コールバック
+		setTimeout(() => {
+			if (onSuccess) {
+				onSuccess();
+			} else {
+				// 完了ページへリダイレクト
+				router.push('/register/complete');
+			}
+		}, 2000);
+
+		setProcessing(false);
+	};
+
+	// カード入力状態の変更ハンドラ
+	const handleCardChange = (event: any) => {
+		setCardComplete(event.complete);
+		setError(event.error ? event.error.message : null);
+	};
+
+	// 開発用: 決済処理をモック
+	const handleMockPayment = async () => {
+		setProcessing(true);
+
+		// 成功をシミュレート
+		setTimeout(async () => {
+			setSucceeded(true);
+
+			// Firestoreに支払い状態を更新
+			if (user) {
+				try {
+					await fetch('/api/stripe/mock-payment-setup', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Authorization': `Bearer ${await user.getIdToken()}`
+						}
+					});
+				} catch (err) {
+					console.error('Error updating mock payment status:', err);
+				}
+			}
+
+			// 完了ページへリダイレクト
+			setTimeout(() => {
+				if (onSuccess) {
+					onSuccess();
+				} else {
+					router.push('/register/complete');
+				}
+			}, 1500);
+
+			setProcessing(false);
+		}, 2000);
+	};
+
+	return (
+		<form onSubmit={handleSubmit} className="space-y-6">
+			{/* 支払い方法選択 */}
+			<PaymentMethodSelector
+				onSelect={setSelectedMethod}
+				selectedMethod={selectedMethod}
+			/>
+
+			{/* 選択された支払い方法に応じたフォーム */}
+			<div className="space-y-4">
+				{selectedMethod === 'card' && (
+					<div className="border border-border rounded-lg bg-background p-4">
+						{clientSecret ? (
+							<CardElement
+								options={cardStyle}
+								onChange={handleCardChange}
+								className="py-2"
+							/>
+						) : (
+							<div className="flex justify-center py-4">
+								<LoadingSpinner size="small" />
+								<span className="ml-2 text-foreground/70">カード情報フォームを読み込み中...</span>
+							</div>
+						)}
+					</div>
+				)}
+
+				{/* Google Pay / Apple Pay ボタン */}
+				{(selectedMethod === 'googlePay' || selectedMethod === 'applePay') && paymentRequest && (
+					<div className="py-2">
+						<PaymentRequestButtonElement
+							options={{
+								paymentRequest,
+								style: {
+									paymentRequestButton: {
+										theme: 'dark',
+										height: '48px',
+									},
+								},
+							}}
+						/>
+					</div>
+				)}
+			</div>
+
+			{/* エラーメッセージ */}
+			{error && (
+				<div className="bg-red-500/10 text-red-500 p-3 rounded-lg text-sm">
+					{error}
+				</div>
+			)}
+
+			{/* 成功メッセージ */}
+			{succeeded && (
+				<div className="bg-green-500/10 text-green-500 p-3 rounded-lg text-sm">
+					カード情報が正常に登録されました。次のステップに進みます...
+				</div>
+			)}
+
+			{/* 送信ボタン */}
+			<div className="flex flex-col">
+				{selectedMethod === 'card' && (
+					<Button
+						type="submit"
+						disabled={processing || !cardComplete || !stripe || !clientSecret || succeeded}
+						className={`w-full ${succeeded ? 'bg-green-600' : ''}`}
+					>
+						{processing ? (
+							<>
+								<LoadingSpinner size="small" />
+								<span className="ml-2">処理中...</span>
+							</>
+						) : succeeded ? (
+							'登録完了！'
+						) : (
+							'カード情報を登録する'
+						)}
+					</Button>
+				)}
+
+				{/* 開発環境のみ表示するモックボタン */}
+				{process.env.NODE_ENV === 'development' && !succeeded && (
+					<Button
+						type="button"
+						onClick={handleMockPayment}
+						disabled={processing || succeeded}
+						className="mt-4 bg-gray-500 hover:bg-gray-600"
+					>
+						{processing ? (
+							<>
+								<LoadingSpinner size="small" />
+								<span className="ml-2">処理中...</span>
+							</>
+						) : (
+							'(開発用) 支払い成功をシミュレート'
+						)}
+					</Button>
+				)}
+			</div>
+
+			{/* セキュリティ情報 */}
+			<div className="text-center text-sm text-foreground/60">
+				<p>
+					お客様のカード情報は安全に処理され、当社のサーバーには保存されません。
+					<br />
+					決済処理は<a href="https://stripe.com/jp" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Stripe</a>によって安全に行われます。
+				</p>
+			</div>
+		</form>
+	);
+}-e 
+### FILE: ./src/components/payment/payment-method-selector.tsx
+
+// src/components/payment/payment-method-selector.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { useStripe } from '@stripe/react-stripe-js';
+import { PAYMENT_METHODS, checkAvailablePaymentMethods } from '@/lib/stripe-payment-methods';
+import LoadingSpinner from '@/components/ui/loading-spinner';
+
+type PaymentMethodType = 'card' | 'googlePay' | 'applePay';
+
+interface PaymentMethodSelectorProps {
+	onSelect: (method: PaymentMethodType) => void;
+	selectedMethod: PaymentMethodType;
+}
+
+export default function PaymentMethodSelector({ onSelect, selectedMethod }: PaymentMethodSelectorProps) {
+	const stripe = useStripe();
+	const [availableMethods, setAvailableMethods] = useState<Record<string, boolean>>({
+		card: true,
+		googlePay: false,
+		applePay: false
+	});
+	const [loading, setLoading] = useState(true);
+
+	// 利用可能な支払い方法を確認
+	useEffect(() => {
+		async function checkMethods() {
+			if (stripe) {
+				setLoading(true);
+				const methods = await checkAvailablePaymentMethods(stripe);
+				setAvailableMethods(methods);
+				setLoading(false);
+			}
+		}
+
+		if (stripe) {
+			checkMethods();
+		}
+	}, [stripe]);
+
+	if (loading) {
+		return (
+			<div className="flex justify-center items-center py-4">
+				<LoadingSpinner size="small" />
+				<span className="ml-2 text-sm text-foreground/70">利用可能な支払い方法を確認中...</span>
+			</div>
+		);
+	}
+
+	return (
+		<div className="mb-6">
+			<h3 className="text-lg font-medium mb-3">支払い方法</h3>
+			<div className="space-y-2">
+				{/* カード支払い */}
+				<div
+					className={`p-3 border rounded-lg cursor-pointer flex items-center ${selectedMethod === 'card' ? 'border-accent bg-accent/5' : 'border-border'
+						}`}
+					onClick={() => onSelect('card')}
+				>
+					<div className="flex-shrink-0 w-8 h-8 flex items-center justify-center mr-3">
+						<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+						</svg>
+					</div>
+					<div className="flex-grow">
+						<div className="font-medium">クレジット/デビットカード</div>
+						<div className="flex mt-1 space-x-1">
+							<span className="text-xs text-foreground/70">Visa, Mastercard, AMEX, JCB</span>
+						</div>
+					</div>
+					<div className="flex-shrink-0 ml-2">
+						<div className={`w-4 h-4 rounded-full border ${selectedMethod === 'card' ? 'border-accent' : 'border-border'
+							}`}>
+							{selectedMethod === 'card' && (
+								<div className="w-2 h-2 rounded-full bg-accent m-auto mt-1"></div>
+							)}
+						</div>
+					</div>
+				</div>
+
+				{/* Google Pay */}
+				{availableMethods.googlePay && (
+					<div
+						className={`p-3 border rounded-lg cursor-pointer flex items-center ${selectedMethod === 'googlePay' ? 'border-accent bg-accent/5' : 'border-border'
+							}`}
+						onClick={() => onSelect('googlePay')}
+					>
+						<div className="flex-shrink-0 w-8 h-8 flex items-center justify-center mr-3">
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+								<path d="M12 0c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm-2.5 7.5h5v1.5h-5v-1.5zm9 9.5h-12.5v-7.5h12.5v7.5z" />
+							</svg>
+						</div>
+						<div className="flex-grow">
+							<div className="font-medium">Google Pay</div>
+						</div>
+						<div className="flex-shrink-0 ml-2">
+							<div className={`w-4 h-4 rounded-full border ${selectedMethod === 'googlePay' ? 'border-accent' : 'border-border'
+								}`}>
+								{selectedMethod === 'googlePay' && (
+									<div className="w-2 h-2 rounded-full bg-accent m-auto mt-1"></div>
+								)}
+							</div>
+						</div>
+					</div>
+				)}
+
+				{/* Apple Pay */}
+				{availableMethods.applePay && (
+					<div
+						className={`p-3 border rounded-lg cursor-pointer flex items-center ${selectedMethod === 'applePay' ? 'border-accent bg-accent/5' : 'border-border'
+							}`}
+						onClick={() => onSelect('applePay')}
+					>
+						<div className="flex-shrink-0 w-8 h-8 flex items-center justify-center mr-3">
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+								<path d="M19.665 16.811a10.316 10.316 0 0 1-1.021 1.837c-.537.767-.978 1.297-1.316 1.592-.525.482-1.089.73-1.692.744-.432 0-.954-.123-1.562-.373-.61-.249-1.17-.371-1.683-.371-.537 0-1.113.122-1.732.371-.619.25-1.118.381-1.497.396-.577.025-1.154-.229-1.729-.764-.367-.32-.826-.87-1.377-1.648-.59-.829-1.075-1.794-1.455-2.891-.407-1.187-.611-2.335-.611-3.447 0-1.273.275-2.372.826-3.292a4.857 4.857 0 0 1 1.73-1.751 4.65 4.65 0 0 1 2.34-.662c.46 0 1.063.142 1.81.422s1.227.422 1.436.422c.158 0 .689-.167 1.593-.498.853-.307 1.573-.434 2.163-.384 1.6.129 2.801.759 3.6 1.895-1.43.867-2.137 2.08-2.123 3.637.012 1.213.453 2.222 1.317 3.023a4.33 4.33 0 0 0 1.315.863c-.106.307-.218.6-.336.882z" />
+							</svg>
+						</div>
+						<div className="flex-grow">
+							<div className="font-medium">Apple Pay</div>
+						</div>
+						<div className="flex-shrink-0 ml-2">
+							<div className={`w-4 h-4 rounded-full border ${selectedMethod === 'applePay' ? 'border-accent' : 'border-border'
+								}`}>
+								{selectedMethod === 'applePay' && (
+									<div className="w-2 h-2 rounded-full bg-accent m-auto mt-1"></div>
+								)}
+							</div>
+						</div>
+					</div>
+				)}
+			</div>
 		</div>
 	);
 }-e 

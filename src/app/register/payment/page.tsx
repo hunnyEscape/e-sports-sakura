@@ -1,11 +1,17 @@
+// src/app/register/payment/page.tsx
 'use client';
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Elements } from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
 import { useAuth } from '@/context/auth-context';
-import CardForm from '@/components/payment/card-form';
+import EnhancedCardForm from '@/components/payment/enhanced-card-form';
 import LoadingSpinner from '@/components/ui/loading-spinner';
+
+// Stripeの公開キーを使用してStripeをロード
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
 
 export default function PaymentPage() {
 	const { user, userData, loading } = useAuth();
@@ -65,8 +71,9 @@ export default function PaymentPage() {
 					</div>
 
 					<div>
-						<h3 className="text-lg font-medium mb-3">支払い方法</h3>
-						<CardForm />
+						<Elements stripe={stripePromise}>
+							<EnhancedCardForm />
+						</Elements>
 					</div>
 				</div>
 

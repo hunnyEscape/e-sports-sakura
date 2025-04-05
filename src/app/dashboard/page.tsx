@@ -1,3 +1,4 @@
+// src/app/dashboard/page.tsx
 'use client';
 
 import { useState } from 'react';
@@ -8,7 +9,8 @@ import { useAuth } from '@/context/auth-context';
 import ProtectedRoute from '@/components/auth/protected-route';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
-import QrCodeDisplay from '@/components/dashboard/qr-code'; // 追加
+import QrCodeDisplay from '@/components/dashboard/qr-code';
+import UsageHistory from '@/components/dashboard/usage-history';
 
 export default function DashboardPage() {
 	const { user, userData, signOut } = useAuth();
@@ -96,12 +98,7 @@ export default function DashboardPage() {
 								<QrCodeDisplay />
 							</div>
 
-							<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-								<h2 className="text-lg font-semibold mb-4">利用状況</h2>
-								<p className="text-foreground/70">
-									まだ利用履歴はありません。
-								</p>
-							</div>
+							{/* <UsageHistory/>	*/}
 						</div>
 					)}
 				</main>

@@ -5,6 +5,7 @@
 ├── package-lock.json
 ├── package.json
 ├── postcss.config.js
+├── project_files.md
 ├── project_structure.txt
 ├── public
 │   ├── next.svg
@@ -12,6 +13,11 @@
 ├── src
 │   ├── app
 │   │   ├── api
+│   │   │   ├── billing
+│   │   │   │   ├── history
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── mock-charge
+│   │   │   │       └── route.ts
 │   │   │   ├── stripe
 │   │   │   │   ├── confirm-payment-setup
 │   │   │   │   │   └── route.ts
@@ -19,7 +25,9 @@
 │   │   │   │   │   └── route.ts
 │   │   │   │   ├── create-setup-intent
 │   │   │   │   │   └── route.ts
-│   │   │   │   └── mock-payment-setup
+│   │   │   │   ├── mock-payment-setup
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── webhook
 │   │   │   │       └── route.ts
 │   │   │   └── veriff
 │   │   │       ├── callback
@@ -56,7 +64,8 @@
 │   │   │   ├── email-password-form.tsx
 │   │   │   └── protected-route.tsx
 │   │   ├── dashboard
-│   │   │   └── qr-code.tsx
+│   │   │   ├── qr-code.tsx
+│   │   │   └── usage-history.tsx
 │   │   ├── icons
 │   │   │   └── verification-icons.tsx
 │   │   ├── lp
@@ -71,7 +80,9 @@
 │   │   │   ├── specs-section.tsx
 │   │   │   └── steps-section.tsx
 │   │   ├── payment
-│   │   │   └── card-form.tsx
+│   │   │   ├── card-form.tsx
+│   │   │   ├── enhanced-card-form.tsx
+│   │   │   └── payment-method-selector.tsx
 │   │   ├── registration
 │   │   │   └── progress-tracker.tsx
 │   │   ├── ui
@@ -91,9 +102,11 @@
 │   └── lib
 │       ├── firebase-admin.ts
 │       ├── firebase.ts
+│       ├── stripe-payment-methods.ts
+│       ├── stripe-service.ts
 │       ├── stripe.ts
 │       └── veriff.ts
 ├── tailwind.config.js
 └── tsconfig.json
 
-34 directories, 62 files
+38 directories, 71 files
