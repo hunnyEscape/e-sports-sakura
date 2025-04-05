@@ -1,0 +1,99 @@
+.
+├── README.md
+├── next-env.d.ts
+├── next.config.js
+├── package-lock.json
+├── package.json
+├── postcss.config.js
+├── project_structure.txt
+├── public
+│   ├── next.svg
+│   └── vercel.svg
+├── src
+│   ├── app
+│   │   ├── api
+│   │   │   ├── stripe
+│   │   │   │   ├── confirm-payment-setup
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── create-customer
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── create-setup-intent
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── mock-payment-setup
+│   │   │   │       └── route.ts
+│   │   │   └── veriff
+│   │   │       ├── callback
+│   │   │       │   └── route.ts
+│   │   │       ├── create-session
+│   │   │       │   └── route.ts
+│   │   │       └── reset-status
+│   │   │           └── route.ts
+│   │   ├── dashboard
+│   │   │   └── page.tsx
+│   │   ├── favicon.ico
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   ├── login
+│   │   │   └── page.tsx
+│   │   ├── lp
+│   │   │   └── page.tsx
+│   │   ├── page.tsx
+│   │   ├── payment
+│   │   │   └── page.tsx
+│   │   └── register
+│   │       ├── complete
+│   │       │   └── page.tsx
+│   │       ├── layout.tsx
+│   │       ├── page.tsx
+│   │       ├── payment
+│   │       │   └── page.tsx
+│   │       ├── personal-info
+│   │       │   └── page.tsx
+│   │       └── verification
+│   │           └── page.tsx
+│   ├── components
+│   │   ├── auth
+│   │   │   ├── email-password-form.tsx
+│   │   │   └── protected-route.tsx
+│   │   ├── dashboard
+│   │   │   └── qr-code.tsx
+│   │   ├── icons
+│   │   │   └── verification-icons.tsx
+│   │   ├── lp
+│   │   │   ├── access-section.tsx
+│   │   │   ├── cta-section.tsx
+│   │   │   ├── faq-section.tsx
+│   │   │   ├── features-section.tsx
+│   │   │   ├── games-section.tsx
+│   │   │   ├── hero-section.tsx
+│   │   │   ├── lp-footer.tsx
+│   │   │   ├── lp-header.tsx
+│   │   │   ├── specs-section.tsx
+│   │   │   └── steps-section.tsx
+│   │   ├── payment
+│   │   │   └── card-form.tsx
+│   │   ├── registration
+│   │   │   └── progress-tracker.tsx
+│   │   ├── ui
+│   │   │   ├── button.tsx
+│   │   │   └── loading-spinner.tsx
+│   │   └── verification
+│   │       ├── veriff-integration.tsx
+│   │       ├── verification-complete.tsx
+│   │       ├── verification-status-v2.tsx
+│   │       └── verification-status.tsx
+│   ├── context
+│   │   ├── auth-context.tsx
+│   │   ├── ekyc-context.tsx
+│   │   └── registration-context.tsx
+│   ├── hooks
+│   │   └── use-veriff.ts
+│   └── lib
+│       ├── firebase-admin.ts
+│       ├── firebase.ts
+│       ├── stripe.ts
+│       └── veriff.ts
+├── tailwind.config.js
+└── tsconfig.json
+
+34 directories, 62 files
