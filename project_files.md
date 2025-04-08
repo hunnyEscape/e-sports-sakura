@@ -110,7 +110,7 @@ import { getFunctions } from 'firebase/functions';
 
 // Firebaseの設定
 // 注: 実際の値は.env.localから取得
-const firebaseConfig = {
+export const firebaseConfig = {
 	apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
 	authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
 	projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
@@ -662,7 +662,6 @@ export default function LoginPage() {
 }-e 
 ### FILE: ./src/app/dashboard/page.tsx
 
-// src/app/dashboard/page.tsx
 'use client';
 
 import { useState } from 'react';
@@ -670,15 +669,19 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/context/auth-context';
+import { ReservationProvider } from '@/context/reservation-context';
 import ProtectedRoute from '@/components/auth/protected-route';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
 import QrCodeDisplay from '@/components/dashboard/qr-code';
 import UsageHistory from '@/components/dashboard/usage-history';
+import ReservationHistory from '@/components/dashboard/reservation-history';
+import { Calendar, Clock, CreditCard } from 'lucide-react';
 
 export default function DashboardPage() {
 	const { user, userData, signOut } = useAuth();
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
+	const [activeTab, setActiveTab] = useState('qr');
 	const router = useRouter();
 
 	const handleSignOut = async () => {
@@ -694,100 +697,386 @@ export default function DashboardPage() {
 
 	return (
 		<ProtectedRoute>
-			<div className="min-h-screen bg-background text-foreground">
-				{/* ヘッダー */}
-				<header className="bg-background/80 backdrop-blur-sm border-b border-border sticky top-0 z-10">
-					<div className="container mx-auto px-4">
-						<div className="flex items-center justify-between h-16">
-							<Link href="/dashboard" className="flex items-center">
-								<Image
-									src="/images/logo.svg"
-									alt="E-Sports Sakura"
-									width={40}
-									height={40}
-									className="mr-2"
-								/>
-								<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
-							</Link>
-
-							<div className="flex items-center space-x-4">
-								{user?.photoURL && (
+			<ReservationProvider>
+				<div className="min-h-screen bg-background text-foreground">
+					{/* ヘッダー */}
+					<header className="bg-background/80 backdrop-blur-sm border-b border-border sticky top-0 z-10">
+						<div className="container mx-auto px-4">
+							<div className="flex items-center justify-between h-16">
+								<Link href="/dashboard" className="flex items-center">
 									<Image
-										src={user.photoURL}
-										alt={user.displayName || 'ユーザー'}
-										width={32}
-										height={32}
-										className="rounded-full"
+										src="/images/logo.svg"
+										alt="E-Sports Sakura"
+										width={40}
+										height={40}
+										className="mr-2"
 									/>
-								)}
-								<button
-									onClick={handleSignOut}
-									disabled={isLoggingOut}
-									className="text-foreground/70 hover:text-accent"
+									<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
+								</Link>
+
+								<div className="flex items-center space-x-4">
+									{user?.photoURL && (
+										<Image
+											src={user.photoURL}
+											alt={user.displayName || 'ユーザー'}
+											width={32}
+											height={32}
+											className="rounded-full"
+										/>
+									)}
+									<button
+										onClick={handleSignOut}
+										disabled={isLoggingOut}
+										className="text-foreground/70 hover:text-accent"
+									>
+										{isLoggingOut ? <LoadingSpinner size="small" /> : 'ログアウト'}
+									</button>
+								</div>
+							</div>
+						</div>
+					</header>
+
+					{/* メインコンテンツ */}
+					<main className="container mx-auto px-4 py-8">
+						<h1 className="text-2xl font-bold mb-6">マイダッシュボード</h1>
+
+						{/* 会員登録が完了していない場合は登録フローに誘導 */}
+						{userData && !userData.registrationCompleted && (
+							<div className="bg-accent/10 border border-accent/20 rounded-xl p-6 mb-8">
+								<h2 className="text-lg font-semibold mb-2">会員登録を完了させましょう</h2>
+								<p className="mb-4">
+									サービスを利用するには、追加情報の入力とeKYC認証が必要です。
+									数分で完了します。
+								</p>
+								<Button
+									href="/register/personal-info"
+									variant="primary"
 								>
-									{isLoggingOut ? <LoadingSpinner size="small" /> : 'ログアウト'}
-								</button>
+									登録を続ける
+								</Button>
 							</div>
-						</div>
-					</div>
-				</header>
+						)}
 
-				{/* メインコンテンツ */}
-				<main className="container mx-auto px-4 py-8">
-					<h1 className="text-2xl font-bold mb-6">マイダッシュボード</h1>
+						{/* 登録完了している場合は会員情報を表示 */}
+						{userData && userData.registrationCompleted && (
+							<>
+								{/* タブナビゲーション */}
+								<div className="flex border-b border-border mb-6">
+									<button
+										onClick={() => setActiveTab('qr')}
+										className={`py-2 px-4 font-medium ${activeTab === 'qr'
+												? 'text-accent border-b-2 border-accent'
+												: 'text-foreground/70 hover:text-foreground'
+											}`}
+									>
+										会員QRコード
+									</button>
+									<button
+										onClick={() => setActiveTab('reservations')}
+										className={`py-2 px-4 font-medium ${activeTab === 'reservations'
+												? 'text-accent border-b-2 border-accent'
+												: 'text-foreground/70 hover:text-foreground'
+											}`}
+									>
+										予約履歴
+									</button>
+									<button
+										onClick={() => setActiveTab('usage')}
+										className={`py-2 px-4 font-medium ${activeTab === 'usage'
+												? 'text-accent border-b-2 border-accent'
+												: 'text-foreground/70 hover:text-foreground'
+											}`}
+									>
+										利用履歴
+									</button>
+								</div>
 
-					{/* 会員登録が完了していない場合は登録フローに誘導 */}
-					{userData && !userData.registrationCompleted && (
-						<div className="bg-accent/10 border border-accent/20 rounded-xl p-6 mb-8">
-							<h2 className="text-lg font-semibold mb-2">会員登録を完了させましょう</h2>
-							<p className="mb-4">
-								サービスを利用するには、追加情報の入力とeKYC認証が必要です。
-								数分で完了します。
-							</p>
-							<Button
-								href="/register/personal-info"
-								variant="primary"
-							>
-								登録を続ける
-							</Button>
-						</div>
-					)}
+								{/* タブコンテンツ */}
+								<div className="grid md:grid-cols-1 gap-8">
+									{activeTab === 'qr' && (
+										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+											<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>
+											<QrCodeDisplay />
+										</div>
+									)}
 
-					{/* 登録完了している場合はQRコードなど表示 */}
-					{userData && userData.registrationCompleted && (
-						<div className="grid md:grid-cols-2 gap-8">
-							<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-								<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>
-								{/* QRコードコンポーネントを表示 */}
-								<QrCodeDisplay />
-							</div>
+									{activeTab === 'reservations' && (
+										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+											<ReservationHistory />
+										</div>
+									)}
 
-							{/* <UsageHistory/>	*/}
-						</div>
-					)}
-				</main>
-			</div>
+									{activeTab === 'usage' && (
+										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+											<UsageHistory />
+										</div>
+									)}
+								</div>
+
+								{/* クイックアクション */}
+								<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+									<Link
+										href="/reservation"
+										className="bg-border/5 hover:bg-border/10 rounded-xl p-4 flex flex-col items-center justify-center transition-colors"
+									>
+										<Calendar className="w-8 h-8 text-accent mb-2" />
+										<span className="font-medium text-foreground">新規予約</span>
+										<span className="text-sm text-foreground/60">座席を予約する</span>
+									</Link>
+
+									<button
+										onClick={() => setActiveTab('usage')}
+										className="bg-border/5 hover:bg-border/10 rounded-xl p-4 flex flex-col items-center justify-center transition-colors"
+									>
+										<Clock className="w-8 h-8 text-accent mb-2" />
+										<span className="font-medium text-foreground">利用履歴</span>
+										<span className="text-sm text-foreground/60">過去の利用を確認</span>
+									</button>
+
+									<Link
+										href="/payment"
+										className="bg-border/5 hover:bg-border/10 rounded-xl p-4 flex flex-col items-center justify-center transition-colors"
+									>
+										<CreditCard className="w-8 h-8 text-accent mb-2" />
+										<span className="font-medium text-foreground">決済情報</span>
+										<span className="text-sm text-foreground/60">支払い方法を管理</span>
+									</Link>
+								</div>
+							</>
+						)}
+					</main>
+				</div>
+			</ReservationProvider>
 		</ProtectedRoute>
 	);
 }-e 
+### FILE: ./src/app/reservation/page.tsx
+
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/auth-context';
+import { ReservationProvider } from '@/context/reservation-context';
+
+import CalendarView from '@/components/reservation/calendar-view';
+import TimeGrid from '@/components/reservation/time-grid';
+import ReservationForm from '@/components/reservation/reservation-form';
+import LoginPrompt from '@/components/reservation/login-prompt';
+
+enum ReservationStep {
+	SELECT_DATE,
+	SELECT_TIME,
+	CONFIRM
+}
+
+const ReservationPage: React.FC = () => {
+	const { user, loading } = useAuth();
+	const router = useRouter();
+
+	const [currentStep, setCurrentStep] = useState<ReservationStep>(ReservationStep.SELECT_DATE);
+	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+	const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+	const [reservationDetails, setReservationDetails] = useState<{
+		date: Date;
+		seatId: string;
+		startTime: string;
+		endTime: string;
+	} | null>(null);
+
+	// Check for pending reservation in sessionStorage (after login/register)
+	useEffect(() => {
+		if (user && !loading) {
+			const pendingReservation = sessionStorage.getItem('pendingReservation');
+			if (pendingReservation) {
+				try {
+					const details = JSON.parse(pendingReservation);
+					setReservationDetails({
+						date: new Date(details.date),
+						seatId: details.seatId,
+						startTime: details.startTime,
+						endTime: details.endTime
+					});
+					setSelectedDate(new Date(details.date));
+					setCurrentStep(ReservationStep.CONFIRM);
+
+					// Clear the pending reservation
+					sessionStorage.removeItem('pendingReservation');
+				} catch (error) {
+					console.error('Error parsing pending reservation:', error);
+				}
+			}
+		}
+	}, [user, loading]);
+
+	// Handle date selection
+	const handleDateSelect = (date: Date) => {
+		setSelectedDate(date);
+		setCurrentStep(ReservationStep.SELECT_TIME);
+	};
+
+	// Handle time selection
+	const handleTimeSelect = (seatId: string, startTime: string, endTime: string) => {
+		if (!user && !loading) {
+			// Show login prompt for non-logged in users
+			setReservationDetails({
+				date: selectedDate!,
+				seatId,
+				startTime,
+				endTime
+			});
+			setShowLoginPrompt(true);
+			return;
+		}
+
+		setReservationDetails({
+			date: selectedDate!,
+			seatId,
+			startTime,
+			endTime
+		});
+		setCurrentStep(ReservationStep.CONFIRM);
+	};
+
+	// Handle reservation success
+	const handleReservationSuccess = () => {
+		router.push('/dashboard');
+	};
+
+	// Render appropriate step
+	const renderStep = () => {
+		switch (currentStep) {
+			case ReservationStep.SELECT_DATE:
+				return (
+					<div className="w-full max-w-3xl mx-auto">
+						<h1 className="text-2xl font-bold text-foreground mb-6">予約日を選択</h1>
+						<CalendarView onDateSelect={handleDateSelect} />
+					</div>
+				);
+
+			case ReservationStep.SELECT_TIME:
+				return (
+					<div className="w-full max-w-5xl mx-auto">
+						<div className="flex items-center justify-between mb-6">
+							<h1 className="text-2xl font-bold text-foreground">時間と座席を選択</h1>
+							<button
+								onClick={() => setCurrentStep(ReservationStep.SELECT_DATE)}
+								className="text-accent hover:underline"
+							>
+								日付を変更
+							</button>
+						</div>
+						{selectedDate && (
+							<TimeGrid
+								date={selectedDate}
+								onTimeSelect={handleTimeSelect}
+							/>
+						)}
+					</div>
+				);
+
+			case ReservationStep.CONFIRM:
+				return (
+					<div className="w-full max-w-3xl mx-auto">
+						<h1 className="text-2xl font-bold text-foreground mb-6">予約の確認</h1>
+						<ReservationForm
+							onSuccess={handleReservationSuccess}
+							onCancel={() => setCurrentStep(ReservationStep.SELECT_TIME)}
+						/>
+					</div>
+				);
+
+			default:
+				return null;
+		}
+	};
+
+	return (
+		<ReservationProvider>
+			<div className="min-h-screen bg-background py-12 px-4">
+				<motion.div
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					className="w-full"
+				>
+					{/* Progress steps */}
+					<div className="max-w-3xl mx-auto mb-8">
+						<div className="flex items-center justify-between">
+							<div className="flex flex-col items-center">
+								<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_DATE
+										? 'bg-accent text-white'
+										: 'bg-border text-foreground/70'
+									}`}>
+									1
+								</div>
+								<span className="text-sm mt-1 text-foreground/70">日付</span>
+							</div>
+
+							<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_DATE
+									? 'bg-accent'
+									: 'bg-border'
+								}`} />
+
+							<div className="flex flex-col items-center">
+								<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_TIME
+										? 'bg-accent text-white'
+										: 'bg-border text-foreground/70'
+									}`}>
+									2
+								</div>
+								<span className="text-sm mt-1 text-foreground/70">時間・座席</span>
+							</div>
+
+							<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_TIME
+									? 'bg-accent'
+									: 'bg-border'
+								}`} />
+
+							<div className="flex flex-col items-center">
+								<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.CONFIRM
+										? 'bg-accent text-white'
+										: 'bg-border text-foreground/70'
+									}`}>
+									3
+								</div>
+								<span className="text-sm mt-1 text-foreground/70">確認</span>
+							</div>
+						</div>
+					</div>
+
+					{/* Current step content */}
+					{renderStep()}
+
+					{/* Login prompt */}
+					{showLoginPrompt && reservationDetails && (
+						<LoginPrompt
+							onClose={() => setShowLoginPrompt(false)}
+							reservationDetails={reservationDetails}
+						/>
+					)}
+				</motion.div>
+			</div>
+		</ReservationProvider>
+	);
+};
+
+export default ReservationPage;-e 
 ### FILE: ./src/app/lp/page.tsx
+
+'use client';
 
 import HeroSection from '@/components/lp/hero-section';
 import FeaturesSection from '@/components/lp/features-section';
 import GamesSection from '@/components/lp/games-section';
 import StepsSection from '@/components/lp/steps-section';
 import SpecsSection from '@/components/lp/specs-section';
+import AvailabilitySection from '@/components/lp/availability-section';
 import FaqSection from '@/components/lp/faq-section';
 import AccessSection from '@/components/lp/access-section';
 import CtaSection from '@/components/lp/cta-section';
 import LpHeader from '@/components/lp/lp-header';
 import LpFooter from '@/components/lp/lp-footer';
-
-// メタデータ設定
-export const metadata = {
-	title: '遊び足りない夜の、秘密基地 | E-Sports Sakura',
-	description: 'RTX 4070搭載のゲーミングPC、無料ドリンク、24時間無人運営。サシ飲み後やひとりの夜に立ち寄れる秘密基地。',
-};
 
 export default function LandingPage() {
 	return (
@@ -811,6 +1100,9 @@ export default function LandingPage() {
 
 				{/* スペック紹介セクション */}
 				<SpecsSection />
+
+				{/* 予約カレンダーセクション (新規追加) */}
+				<AvailabilitySection />
 
 				{/* よくある質問セクション */}
 				<FaqSection />
@@ -1144,6 +1436,434 @@ export default function HomePage() {
 			</footer>
 		</div>
 	);
+}-e 
+### FILE: ./src/app/api/reservations/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
+import { getFirestore, collection, addDoc, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { initializeApp } from 'firebase/app';
+import { firebaseConfig } from '@/lib/firebase';
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+export async function GET(req: NextRequest) {
+	// Check authentication
+	const authHeader = req.headers.get('Authorization');
+	if (!authHeader || !authHeader.startsWith('Bearer ')) {
+		return NextResponse.json(
+			{ error: '認証エラー: 有効なトークンが必要です' },
+			{ status: 401 }
+		);
+	}
+
+	try {
+		// Extract token from header
+		const token = authHeader.split('Bearer ')[1];
+
+		// Verify token and get user ID (in production, use proper Firebase Admin SDK verification)
+		// This is a simplified version for the purpose of this example
+		const user = auth.currentUser;
+		if (!user) {
+			return NextResponse.json(
+				{ error: '認証エラー: ユーザーが見つかりません' },
+				{ status: 401 }
+			);
+		}
+
+		// Get userId from query parameters (optional filter)
+		const url = new URL(req.url);
+		const userId = url.searchParams.get('userId') || user.uid;
+		const status = url.searchParams.get('status'); // optional status filter
+		const dateFrom = url.searchParams.get('dateFrom'); // optional date range filter
+		const dateTo = url.searchParams.get('dateTo'); // optional date range filter
+
+		// Build Firestore query
+		let reservationsQuery = query(
+			collection(db, 'reservations'),
+			where('userId', '==', userId),
+			orderBy('date', 'desc')
+		);
+
+		// Apply additional filters if provided
+		if (status) {
+			reservationsQuery = query(
+				reservationsQuery,
+				where('status', '==', status)
+			);
+		}
+
+		if (dateFrom) {
+			reservationsQuery = query(
+				reservationsQuery,
+				where('date', '>=', dateFrom)
+			);
+		}
+
+		if (dateTo) {
+			reservationsQuery = query(
+				reservationsQuery,
+				where('date', '<=', dateTo)
+			);
+		}
+
+		// Execute query
+		const querySnapshot = await getDocs(reservationsQuery);
+
+		// Convert snapshot to data array
+		const reservations = querySnapshot.docs.map(doc => ({
+			id: doc.id,
+			...doc.data()
+		}));
+
+		return NextResponse.json({ reservations });
+	} catch (error) {
+		console.error('Error fetching reservations:', error);
+		return NextResponse.json(
+			{ error: '予約情報の取得に失敗しました' },
+			{ status: 500 }
+		);
+	}
+}
+
+export async function POST(req: NextRequest) {
+	// Check authentication
+	const authHeader = req.headers.get('Authorization');
+	if (!authHeader || !authHeader.startsWith('Bearer ')) {
+		return NextResponse.json(
+			{ error: '認証エラー: 有効なトークンが必要です' },
+			{ status: 401 }
+		);
+	}
+
+	try {
+		// Extract token from header
+		const token = authHeader.split('Bearer ')[1];
+
+		// Verify token and get user ID (in production, use proper Firebase Admin SDK verification)
+		// This is a simplified version for the purpose of this example
+		const user = auth.currentUser;
+		if (!user) {
+			return NextResponse.json(
+				{ error: '認証エラー: ユーザーが見つかりません' },
+				{ status: 401 }
+			);
+		}
+
+		// Parse request body
+		const { seatId, date, startTime, endTime, notes } = await req.json();
+
+		// Validate required fields
+		if (!seatId || !date || !startTime || !endTime) {
+			return NextResponse.json(
+				{ error: '必須項目が不足しています' },
+				{ status: 400 }
+			);
+		}
+
+		// Check if the seat is available for the requested time
+		// 1. Get all reservations for the specified seat and date
+		const conflictQuery = query(
+			collection(db, 'reservations'),
+			where('seatId', '==', seatId),
+			where('date', '==', date),
+			where('status', '==', 'confirmed')
+		);
+
+		const conflictSnapshot = await getDocs(conflictQuery);
+
+		// 2. Check for time conflicts
+		const requestStart = new Date(`${date}T${startTime}`);
+		const requestEnd = new Date(`${date}T${endTime}`);
+
+		const hasConflict = conflictSnapshot.docs.some(doc => {
+			const reservation = doc.data();
+			const existingStart = new Date(`${reservation.date}T${reservation.startTime}`);
+			const existingEnd = new Date(`${reservation.date}T${reservation.endTime}`);
+
+			// Check if there's an overlap
+			return (
+				(requestStart < existingEnd && requestEnd > existingStart) ||
+				(existingStart < requestEnd && existingEnd > requestStart)
+			);
+		});
+
+		if (hasConflict) {
+			return NextResponse.json(
+				{ error: '指定した時間に予約が既に存在します' },
+				{ status: 409 }
+			);
+		}
+
+		// Calculate duration in minutes
+		const durationMs = requestEnd.getTime() - requestStart.getTime();
+		const durationMinutes = Math.round(durationMs / (1000 * 60));
+
+		// Get seat details to include name
+		const seatsQuery = query(
+			collection(db, 'seats'),
+			where('seatId', '==', seatId)
+		);
+
+		const seatSnapshot = await getDocs(seatsQuery);
+		let seatName = '';
+
+		if (!seatSnapshot.empty) {
+			seatName = seatSnapshot.docs[0].data().name || '';
+		}
+
+		// Create new reservation
+		const newReservation = {
+			userId: user.uid,
+			userEmail: user.email,
+			seatId,
+			seatName,
+			date,
+			startTime,
+			endTime,
+			duration: durationMinutes,
+			status: 'confirmed',
+			notes: notes || '',
+			createdAt: Timestamp.now(),
+			updatedAt: Timestamp.now()
+		};
+
+		// Add to Firestore
+		const docRef = await addDoc(collection(db, 'reservations'), newReservation);
+
+		return NextResponse.json({
+			id: docRef.id,
+			...newReservation,
+			message: '予約が正常に作成されました'
+		}, { status: 201 });
+	} catch (error) {
+		console.error('Error creating reservation:', error);
+		return NextResponse.json(
+			{ error: '予約の作成に失敗しました' },
+			{ status: 500 }
+		);
+	}
+}-e 
+### FILE: ./src/app/api/reservations/[id]/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
+import { getFirestore, doc, getDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { initializeApp } from 'firebase/app';
+import { firebaseConfig } from '@/lib/firebase';
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+interface Params {
+	params: {
+		id: string;
+	};
+}
+
+export async function GET(req: NextRequest, { params }: Params) {
+	const { id } = params;
+
+	// Check authentication
+	const authHeader = req.headers.get('Authorization');
+	if (!authHeader || !authHeader.startsWith('Bearer ')) {
+		return NextResponse.json(
+			{ error: '認証エラー: 有効なトークンが必要です' },
+			{ status: 401 }
+		);
+	}
+
+	try {
+		// Extract token from header
+		const token = authHeader.split('Bearer ')[1];
+
+		// Verify token (in production, use proper Firebase Admin SDK verification)
+		const user = auth.currentUser;
+		if (!user) {
+			return NextResponse.json(
+				{ error: '認証エラー: ユーザーが見つかりません' },
+				{ status: 401 }
+			);
+		}
+
+		// Get reservation document
+		const reservationDoc = await getDoc(doc(db, 'reservations', id));
+
+		if (!reservationDoc.exists()) {
+			return NextResponse.json(
+				{ error: '予約が見つかりません' },
+				{ status: 404 }
+			);
+		}
+
+		const reservation = {
+			id: reservationDoc.id,
+			...reservationDoc.data()
+		};
+
+		// Check if the user is authorized to access this reservation
+		if (reservation.userId !== user.uid) {
+			return NextResponse.json(
+				{ error: 'この予約にアクセスする権限がありません' },
+				{ status: 403 }
+			);
+		}
+
+		return NextResponse.json({ reservation });
+	} catch (error) {
+		console.error('Error fetching reservation:', error);
+		return NextResponse.json(
+			{ error: '予約情報の取得に失敗しました' },
+			{ status: 500 }
+		);
+	}
+}
+
+export async function PATCH(req: NextRequest, { params }: Params) {
+	const { id } = params;
+
+	// Check authentication
+	const authHeader = req.headers.get('Authorization');
+	if (!authHeader || !authHeader.startsWith('Bearer ')) {
+		return NextResponse.json(
+			{ error: '認証エラー: 有効なトークンが必要です' },
+			{ status: 401 }
+		);
+	}
+
+	try {
+		// Extract token from header
+		const token = authHeader.split('Bearer ')[1];
+
+		// Verify token (in production, use proper Firebase Admin SDK verification)
+		const user = auth.currentUser;
+		if (!user) {
+			return NextResponse.json(
+				{ error: '認証エラー: ユーザーが見つかりません' },
+				{ status: 401 }
+			);
+		}
+
+		// Get reservation document
+		const reservationDoc = await getDoc(doc(db, 'reservations', id));
+
+		if (!reservationDoc.exists()) {
+			return NextResponse.json(
+				{ error: '予約が見つかりません' },
+				{ status: 404 }
+			);
+		}
+
+		const reservation = reservationDoc.data();
+
+		// Check if the user is authorized to modify this reservation
+		if (reservation.userId !== user.uid) {
+			return NextResponse.json(
+				{ error: 'この予約を変更する権限がありません' },
+				{ status: 403 }
+			);
+		}
+
+		// Parse request body
+		const updates = await req.json();
+
+		// Only allow specific fields to be updated
+		const allowedUpdates = ['notes', 'status'];
+		const sanitizedUpdates: Record<string, any> = {};
+
+		for (const key of allowedUpdates) {
+			if (key in updates) {
+				sanitizedUpdates[key] = updates[key];
+			}
+		}
+
+		// Add updated timestamp
+		sanitizedUpdates.updatedAt = Timestamp.now();
+
+		// Update document
+		await updateDoc(doc(db, 'reservations', id), sanitizedUpdates);
+
+		return NextResponse.json({
+			id,
+			...reservation,
+			...sanitizedUpdates,
+			message: '予約が更新されました'
+		});
+	} catch (error) {
+		console.error('Error updating reservation:', error);
+		return NextResponse.json(
+			{ error: '予約の更新に失敗しました' },
+			{ status: 500 }
+		);
+	}
+}
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+	const { id } = params;
+
+	// Check authentication
+	const authHeader = req.headers.get('Authorization');
+	if (!authHeader || !authHeader.startsWith('Bearer ')) {
+		return NextResponse.json(
+			{ error: '認証エラー: 有効なトークンが必要です' },
+			{ status: 401 }
+		);
+	}
+
+	try {
+		// Extract token from header
+		const token = authHeader.split('Bearer ')[1];
+
+		// Verify token (in production, use proper Firebase Admin SDK verification)
+		const user = auth.currentUser;
+		if (!user) {
+			return NextResponse.json(
+				{ error: '認証エラー: ユーザーが見つかりません' },
+				{ status: 401 }
+			);
+		}
+
+		// Get reservation document
+		const reservationDoc = await getDoc(doc(db, 'reservations', id));
+
+		if (!reservationDoc.exists()) {
+			return NextResponse.json(
+				{ error: '予約が見つかりません' },
+				{ status: 404 }
+			);
+		}
+
+		const reservation = reservationDoc.data();
+
+		// Check if the user is authorized to delete this reservation
+		if (reservation.userId !== user.uid) {
+			return NextResponse.json(
+				{ error: 'この予約を削除する権限がありません' },
+				{ status: 403 }
+			);
+		}
+
+		// Alternative: Instead of deleting, update status to 'cancelled'
+		await updateDoc(doc(db, 'reservations', id), {
+			status: 'cancelled',
+			updatedAt: Timestamp.now()
+		});
+
+		return NextResponse.json({
+			message: '予約がキャンセルされました'
+		});
+	} catch (error) {
+		console.error('Error cancelling reservation:', error);
+		return NextResponse.json(
+			{ error: '予約のキャンセルに失敗しました' },
+			{ status: 500 }
+		);
+	}
 }-e 
 ### FILE: ./src/app/api/veriff/create-session/route.ts
 
@@ -1583,6 +2303,153 @@ export async function POST(request: NextRequest) {
 		console.error('Error in mock billing:', error);
 		return NextResponse.json(
 			{ error: 'Internal server error' },
+			{ status: 500 }
+		);
+	}
+}-e 
+### FILE: ./src/app/api/seats/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
+import { getFirestore, collection, getDocs, query, where } from 'firebase/firestore';
+import { initializeApp } from 'firebase/app';
+import { firebaseConfig } from '@/lib/firebase';
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+export async function GET(req: NextRequest) {
+	try {
+		// Get status filter from query params (if any)
+		const url = new URL(req.url);
+		const status = url.searchParams.get('status');
+
+		// Build query for seats collection
+		let seatsQuery = collection(db, 'seats');
+
+		// If status filter is provided, apply it
+		if (status) {
+			seatsQuery = query(seatsQuery, where('status', '==', status));
+		}
+
+		// Execute query
+		const querySnapshot = await getDocs(seatsQuery);
+
+		// Convert snapshot to data array
+		const seats = querySnapshot.docs.map(doc => ({
+			id: doc.id,
+			...doc.data()
+		}));
+
+		// Get date param for availability check
+		const date = url.searchParams.get('date');
+
+		// If date is provided, fetch reservations for that date to check availability
+		if (date) {
+			const reservationsQuery = query(
+				collection(db, 'reservations'),
+				where('date', '==', date),
+				where('status', '==', 'confirmed')
+			);
+
+			const reservationsSnapshot = await getDocs(reservationsQuery);
+			const reservations = reservationsSnapshot.docs.map(doc => doc.data());
+
+			// Enhance seats with availability info
+			const seatsWithAvailability = seats.map(seat => {
+				const seatReservations = reservations.filter(r => r.seatId === seat.seatId);
+
+				// Calculate occupied time slots
+				const occupiedTimeSlots = seatReservations.map(reservation => ({
+					startTime: reservation.startTime,
+					endTime: reservation.endTime
+				}));
+
+				return {
+					...seat,
+					reservations: occupiedTimeSlots,
+					isFullyBooked: occupiedTimeSlots.length > 0 &&
+						// This is a simplified check - in production, you'd want to check
+						// if the entire operating hours are covered by reservations
+						occupiedTimeSlots.some(slot => slot.startTime === '10:00' && slot.endTime === '22:00')
+				};
+			});
+
+			return NextResponse.json({ seats: seatsWithAvailability });
+		}
+
+		return NextResponse.json({ seats });
+	} catch (error) {
+		console.error('Error fetching seats:', error);
+		return NextResponse.json(
+			{ error: '座席情報の取得に失敗しました' },
+			{ status: 500 }
+		);
+	}
+}
+
+// This endpoint can be used to check availability for a specific date and time
+export async function POST(req: NextRequest) {
+	try {
+		const { date, startTime, endTime } = await req.json();
+
+		// Validate required parameters
+		if (!date || !startTime || !endTime) {
+			return NextResponse.json(
+				{ error: '日付と時間の指定が必要です' },
+				{ status: 400 }
+			);
+		}
+
+		// Query seats
+		const seatsSnapshot = await getDocs(collection(db, 'seats'));
+		const seats = seatsSnapshot.docs.map(doc => ({
+			id: doc.id,
+			...doc.data()
+		}));
+
+		// Query reservations for the specified date
+		const reservationsQuery = query(
+			collection(db, 'reservations'),
+			where('date', '==', date),
+			where('status', '==', 'confirmed')
+		);
+
+		const reservationsSnapshot = await getDocs(reservationsQuery);
+		const reservations = reservationsSnapshot.docs.map(doc => doc.data());
+
+		// Convert times to Date objects for comparison
+		const requestStart = new Date(`${date}T${startTime}`);
+		const requestEnd = new Date(`${date}T${endTime}`);
+
+		// Check availability for each seat
+		const availability = seats.map(seat => {
+			const seatReservations = reservations.filter(r => r.seatId === seat.seatId);
+
+			// Check if there's any conflict with existing reservations
+			const hasConflict = seatReservations.some(reservation => {
+				const existingStart = new Date(`${reservation.date}T${reservation.startTime}`);
+				const existingEnd = new Date(`${reservation.date}T${reservation.endTime}`);
+
+				return (
+					(requestStart < existingEnd && requestEnd > existingStart) ||
+					(existingStart < requestEnd && existingEnd > requestStart)
+				);
+			});
+
+			return {
+				seatId: seat.seatId,
+				name: seat.name,
+				isAvailable: !hasConflict && seat.status === 'available',
+				ratePerMinute: seat.ratePerMinute || 0
+			};
+		});
+
+		return NextResponse.json({ availability });
+	} catch (error) {
+		console.error('Error checking availability:', error);
+		return NextResponse.json(
+			{ error: '空き状況の確認に失敗しました' },
 			{ status: 500 }
 		);
 	}
@@ -4363,6 +5230,327 @@ export default function QrCodeDisplay() {
 		</div>
 	);
 }-e 
+### FILE: ./src/components/dashboard/reservation-history.tsx
+
+import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Calendar, Clock, MapPin, Loader, Ban, CheckCircle } from 'lucide-react';
+import { useAuth } from '@/context/auth-context';
+
+interface Reservation {
+	id: string;
+	userId: string;
+	seatId: string;
+	seatName: string;
+	date: string;
+	startTime: string;
+	endTime: string;
+	duration: number;
+	status: 'confirmed' | 'cancelled' | 'completed';
+	createdAt: string;
+	updatedAt: string;
+}
+
+const ReservationHistory: React.FC = () => {
+	const { user } = useAuth();
+	const [reservations, setReservations] = useState<Reservation[]>([]);
+	const [isLoading, setIsLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [showAll, setShowAll] = useState(false);
+
+	// Fetch reservations (mock implementation for now)
+	useEffect(() => {
+		if (!user) return;
+
+		setIsLoading(true);
+		setError(null);
+
+		// Simulate API call with setTimeout
+		const timer = setTimeout(() => {
+			try {
+				// This would be an actual API call in production
+				const mockReservations: Reservation[] = [
+					{
+						id: 'res001',
+						userId: user.uid,
+						seatId: 'pc01',
+						seatName: 'Gaming PC #1',
+						date: '2025-04-10',
+						startTime: '14:00',
+						endTime: '16:00',
+						duration: 120,
+						status: 'completed',
+						createdAt: '2025-04-05T10:00:00Z',
+						updatedAt: '2025-04-05T10:00:00Z'
+					},
+					{
+						id: 'res002',
+						userId: user.uid,
+						seatId: 'pc02',
+						seatName: 'Gaming PC #2',
+						date: '2025-04-15',
+						startTime: '18:00',
+						endTime: '20:00',
+						duration: 120,
+						status: 'confirmed',
+						createdAt: '2025-04-05T15:30:00Z',
+						updatedAt: '2025-04-05T15:30:00Z'
+					},
+					{
+						id: 'res003',
+						userId: user.uid,
+						seatId: 'pc01',
+						seatName: 'Gaming PC #1',
+						date: '2025-04-08',
+						startTime: '20:00',
+						endTime: '22:00',
+						duration: 120,
+						status: 'cancelled',
+						createdAt: '2025-04-04T09:15:00Z',
+						updatedAt: '2025-04-04T14:20:00Z'
+					},
+					{
+						id: 'res004',
+						userId: user.uid,
+						seatId: 'pc03',
+						seatName: 'Standard PC #1',
+						date: '2025-04-20',
+						startTime: '10:00',
+						endTime: '12:00',
+						duration: 120,
+						status: 'confirmed',
+						createdAt: '2025-04-06T18:45:00Z',
+						updatedAt: '2025-04-06T18:45:00Z'
+					}
+				];
+
+				// Sort reservations by date (newest first for upcoming, oldest first for past)
+				const sortedReservations = mockReservations.sort((a, b) => {
+					if (a.status === 'confirmed' && b.status === 'confirmed') {
+						return new Date(a.date).getTime() - new Date(b.date).getTime();
+					} else if (a.status === 'completed' && b.status === 'completed') {
+						return new Date(b.date).getTime() - new Date(a.date).getTime();
+					}
+					return 0;
+				});
+
+				setReservations(sortedReservations);
+				setIsLoading(false);
+			} catch (err) {
+				console.error('Error fetching reservations:', err);
+				setError('予約履歴の取得に失敗しました。もう一度お試しください。');
+				setIsLoading(false);
+			}
+		}, 1000);
+
+		return () => clearTimeout(timer);
+	}, [user]);
+
+	// Get upcoming reservations
+	const upcomingReservations = reservations.filter(
+		reservation => reservation.status === 'confirmed'
+	);
+
+	// Get past reservations
+	const pastReservations = reservations.filter(
+		reservation => reservation.status === 'completed' || reservation.status === 'cancelled'
+	);
+
+	// Format date
+	const formatDate = (dateString: string) => {
+		const date = new Date(dateString);
+		const year = date.getFullYear();
+		const month = date.getMonth() + 1;
+		const day = date.getDate();
+		const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+
+		return `${year}年${month}月${day}日(${dayOfWeek})`;
+	};
+
+	// Handle cancel reservation
+	const handleCancelReservation = (reservationId: string) => {
+		if (!confirm('予約をキャンセルしますか？')) return;
+
+		// Update local state immediately for better UX
+		setReservations(prevReservations =>
+			prevReservations.map(reservation =>
+				reservation.id === reservationId
+					? { ...reservation, status: 'cancelled' }
+					: reservation
+			)
+		);
+
+		// This would be an API call in production
+		console.log(`Cancelling reservation: ${reservationId}`);
+	};
+
+	// Reservation card component
+	const ReservationCard = ({ reservation }: { reservation: Reservation }) => {
+		const isUpcoming = reservation.status === 'confirmed';
+		const isPast = reservation.status === 'completed';
+		const isCancelled = reservation.status === 'cancelled';
+
+		return (
+			<motion.div
+				initial={{ opacity: 0, y: 10 }}
+				animate={{ opacity: 1, y: 0 }}
+				className={`
+          p-4 mb-4 rounded-lg border transition-colors
+          ${isUpcoming ? 'border-accent/30 bg-accent/5' : ''}
+          ${isPast ? 'border-border bg-background/5' : ''}
+          ${isCancelled ? 'border-border/30 bg-background/5 opacity-70' : ''}
+        `}
+			>
+				{/* Status badge */}
+				<div className="flex justify-between items-start mb-3">
+					<div
+						className={`
+              inline-flex items-center px-2 py-1 rounded-full text-xs
+              ${isUpcoming ? 'bg-accent/20 text-accent' : ''}
+              ${isPast ? 'bg-highlight/20 text-highlight' : ''}
+              ${isCancelled ? 'bg-red-400/20 text-red-400' : ''}
+            `}
+					>
+						{isUpcoming && <Clock size={12} className="mr-1" />}
+						{isPast && <CheckCircle size={12} className="mr-1" />}
+						{isCancelled && <Ban size={12} className="mr-1" />}
+
+						{isUpcoming && '予約済み'}
+						{isPast && '利用済み'}
+						{isCancelled && 'キャンセル済み'}
+					</div>
+
+					{/* Cancel button for upcoming reservations */}
+					{isUpcoming && (
+						<button
+							onClick={() => handleCancelReservation(reservation.id)}
+							className="text-xs text-foreground/60 hover:text-red-400 transition-colors"
+						>
+							キャンセル
+						</button>
+					)}
+				</div>
+
+				{/* Date */}
+				<div className="flex items-start mb-2">
+					<Calendar className="w-4 h-4 text-accent mr-2 mt-0.5 flex-shrink-0" />
+					<div className="text-foreground font-medium">
+						{formatDate(reservation.date)}
+					</div>
+				</div>
+
+				{/* Time */}
+				<div className="flex items-start mb-2">
+					<Clock className="w-4 h-4 text-accent mr-2 mt-0.5 flex-shrink-0" />
+					<div className="text-foreground">
+						{reservation.startTime} - {reservation.endTime}
+						<span className="text-foreground/60 text-sm ml-2">
+							({reservation.duration}分)
+						</span>
+					</div>
+				</div>
+
+				{/* Seat */}
+				<div className="flex items-start">
+					<MapPin className="w-4 h-4 text-accent mr-2 mt-0.5 flex-shrink-0" />
+					<div className="text-foreground">
+						{reservation.seatName}
+					</div>
+				</div>
+			</motion.div>
+		);
+	};
+
+	if (isLoading) {
+		return (
+			<div className="flex flex-col items-center justify-center py-10">
+				<Loader className="w-8 h-8 text-accent animate-spin mb-4" />
+				<p className="text-foreground/70">予約情報を読み込み中...</p>
+			</div>
+		);
+	}
+
+	if (error) {
+		return (
+			<div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-center">
+				<p className="text-red-500 mb-2">{error}</p>
+				<button
+					onClick={() => window.location.reload()}
+					className="text-sm text-accent hover:underline"
+				>
+					再読み込み
+				</button>
+			</div>
+		);
+	}
+
+	return (
+		<div className="reservation-history">
+			<h2 className="text-xl font-bold text-foreground mb-6 flex items-center">
+				<Calendar className="mr-2" /> 予約履歴
+			</h2>
+
+			{reservations.length === 0 ? (
+				<div className="p-6 text-center bg-border/10 rounded-lg">
+					<p className="text-foreground/70 mb-4">予約情報がありません</p>
+					<button
+						onClick={() => window.location.href = '/reservation'}
+						className="px-4 py-2 bg-accent text-white rounded-md hover:bg-accent/90 transition-colors"
+					>
+						新規予約をする
+					</button>
+				</div>
+			) : (
+				<>
+					{/* Upcoming reservations */}
+					{upcomingReservations.length > 0 && (
+						<div className="mb-8">
+							<h3 className="text-lg font-medium text-foreground mb-4">今後の予約</h3>
+							<div>
+								{upcomingReservations.map(reservation => (
+									<ReservationCard key={reservation.id} reservation={reservation} />
+								))}
+							</div>
+						</div>
+					)}
+
+					{/* Past reservations */}
+					{pastReservations.length > 0 && (
+						<div>
+							<h3 className="text-lg font-medium text-foreground mb-4">過去の予約</h3>
+							<div>
+								{(showAll ? pastReservations : pastReservations.slice(0, 3)).map(reservation => (
+									<ReservationCard key={reservation.id} reservation={reservation} />
+								))}
+
+								{pastReservations.length > 3 && !showAll && (
+									<button
+										onClick={() => setShowAll(true)}
+										className="w-full py-2 border border-border rounded-md text-foreground/70 hover:bg-border/10 transition-colors text-sm"
+									>
+										もっと見る（残り{pastReservations.length - 3}件）
+									</button>
+								)}
+							</div>
+						</div>
+					)}
+
+					{/* New reservation button */}
+					<div className="mt-8 text-center">
+						<button
+							onClick={() => window.location.href = '/reservation'}
+							className="px-6 py-2 bg-accent text-white rounded-md hover:bg-accent/90 transition-colors"
+						>
+							新規予約をする
+						</button>
+					</div>
+				</>
+			)}
+		</div>
+	);
+};
+
+export default ReservationHistory;-e 
 ### FILE: ./src/components/icons/verification-icons.tsx
 
 import React from 'react';
@@ -4470,6 +5658,908 @@ export function VerificationBadge({ className = "", size = 48 }: IconProps) {
 		</div>
 	);
 }-e 
+### FILE: ./src/components/reservation/reservation-form.tsx
+
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { useReservation } from '@/context/reservation-context';
+import { useAuth } from '@/context/auth-context';
+import { Calendar, Clock, Info, CreditCard, CheckCircle } from 'lucide-react';
+
+interface ReservationFormProps {
+	onSuccess?: () => void;
+	onCancel?: () => void;
+}
+
+const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }) => {
+	const { user } = useAuth();
+	const {
+		selectedDate,
+		selectedTimeSlots,
+		seats,
+		createReservation,
+		isLoading
+	} = useReservation();
+
+	const [notes, setNotes] = useState('');
+	const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+	// Get selected seat information
+	const selectedSeat = seats.find(seat => seat.id === selectedTimeSlots.seatId);
+
+	// Calculate reservation details
+	const calculateDuration = (): number => {
+		if (!selectedTimeSlots.startTime || !selectedTimeSlots.endTime) return 0;
+
+		const startParts = selectedTimeSlots.startTime.split(':').map(Number);
+		const endParts = selectedTimeSlots.endTime.split(':').map(Number);
+
+		const startMinutes = startParts[0] * 60 + startParts[1];
+		const endMinutes = endParts[0] * 60 + endParts[1];
+
+		return endMinutes - startMinutes;
+	};
+
+	const duration = calculateDuration();
+
+	const calculateTotalPrice = (): number => {
+		if (!selectedSeat) return 0;
+		return duration * selectedSeat.ratePerMinute;
+	};
+
+	const totalPrice = calculateTotalPrice();
+
+	// Format date for display
+	const formatDate = (date: Date | null): string => {
+		if (!date) return '';
+
+		const year = date.getFullYear();
+		const month = date.getMonth() + 1;
+		const day = date.getDate();
+		const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+
+		return `${year}年${month}月${day}日(${dayOfWeek})`;
+	};
+
+	// Handle form submission
+	const handleSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+
+		if (!selectedDate || !selectedTimeSlots.seatId || !selectedTimeSlots.startTime || !selectedTimeSlots.endTime) {
+			return;
+		}
+
+		try {
+			const dateStr = selectedDate.toISOString().split('T')[0];
+
+			await createReservation({
+				userId: user?.uid || '',
+				seatId: selectedTimeSlots.seatId,
+				date: dateStr,
+				startTime: selectedTimeSlots.startTime,
+				endTime: selectedTimeSlots.endTime,
+				duration,
+				status: 'confirmed',
+				notes
+			});
+
+			setSubmitStatus('success');
+
+			// Notify parent component of success
+			if (onSuccess) {
+				setTimeout(() => {
+					onSuccess();
+				}, 2000);
+			}
+		} catch (error) {
+			console.error('Reservation failed:', error);
+			setSubmitStatus('error');
+		}
+	};
+
+	// Determine if form is valid for submission
+	const isFormValid =
+		selectedDate !== null &&
+		selectedTimeSlots.seatId !== '' &&
+		selectedTimeSlots.startTime !== '' &&
+		selectedTimeSlots.endTime !== '' &&
+		duration > 0;
+
+	if (submitStatus === 'success') {
+		return (
+			<motion.div
+				initial={{ opacity: 0, y: 20 }}
+				animate={{ opacity: 1, y: 0 }}
+				className="p-6 bg-highlight/10 rounded-lg text-center"
+			>
+				<div className="flex justify-center mb-4">
+					<CheckCircle size={48} className="text-highlight" />
+				</div>
+				<h2 className="text-xl font-medium text-foreground mb-2">予約が完了しました</h2>
+				<p className="text-foreground/70 mb-4">
+					予約内容はメールで送信されました。ダッシュボードでも確認できます。
+				</p>
+				<button
+					onClick={onSuccess}
+					className="px-4 py-2 bg-highlight text-white rounded-md hover:bg-highlight/90 transition-colors"
+				>
+					ダッシュボードへ戻る
+				</button>
+			</motion.div>
+		);
+	}
+
+	return (
+		<motion.div
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			className="w-full max-w-2xl mx-auto"
+		>
+			<h2 className="text-xl font-medium text-foreground mb-4">予約内容の確認</h2>
+
+			<form onSubmit={handleSubmit} className="space-y-6">
+				{/* Reservation Summary */}
+				<div className="bg-background/5 p-4 rounded-lg space-y-4">
+					{/* Date */}
+					<div className="flex items-start">
+						<Calendar className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
+						<div>
+							<div className="font-medium text-foreground">予約日</div>
+							<div className="text-foreground/70">
+								{formatDate(selectedDate)}
+							</div>
+						</div>
+					</div>
+
+					{/* Time */}
+					<div className="flex items-start">
+						<Clock className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
+						<div>
+							<div className="font-medium text-foreground">時間</div>
+							<div className="text-foreground/70">
+								{selectedTimeSlots.startTime} - {selectedTimeSlots.endTime}
+								{duration > 0 && <span className="ml-2">({duration}分間)</span>}
+							</div>
+						</div>
+					</div>
+
+					{/* Seat */}
+					<div className="flex items-start">
+						<Info className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
+						<div>
+							<div className="font-medium text-foreground">座席</div>
+							<div className="text-foreground/70">
+								{selectedSeat?.name}
+							</div>
+						</div>
+					</div>
+
+					{/* Price */}
+					<div className="flex items-start">
+						<CreditCard className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
+						<div>
+							<div className="font-medium text-foreground">料金</div>
+							<div className="text-foreground/70">
+								¥{totalPrice} ({selectedSeat?.ratePerMinute}円 × {duration}分)
+							</div>
+						</div>
+					</div>
+				</div>
+
+				{/* Notes */}
+				<div>
+					<label htmlFor="notes" className="block text-sm font-medium text-foreground mb-1">
+						備考（オプション）
+					</label>
+					<textarea
+						id="notes"
+						value={notes}
+						onChange={(e) => setNotes(e.target.value)}
+						className="w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
+						rows={3}
+						placeholder="特別なリクエストがあればご記入ください"
+					/>
+				</div>
+
+				{/* Terms and Conditions */}
+				<div className="text-sm text-foreground/70">
+					<p>
+						予約を確定すると、当施設の
+						<a href="#" className="text-accent hover:underline">利用規約</a>
+						に同意したものとみなされます。
+					</p>
+				</div>
+
+				{/* Error message */}
+				{submitStatus === 'error' && (
+					<div className="p-3 bg-red-500/10 border border-red-500/30 rounded-md text-red-500">
+						予約の処理中にエラーが発生しました。もう一度お試しください。
+					</div>
+				)}
+
+				{/* Action buttons */}
+				<div className="flex justify-between">
+					<button
+						type="button"
+						onClick={onCancel}
+						className="px-4 py-2 border border-border rounded-md hover:bg-background/10 transition-colors"
+					>
+						戻る
+					</button>
+
+					<button
+						type="submit"
+						disabled={!isFormValid || isLoading}
+						className={`
+              px-6 py-2 rounded-md text-white transition-colors
+              ${isFormValid ? 'bg-accent hover:bg-accent/90' : 'bg-border/50 cursor-not-allowed'}
+            `}
+					>
+						{isLoading ? '処理中...' : '予約を確定する'}
+					</button>
+				</div>
+			</form>
+		</motion.div>
+	);
+};
+
+export default ReservationForm;-e 
+### FILE: ./src/components/reservation/calendar-view.tsx
+
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { useReservation } from '@/context/reservation-context';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
+interface CalendarViewProps {
+	onDateSelect?: (date: Date) => void;
+}
+
+const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
+	const { selectedDate, setSelectedDate, dateAvailability } = useReservation();
+	const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+
+	// Calendar grid setup
+	const daysOfWeek = ['日', '月', '火', '水', '木', '金', '土'];
+
+	// Generate days for the current month view
+	const getDaysInMonth = (year: number, month: number) => {
+		const firstDayOfMonth = new Date(year, month, 1);
+		const lastDayOfMonth = new Date(year, month + 1, 0);
+		const daysArray = [];
+
+		// Add days from previous month to fill the first week
+		const firstDayOfWeek = firstDayOfMonth.getDay();
+		const prevMonthLastDay = new Date(year, month, 0).getDate();
+
+		for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+			daysArray.push({
+				date: new Date(year, month - 1, prevMonthLastDay - i),
+				isCurrentMonth: false,
+				isPast: new Date(year, month - 1, prevMonthLastDay - i) < new Date(new Date().setHours(0, 0, 0, 0))
+			});
+		}
+
+		// Add days of current month
+		for (let i = 1; i <= lastDayOfMonth.getDate(); i++) {
+			const date = new Date(year, month, i);
+			daysArray.push({
+				date,
+				isCurrentMonth: true,
+				isPast: date < new Date(new Date().setHours(0, 0, 0, 0)),
+				isToday: date.toDateString() === new Date().toDateString()
+			});
+		}
+
+		// Add days from next month to complete the last week
+		const remainingDays = 7 - (daysArray.length % 7 || 7);
+		for (let i = 1; i <= remainingDays; i++) {
+			daysArray.push({
+				date: new Date(year, month + 1, i),
+				isCurrentMonth: false,
+				isPast: false
+			});
+		}
+
+		return daysArray;
+	};
+
+	const [days, setDays] = useState(getDaysInMonth(currentMonth.getFullYear(), currentMonth.getMonth()));
+
+	useEffect(() => {
+		setDays(getDaysInMonth(currentMonth.getFullYear(), currentMonth.getMonth()));
+	}, [currentMonth]);
+
+	const goToPreviousMonth = () => {
+		setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+	};
+
+	const goToNextMonth = () => {
+		setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+	};
+
+	const handleDateClick = (day: { date: Date, isCurrentMonth: boolean, isPast: boolean }) => {
+		if (day.isPast) return; // Prevent selecting past dates
+		setSelectedDate(day.date);
+		if (onDateSelect) onDateSelect(day.date);
+	};
+
+	// Get availability status for a day
+	const getAvailabilityStatus = (date: Date) => {
+		const dateString = date.toISOString().split('T')[0];
+		return dateAvailability[dateString] || 'unknown';
+	};
+
+	// Get color class based on availability
+	const getAvailabilityColorClass = (date: Date) => {
+		const status = getAvailabilityStatus(date);
+		switch (status) {
+			case 'available':
+				return 'bg-highlight/10 hover:bg-highlight/20';
+			case 'limited':
+				return 'bg-accent/10 hover:bg-accent/20';
+			case 'booked':
+				return 'bg-red-400/10 hover:bg-red-400/20';
+			default:
+				return 'bg-background/5 hover:bg-background/10';
+		}
+	};
+
+	return (
+		<div className="w-full">
+			{/* Calendar header */}
+			<div className="flex items-center justify-between mb-4">
+				<h2 className="text-lg font-medium text-foreground">
+					{currentMonth.getFullYear()}年{currentMonth.getMonth() + 1}月
+				</h2>
+				<div className="flex space-x-2">
+					<button
+						onClick={goToPreviousMonth}
+						className="p-2 rounded-full hover:bg-border text-foreground"
+						aria-label="前の月"
+					>
+						<ChevronLeft size={18} />
+					</button>
+					<button
+						onClick={goToNextMonth}
+						className="p-2 rounded-full hover:bg-border text-foreground"
+						aria-label="次の月"
+					>
+						<ChevronRight size={18} />
+					</button>
+				</div>
+			</div>
+
+			{/* Calendar grid */}
+			<div className="grid grid-cols-7 gap-1">
+				{/* Days of week header */}
+				{daysOfWeek.map(day => (
+					<div key={day} className="text-center py-2 text-sm font-medium text-foreground/70">
+						{day}
+					</div>
+				))}
+
+				{/* Calendar days */}
+				{days.map((day, index) => {
+					const isSelected = selectedDate &&
+						day.date.toDateString() === selectedDate.toDateString();
+
+					return (
+						<motion.div
+							key={index}
+							whileTap={{ scale: day.isPast ? 1 : 0.95 }}
+							className={`
+                aspect-square relative p-1 border border-border/20 rounded-md 
+                ${day.isCurrentMonth ? 'text-foreground' : 'text-foreground/40'}
+                ${day.isPast ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
+                ${isSelected ? 'ring-2 ring-accent' : ''}
+                ${day.isCurrentMonth && !day.isPast ? getAvailabilityColorClass(day.date) : ''}
+              `}
+							onClick={() => !day.isPast && handleDateClick(day)}
+						>
+							<div className="absolute top-1 right-1 text-xs">
+								{day.date.getDate()}
+							</div>
+
+							{/* Today indicator */}
+							{day.isToday && (
+								<div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-accent"></div>
+							)}
+
+							{/* Availability indicator */}
+							{day.isCurrentMonth && !day.isPast && (
+								<div className="absolute bottom-1 left-1 flex space-x-0.5">
+									{getAvailabilityStatus(day.date) === 'limited' && (
+										<div className="w-1.5 h-1.5 rounded-full bg-accent"></div>
+									)}
+									{getAvailabilityStatus(day.date) === 'available' && (
+										<div className="w-1.5 h-1.5 rounded-full bg-highlight"></div>
+									)}
+									{getAvailabilityStatus(day.date) === 'booked' && (
+										<div className="w-1.5 h-1.5 rounded-full bg-red-400"></div>
+									)}
+								</div>
+							)}
+						</motion.div>
+					);
+				})}
+			</div>
+		</div>
+	);
+};
+
+export default CalendarView;-e 
+### FILE: ./src/components/reservation/login-prompt.tsx
+
+import React from 'react';
+import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+import { LockKeyhole, LogIn, UserPlus } from 'lucide-react';
+
+interface LoginPromptProps {
+	onClose?: () => void;
+	reservationDetails?: {
+		date: Date;
+		seatId: string;
+		startTime: string;
+		endTime: string;
+	};
+}
+
+const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }) => {
+	const router = useRouter();
+
+	// Handle login click
+	const handleLoginClick = () => {
+		// Store reservation details in sessionStorage to retrieve after login
+		if (reservationDetails) {
+			sessionStorage.setItem('pendingReservation', JSON.stringify({
+				date: reservationDetails.date.toISOString(),
+				seatId: reservationDetails.seatId,
+				startTime: reservationDetails.startTime,
+				endTime: reservationDetails.endTime
+			}));
+		}
+
+		// Navigate to login page
+		router.push('/login?redirect=reservation');
+	};
+
+	// Handle register click
+	const handleRegisterClick = () => {
+		// Store reservation details in sessionStorage to retrieve after registration
+		if (reservationDetails) {
+			sessionStorage.setItem('pendingReservation', JSON.stringify({
+				date: reservationDetails.date.toISOString(),
+				seatId: reservationDetails.seatId,
+				startTime: reservationDetails.startTime,
+				endTime: reservationDetails.endTime
+			}));
+		}
+
+		// Navigate to registration page
+		router.push('/register?redirect=reservation');
+	};
+
+	// Format date for display
+	const formatDate = (date: Date): string => {
+		const year = date.getFullYear();
+		const month = date.getMonth() + 1;
+		const day = date.getDate();
+		const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+
+		return `${year}年${month}月${day}日(${dayOfWeek})`;
+	};
+
+	return (
+		<motion.div
+			initial={{ opacity: 0, scale: 0.95 }}
+			animate={{ opacity: 1, scale: 1 }}
+			exit={{ opacity: 0, scale: 0.95 }}
+			className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+			onClick={() => onClose && onClose()}
+		>
+			<motion.div
+				className="w-full max-w-md p-6 bg-background rounded-2xl shadow-xl"
+				onClick={(e) => e.stopPropagation()}
+				initial={{ y: 20 }}
+				animate={{ y: 0 }}
+			>
+				<div className="flex justify-center mb-6">
+					<div className="w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center">
+						<LockKeyhole size={28} className="text-accent" />
+					</div>
+				</div>
+
+				<h2 className="text-xl font-medium text-foreground text-center mb-2">
+					会員限定機能です
+				</h2>
+
+				<p className="text-foreground/70 text-center mb-6">
+					予約機能を利用するには、ログインまたは会員登録が必要です。
+				</p>
+
+				{reservationDetails && (
+					<div className="mb-6 p-4 bg-border/10 rounded-lg">
+						<h3 className="font-medium text-foreground mb-2">選択中の予約</h3>
+						<p className="text-sm text-foreground/70">
+							{formatDate(reservationDetails.date)} {reservationDetails.startTime}〜{reservationDetails.endTime}
+						</p>
+						<p className="text-xs text-accent mt-1">
+							ログイン後に継続できます
+						</p>
+					</div>
+				)}
+
+				<div className="space-y-3">
+					<button
+						onClick={handleLoginClick}
+						className="w-full py-3 flex items-center justify-center space-x-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
+					>
+						<LogIn size={18} />
+						<span>ログイン</span>
+					</button>
+
+					<button
+						onClick={handleRegisterClick}
+						className="w-full py-3 flex items-center justify-center space-x-2 border border-border bg-background hover:bg-border/10 text-foreground rounded-lg transition-colors"
+					>
+						<UserPlus size={18} />
+						<span>新規会員登録</span>
+					</button>
+
+					<button
+						onClick={() => onClose && onClose()}
+						className="w-full py-2 text-foreground/70 hover:text-foreground text-sm transition-colors"
+					>
+						キャンセル
+					</button>
+				</div>
+			</motion.div>
+		</motion.div>
+	);
+};
+
+export default LoginPrompt;-e 
+### FILE: ./src/components/reservation/time-grid.tsx
+
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { useReservation } from '@/context/reservation-context';
+
+interface TimeGridProps {
+	date: Date;
+	onTimeSelect?: (seatId: string, startTime: string, endTime: string) => void;
+}
+
+interface TimeSlot {
+	time: string;
+	formattedTime: string;
+}
+
+interface Seat {
+	id: string;
+	name: string;
+	ratePerMinute: number;
+}
+
+const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
+	const { seats, reservations, selectedTimeSlots, setSelectedTimeSlots } = useReservation();
+
+	// State for drag selection
+	const [dragStart, setDragStart] = useState<{ seatId: string, time: string } | null>(null);
+	const [dragEnd, setDragEnd] = useState<{ seatId: string, time: string } | null>(null);
+	const [isDragging, setIsDragging] = useState(false);
+
+	// Generate time slots for the day (30-minute intervals from 10:00 to 22:00)
+	const generateTimeSlots = (): TimeSlot[] => {
+		const slots: TimeSlot[] = [];
+		const startHour = 10;
+		const endHour = 22;
+
+		for (let hour = startHour; hour <= endHour; hour++) {
+			for (let minute = 0; minute < 60; minute += 30) {
+				if (hour === endHour && minute > 0) continue;
+
+				const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+				const formattedTime = `${hour}:${minute === 0 ? '00' : minute}`;
+
+				slots.push({ time, formattedTime });
+			}
+		}
+
+		return slots;
+	};
+
+	const timeSlots = generateTimeSlots();
+
+	// Check if a time slot is already reserved
+	const isReserved = (seatId: string, timeSlot: string): boolean => {
+		if (!date) return false;
+
+		const dateStr = date.toISOString().split('T')[0];
+		const dateTimeStr = `${dateStr}T${timeSlot}:00`;
+
+		return reservations.some(reservation =>
+			reservation.seatId === seatId &&
+			new Date(reservation.startTime) <= new Date(dateTimeStr) &&
+			new Date(reservation.endTime) > new Date(dateTimeStr)
+		);
+	};
+
+	// Check if a time slot is selected
+	const isSelected = (seatId: string, timeSlot: string): boolean => {
+		if (!selectedTimeSlots.seatId || selectedTimeSlots.seatId !== seatId) return false;
+
+		const slotTime = new Date(`${date.toISOString().split('T')[0]}T${timeSlot}`);
+		const startTime = new Date(`${date.toISOString().split('T')[0]}T${selectedTimeSlots.startTime}`);
+		const endTime = new Date(`${date.toISOString().split('T')[0]}T${selectedTimeSlots.endTime}`);
+
+		return slotTime >= startTime && slotTime < endTime;
+	};
+
+	// Handle mouse down on a time slot (start dragging)
+	const handleMouseDown = (seatId: string, time: string) => {
+		if (isReserved(seatId, time)) return;
+
+		setDragStart({ seatId, time });
+		setDragEnd({ seatId, time });
+		setIsDragging(true);
+	};
+
+	// Handle mouse enter on a time slot during dragging
+	const handleMouseEnter = (seatId: string, time: string) => {
+		if (!isDragging || !dragStart || dragStart.seatId !== seatId || isReserved(seatId, time)) return;
+
+		setDragEnd({ seatId, time });
+	};
+
+	// Handle mouse up (end dragging and set selection)
+	const handleMouseUp = () => {
+		if (!isDragging || !dragStart || !dragEnd) return;
+
+		// Ensure start time is earlier than end time
+		let startTime = dragStart.time;
+		let endTime = dragEnd.time;
+
+		if (startTime > endTime) {
+			[startTime, endTime] = [endTime, startTime];
+		}
+
+		// Calculate the end time (30 minutes after the last selected slot)
+		const endTimeDate = new Date(`${date.toISOString().split('T')[0]}T${endTime}`);
+		endTimeDate.setMinutes(endTimeDate.getMinutes() + 30);
+		const adjustedEndTime = `${endTimeDate.getHours().toString().padStart(2, '0')}:${endTimeDate.getMinutes().toString().padStart(2, '0')}`;
+
+		setSelectedTimeSlots({
+			seatId: dragStart.seatId,
+			startTime,
+			endTime: adjustedEndTime
+		});
+
+		if (onTimeSelect) {
+			onTimeSelect(dragStart.seatId, startTime, adjustedEndTime);
+		}
+
+		setIsDragging(false);
+		setDragStart(null);
+		setDragEnd(null);
+	};
+
+	// Handle mouse leave from grid
+	const handleMouseLeave = () => {
+		if (isDragging) {
+			setIsDragging(false);
+			setDragStart(null);
+			setDragEnd(null);
+		}
+	};
+
+	// Calculate the selection range for visual indication during dragging
+	const getSelectionRange = (seatId: string, time: string) => {
+		if (!isDragging || !dragStart || !dragEnd || dragStart.seatId !== seatId) return false;
+
+		const timeValue = time;
+		const startValue = dragStart.time < dragEnd.time ? dragStart.time : dragEnd.time;
+		const endValue = dragStart.time < dragEnd.time ? dragEnd.time : dragStart.time;
+
+		return timeValue >= startValue && timeValue <= endValue;
+	};
+
+	// Reset selection when date changes
+	useEffect(() => {
+		setSelectedTimeSlots({ seatId: '', startTime: '', endTime: '' });
+	}, [date, setSelectedTimeSlots]);
+
+	return (
+		<div
+			className="w-full overflow-x-auto"
+			onMouseLeave={handleMouseLeave}
+			onMouseUp={handleMouseUp}
+		>
+			<div className="min-w-max">
+				{/* Time slots header */}
+				<div className="flex border-b border-border/30">
+					<div className="w-32 flex-shrink-0 p-2 font-medium text-foreground">座席</div>
+					{timeSlots.map((slot) => (
+						<div
+							key={slot.time}
+							className="w-16 flex-shrink-0 p-2 text-center text-sm border-l border-border/30 text-foreground/70"
+						>
+							{slot.formattedTime}
+						</div>
+					))}
+				</div>
+
+				{/* Seats and time slots grid */}
+				{seats.map((seat) => (
+					<div
+						key={seat.id}
+						className="flex border-b border-border/20 hover:bg-background/5"
+					>
+						{/* Seat name */}
+						<div className="w-32 flex-shrink-0 p-2 border-r border-border/20 flex flex-col">
+							<span className="font-medium text-foreground">{seat.name}</span>
+							<span className="text-xs text-foreground/60">¥{seat.ratePerMinute}/分</span>
+						</div>
+
+						{/* Time slots */}
+						{timeSlots.map((slot) => {
+							const isSlotReserved = isReserved(seat.id, slot.time);
+							const isSlotSelected = isSelected(seat.id, slot.time);
+							const isInDragSelection = getSelectionRange(seat.id, slot.time);
+
+							return (
+								<motion.div
+									key={`${seat.id}-${slot.time}`}
+									className={`
+                    w-16 h-16 flex-shrink-0 border-l border-border/20
+                    ${isSlotReserved ? 'bg-border/50 cursor-not-allowed' : 'cursor-pointer'}
+                    ${isSlotSelected ? 'bg-accent/40' : ''}
+                    ${isInDragSelection && isDragging ? 'bg-accent/20' : ''}
+                    ${!isSlotReserved && !isSlotSelected && !isInDragSelection ? 'hover:bg-background/10' : ''}
+                  `}
+									whileHover={!isSlotReserved ? { scale: 1.05 } : {}}
+									whileTap={!isSlotReserved ? { scale: 0.95 } : {}}
+									onMouseDown={() => !isSlotReserved && handleMouseDown(seat.id, slot.time)}
+									onMouseEnter={() => handleMouseEnter(seat.id, slot.time)}
+								/>
+							);
+						})}
+					</div>
+				))}
+			</div>
+
+			{/* Selected time slots information */}
+			{selectedTimeSlots.seatId && (
+				<div className="mt-4 p-3 border border-accent/20 rounded-lg bg-accent/5">
+					<h3 className="font-medium text-foreground">選択中の予約枠</h3>
+					<p className="text-sm text-foreground/80">
+						{seats.find(s => s.id === selectedTimeSlots.seatId)?.name} -
+						{selectedTimeSlots.startTime} から {selectedTimeSlots.endTime} まで
+					</p>
+				</div>
+			)}
+		</div>
+	);
+};
+
+export default TimeGrid;-e 
+### FILE: ./src/components/lp/availability-section.tsx
+
+import React from 'react';
+import { motion } from 'framer-motion';
+import { CalendarCheck, Users, Clock } from 'lucide-react';
+import AvailabilityCalendar from './availability-calendar';
+
+const AvailabilitySection: React.FC = () => {
+	return (
+		<section className="py-20 bg-background/50">
+			<div className="container mx-auto px-4">
+				{/* Section header */}
+				<div className="text-center mb-12">
+					<motion.h2
+						className="text-3xl md:text-4xl font-bold mb-4 text-foreground"
+						initial={{ opacity: 0, y: 20 }}
+						whileInView={{ opacity: 1, y: 0 }}
+						viewport={{ once: true }}
+						transition={{ duration: 0.6 }}
+					>
+						空き状況をチェック
+					</motion.h2>
+					<motion.p
+						className="text-foreground/70 max-w-2xl mx-auto"
+						initial={{ opacity: 0, y: 20 }}
+						whileInView={{ opacity: 1, y: 0 }}
+						viewport={{ once: true }}
+						transition={{ duration: 0.6, delay: 0.1 }}
+					>
+						リアルタイムで座席の空き状況を確認できます。
+						お好きな日時を選んで、快適なゲーム環境を予約しましょう。
+					</motion.p>
+				</div>
+
+				<div className="flex flex-col lg:flex-row gap-10 items-center">
+					{/* Calendar column */}
+					<motion.div
+						className="w-full lg:w-2/3 bg-background rounded-2xl shadow-soft p-6 border border-border/20"
+						initial={{ opacity: 0, x: -20 }}
+						whileInView={{ opacity: 1, x: 0 }}
+						viewport={{ once: true }}
+						transition={{ duration: 0.6 }}
+					>
+						<AvailabilityCalendar />
+					</motion.div>
+
+					{/* Info column */}
+					<motion.div
+						className="w-full lg:w-1/3 space-y-8"
+						initial={{ opacity: 0, x: 20 }}
+						whileInView={{ opacity: 1, x: 0 }}
+						viewport={{ once: true }}
+						transition={{ duration: 0.6 }}
+					>
+						{/* Feature 1 */}
+						<div className="flex items-start">
+							<div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0 mr-4">
+								<CalendarCheck className="w-6 h-6 text-accent" />
+							</div>
+							<div>
+								<h3 className="text-xl font-medium mb-2 text-foreground">事前予約</h3>
+								<p className="text-foreground/70">
+									最大14日先まで予約可能。お気に入りの座席を確保して、安心してご利用いただけます。
+								</p>
+							</div>
+						</div>
+
+						{/* Feature 2 */}
+						<div className="flex items-start">
+							<div className="w-12 h-12 rounded-xl bg-highlight/10 flex items-center justify-center flex-shrink-0 mr-4">
+								<Clock className="w-6 h-6 text-highlight" />
+							</div>
+							<div>
+								<h3 className="text-xl font-medium mb-2 text-foreground">柔軟な利用時間</h3>
+								<p className="text-foreground/70">
+									30分単位で予約可能。急な予定変更にも対応できます。キャンセルは予約時間の2時間前まで無料です。
+								</p>
+							</div>
+						</div>
+
+						{/* Feature 3 */}
+						<div className="flex items-start">
+							<div className="w-12 h-12 rounded-xl bg-border/20 flex items-center justify-center flex-shrink-0 mr-4">
+								<Users className="w-6 h-6 text-foreground" />
+							</div>
+							<div>
+								<h3 className="text-xl font-medium mb-2 text-foreground">グループ予約</h3>
+								<p className="text-foreground/70">
+									友達と一緒に遊びたい場合は、複数席の同時予約も可能。チーム対戦やパーティープレイを楽しめます。
+								</p>
+							</div>
+						</div>
+
+						{/* CTA button */}
+						<div className="pt-4">
+							<motion.button
+								className="w-full py-3 px-6 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 transition-colors"
+								whileHover={{ scale: 1.03 }}
+								whileTap={{ scale: 0.98 }}
+								onClick={() => window.location.href = '/reservation'}
+							>
+								予約画面を開く
+							</motion.button>
+							<p className="text-xs text-center mt-2 text-foreground/60">
+								※予約には会員登録(無料)が必要です
+							</p>
+						</div>
+					</motion.div>
+				</div>
+			</div>
+		</section>
+	);
+};
+
+export default AvailabilitySection;-e 
 ### FILE: ./src/components/lp/cta-section.tsx
 
 'use client';
@@ -5089,6 +7179,285 @@ export default function SpecsSection() {
 		</section>
 	);
 }-e 
+### FILE: ./src/components/lp/availability-calendar.tsx
+
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+import { ChevronLeft, ChevronRight, Calendar, Info } from 'lucide-react';
+
+interface AvailabilityCalendarProps {
+	onDateSelect?: (date: Date) => void;
+	className?: string;
+}
+
+// Mock availability data - this would come from an API in production
+const generateMockAvailabilityData = () => {
+	const availability: Record<string, 'available' | 'limited' | 'booked'> = {};
+	const now = new Date();
+
+	for (let i = 0; i < 60; i++) {
+		const date = new Date(now);
+		date.setDate(now.getDate() + i);
+		const dateStr = date.toISOString().split('T')[0];
+
+		// Random availability status for demo
+		const rand = Math.random();
+		if (rand < 0.2) {
+			availability[dateStr] = 'booked';
+		} else if (rand < 0.5) {
+			availability[dateStr] = 'limited';
+		} else {
+			availability[dateStr] = 'available';
+		}
+	}
+
+	return availability;
+};
+
+const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
+	onDateSelect,
+	className = ''
+}) => {
+	const router = useRouter();
+	const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+	const [availabilityData, setAvailabilityData] = useState<Record<string, string>>({});
+	const [hoveredDate, setHoveredDate] = useState<Date | null>(null);
+
+	// Calendar grid setup
+	const daysOfWeek = ['日', '月', '火', '水', '木', '金', '土'];
+
+	// Generate days for the current month view
+	const getDaysInMonth = (year: number, month: number) => {
+		const firstDayOfMonth = new Date(year, month, 1);
+		const lastDayOfMonth = new Date(year, month + 1, 0);
+		const daysArray = [];
+
+		// Add days from previous month to fill the first week
+		const firstDayOfWeek = firstDayOfMonth.getDay();
+		const prevMonthLastDay = new Date(year, month, 0).getDate();
+
+		for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+			daysArray.push({
+				date: new Date(year, month - 1, prevMonthLastDay - i),
+				isCurrentMonth: false,
+				isPast: new Date(year, month - 1, prevMonthLastDay - i) < new Date(new Date().setHours(0, 0, 0, 0))
+			});
+		}
+
+		// Add days of current month
+		for (let i = 1; i <= lastDayOfMonth.getDate(); i++) {
+			const date = new Date(year, month, i);
+			daysArray.push({
+				date,
+				isCurrentMonth: true,
+				isPast: date < new Date(new Date().setHours(0, 0, 0, 0)),
+				isToday: date.toDateString() === new Date().toDateString()
+			});
+		}
+
+		// Add days from next month to complete the last week
+		const remainingDays = 7 - (daysArray.length % 7 || 7);
+		for (let i = 1; i <= remainingDays; i++) {
+			daysArray.push({
+				date: new Date(year, month + 1, i),
+				isCurrentMonth: false,
+				isPast: false
+			});
+		}
+
+		return daysArray;
+	};
+
+	const [days, setDays] = useState(getDaysInMonth(currentMonth.getFullYear(), currentMonth.getMonth()));
+
+	// Fetch availability data
+	useEffect(() => {
+		// In production, this would be an API call
+		// For now, we're using mock data
+		setAvailabilityData(generateMockAvailabilityData());
+	}, []);
+
+	// Update days when current month changes
+	useEffect(() => {
+		setDays(getDaysInMonth(currentMonth.getFullYear(), currentMonth.getMonth()));
+	}, [currentMonth]);
+
+	const goToPreviousMonth = () => {
+		setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+	};
+
+	const goToNextMonth = () => {
+		setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+	};
+
+	const handleDateClick = (day: { date: Date, isCurrentMonth: boolean, isPast: boolean }) => {
+		if (day.isPast) return; // Prevent selecting past dates
+
+		// If onDateSelect is provided, call it (e.g. for direct selection)
+		if (onDateSelect) {
+			onDateSelect(day.date);
+		} else {
+			// Otherwise navigate to reservation page with the date
+			const dateParam = day.date.toISOString().split('T')[0];
+			router.push(`/reservation?date=${dateParam}`);
+		}
+	};
+
+	// Get availability status for a day
+	const getAvailabilityStatus = (date: Date) => {
+		const dateString = date.toISOString().split('T')[0];
+		return availabilityData[dateString] || 'unknown';
+	};
+
+	// Get color class based on availability
+	const getAvailabilityColorClass = (date: Date) => {
+		const status = getAvailabilityStatus(date);
+		switch (status) {
+			case 'available':
+				return 'bg-highlight/10 hover:bg-highlight/20';
+			case 'limited':
+				return 'bg-accent/10 hover:bg-accent/20';
+			case 'booked':
+				return 'bg-red-400/10 hover:bg-red-400/20';
+			default:
+				return 'bg-background/5 hover:bg-background/10';
+		}
+	};
+
+	// Get label for availability tooltip
+	const getAvailabilityLabel = (status: string) => {
+		switch (status) {
+			case 'available':
+				return '予約可能';
+			case 'limited':
+				return '残り僅か';
+			case 'booked':
+				return '満席';
+			default:
+				return '不明';
+		}
+	};
+
+	return (
+		<div className={`w-full ${className}`}>
+			{/* Calendar Legend */}
+			<div className="flex items-center justify-center mb-6 gap-6 text-sm">
+				<div className="flex items-center">
+					<div className="w-3 h-3 rounded-full bg-highlight mr-2"></div>
+					<span className="text-foreground/70">予約可能</span>
+				</div>
+				<div className="flex items-center">
+					<div className="w-3 h-3 rounded-full bg-accent mr-2"></div>
+					<span className="text-foreground/70">残り僅か</span>
+				</div>
+				<div className="flex items-center">
+					<div className="w-3 h-3 rounded-full bg-red-400 mr-2"></div>
+					<span className="text-foreground/70">満席</span>
+				</div>
+			</div>
+
+			{/* Calendar header */}
+			<div className="flex items-center justify-between mb-4">
+				<h2 className="text-lg font-medium text-foreground flex items-center">
+					<Calendar size={18} className="mr-2" />
+					{currentMonth.getFullYear()}年{currentMonth.getMonth() + 1}月
+				</h2>
+				<div className="flex space-x-2">
+					<button
+						onClick={goToPreviousMonth}
+						className="p-2 rounded-full hover:bg-border text-foreground"
+						aria-label="前の月"
+					>
+						<ChevronLeft size={18} />
+					</button>
+					<button
+						onClick={goToNextMonth}
+						className="p-2 rounded-full hover:bg-border text-foreground"
+						aria-label="次の月"
+					>
+						<ChevronRight size={18} />
+					</button>
+				</div>
+			</div>
+
+			{/* Calendar grid */}
+			<div className="grid grid-cols-7 gap-1">
+				{/* Days of week header */}
+				{daysOfWeek.map(day => (
+					<div key={day} className="text-center py-2 text-sm font-medium text-foreground/70">
+						{day}
+					</div>
+				))}
+
+				{/* Calendar days */}
+				{days.map((day, index) => {
+					const availabilityStatus = day.isCurrentMonth && !day.isPast
+						? getAvailabilityStatus(day.date)
+						: 'unknown';
+
+					return (
+						<motion.div
+							key={index}
+							whileHover={{ scale: day.isPast ? 1 : 1.05 }}
+							whileTap={{ scale: day.isPast ? 1 : 0.95 }}
+							className={`
+                aspect-square relative p-1 border border-border/20 rounded-md 
+                ${day.isCurrentMonth ? 'text-foreground' : 'text-foreground/40'}
+                ${day.isPast ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
+                ${day.isCurrentMonth && !day.isPast ? getAvailabilityColorClass(day.date) : ''}
+              `}
+							onClick={() => !day.isPast && handleDateClick(day)}
+							onMouseEnter={() => setHoveredDate(day.date)}
+							onMouseLeave={() => setHoveredDate(null)}
+						>
+							<div className="absolute top-1 right-1 text-xs">
+								{day.date.getDate()}
+							</div>
+
+							{/* Today indicator */}
+							{day.isToday && (
+								<div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-accent"></div>
+							)}
+
+							{/* Availability indicator */}
+							{day.isCurrentMonth && !day.isPast && (
+								<div className="absolute bottom-1 left-1 flex space-x-0.5">
+									{availabilityStatus === 'limited' && (
+										<div className="w-1.5 h-1.5 rounded-full bg-accent"></div>
+									)}
+									{availabilityStatus === 'available' && (
+										<div className="w-1.5 h-1.5 rounded-full bg-highlight"></div>
+									)}
+									{availabilityStatus === 'booked' && (
+										<div className="w-1.5 h-1.5 rounded-full bg-red-400"></div>
+									)}
+								</div>
+							)}
+
+							{/* Tooltip on hover */}
+							{hoveredDate && day.date.getTime() === hoveredDate.getTime() && !day.isPast && day.isCurrentMonth && (
+								<div className="absolute z-10 bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-background text-foreground text-xs rounded border border-border shadow-soft whitespace-nowrap">
+									{getAvailabilityLabel(availabilityStatus)}
+								</div>
+							)}
+						</motion.div>
+					);
+				})}
+			</div>
+
+			{/* Info message */}
+			<div className="mt-6 flex items-start text-sm text-foreground/70">
+				<Info size={16} className="mr-2 flex-shrink-0 mt-0.5" />
+				<p>
+					カレンダーの日付をクリックすると、その日の予約状況と空き枠を確認できます。実際に予約するには会員登録が必要です。
+				</p>
+			</div>
+		</div>
+	);
+};
+
+export default AvailabilityCalendar;-e 
 ### FILE: ./src/components/lp/steps-section.tsx
 
 'use client';
@@ -6729,6 +9098,318 @@ export function EkycProvider({ children }: { children: ReactNode }) {
 
 // カスタムフック
 export const useEkyc = () => useContext(EkycContext);-e 
+### FILE: ./src/context/reservation-context.tsx
+
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useAuth } from './auth-context';
+
+// Define types for our context
+interface Seat {
+	id: string;
+	name: string;
+	ipAddress: string;
+	ratePerMinute: number;
+	status: 'available' | 'in-use' | 'maintenance';
+	createdAt: string;
+	updatedAt: string;
+}
+
+interface Reservation {
+	id: string;
+	userId: string;
+	seatId: string;
+	date: string;
+	startTime: string;
+	endTime: string;
+	duration: number;
+	status: 'confirmed' | 'cancelled' | 'completed';
+	createdAt: string;
+	updatedAt: string;
+}
+
+interface SelectedTimeSlots {
+	seatId: string;
+	startTime: string;
+	endTime: string;
+}
+
+interface DateAvailability {
+	[date: string]: 'available' | 'limited' | 'booked' | 'unknown';
+}
+
+interface ReservationContextType {
+	seats: Seat[];
+	reservations: Reservation[];
+	selectedDate: Date | null;
+	setSelectedDate: (date: Date | null) => void;
+	selectedTimeSlots: SelectedTimeSlots;
+	setSelectedTimeSlots: (slots: SelectedTimeSlots) => void;
+	dateAvailability: DateAvailability;
+	fetchSeats: () => Promise<void>;
+	fetchReservations: (date?: Date) => Promise<void>;
+	createReservation: (reservation: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+	cancelReservation: (reservationId: string) => Promise<void>;
+	isLoading: boolean;
+	error: string | null;
+}
+
+// Create the context
+const ReservationContext = createContext<ReservationContextType | undefined>(undefined);
+
+// Provider component
+export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+	const { user } = useAuth();
+
+	const [seats, setSeats] = useState<Seat[]>([]);
+	const [reservations, setReservations] = useState<Reservation[]>([]);
+	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+	const [selectedTimeSlots, setSelectedTimeSlots] = useState<SelectedTimeSlots>({
+		seatId: '',
+		startTime: '',
+		endTime: ''
+	});
+	const [dateAvailability, setDateAvailability] = useState<DateAvailability>({});
+	const [isLoading, setIsLoading] = useState<boolean>(false);
+	const [error, setError] = useState<string | null>(null);
+
+	// Fetch seats (mock implementation for now)
+	const fetchSeats = async (): Promise<void> => {
+		setIsLoading(true);
+		setError(null);
+
+		try {
+			// This will be replaced by an actual API call later
+			// For now, we'll use mock data
+			const mockSeats: Seat[] = [
+				{
+					id: 'pc01',
+					name: 'Gaming PC #1',
+					ipAddress: '192.168.1.101',
+					ratePerMinute: 10,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
+				{
+					id: 'pc02',
+					name: 'Gaming PC #2',
+					ipAddress: '192.168.1.102',
+					ratePerMinute: 10,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
+				{
+					id: 'pc03',
+					name: 'Standard PC #1',
+					ipAddress: '192.168.1.103',
+					ratePerMinute: 5,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				}
+			];
+
+			setSeats(mockSeats);
+		} catch (err) {
+			console.error('Error fetching seats:', err);
+			setError('座席情報の取得に失敗しました。もう一度お試しください。');
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	// Fetch reservations for a specific date (mock implementation for now)
+	const fetchReservations = async (date?: Date): Promise<void> => {
+		setIsLoading(true);
+		setError(null);
+
+		try {
+			const targetDate = date || selectedDate;
+			if (!targetDate) return;
+
+			const dateStr = targetDate.toISOString().split('T')[0];
+
+			// This will be replaced by an actual API call later
+			// For now, we'll use mock data
+			const mockReservations: Reservation[] = [
+				{
+					id: 'res001',
+					userId: 'user1',
+					seatId: 'pc01',
+					date: dateStr,
+					startTime: '14:00',
+					endTime: '16:00',
+					duration: 120,
+					status: 'confirmed',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
+				{
+					id: 'res002',
+					userId: 'user2',
+					seatId: 'pc02',
+					date: dateStr,
+					startTime: '18:00',
+					endTime: '20:00',
+					duration: 120,
+					status: 'confirmed',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				}
+			];
+
+			setReservations(mockReservations);
+
+			// Update date availability (this would come from an API)
+			updateDateAvailability();
+		} catch (err) {
+			console.error('Error fetching reservations:', err);
+			setError('予約情報の取得に失敗しました。もう一度お試しください。');
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	// Update the availability status for dates (mock implementation)
+	const updateDateAvailability = () => {
+		const availability: DateAvailability = {};
+
+		// Get the current date
+		const now = new Date();
+
+		// Generate availability data for the next 30 days
+		for (let i = 0; i < 30; i++) {
+			const date = new Date(now);
+			date.setDate(now.getDate() + i);
+			const dateStr = date.toISOString().split('T')[0];
+
+			// Randomly assign availability status for demo purposes
+			// In real implementation, this would be calculated based on actual reservation data
+			const rand = Math.random();
+			if (rand < 0.2) {
+				availability[dateStr] = 'booked';
+			} else if (rand < 0.5) {
+				availability[dateStr] = 'limited';
+			} else {
+				availability[dateStr] = 'available';
+			}
+		}
+
+		setDateAvailability(availability);
+	};
+
+	// Create a new reservation (mock implementation for now)
+	const createReservation = async (reservation: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
+		setIsLoading(true);
+		setError(null);
+
+		try {
+			if (!user) {
+				throw new Error('予約するにはログインが必要です');
+			}
+
+			// This will be replaced by an actual API call later
+			console.log('Creating reservation:', {
+				...reservation,
+				userId: user.uid
+			});
+
+			// Simulate API call success
+			setTimeout(() => {
+				setIsLoading(false);
+
+				// Reset selection
+				setSelectedTimeSlots({
+					seatId: '',
+					startTime: '',
+					endTime: ''
+				});
+
+				// Refresh reservations
+				fetchReservations();
+			}, 1000);
+		} catch (err) {
+			console.error('Error creating reservation:', err);
+			setError('予約の作成に失敗しました。もう一度お試しください。');
+			setIsLoading(false);
+		}
+	};
+
+	// Cancel a reservation (mock implementation for now)
+	const cancelReservation = async (reservationId: string): Promise<void> => {
+		setIsLoading(true);
+		setError(null);
+
+		try {
+			if (!user) {
+				throw new Error('予約をキャンセルするにはログインが必要です');
+			}
+
+			// This will be replaced by an actual API call later
+			console.log('Cancelling reservation:', reservationId);
+
+			// Simulate API call success
+			setTimeout(() => {
+				setIsLoading(false);
+
+				// Refresh reservations
+				fetchReservations();
+			}, 1000);
+		} catch (err) {
+			console.error('Error cancelling reservation:', err);
+			setError('予約のキャンセルに失敗しました。もう一度お試しください。');
+			setIsLoading(false);
+		}
+	};
+
+	// Initialize seats data when the component mounts
+	useEffect(() => {
+		fetchSeats();
+		// Update availability for demo
+		updateDateAvailability();
+	}, []);
+
+	// Fetch reservations when selected date changes
+	useEffect(() => {
+		if (selectedDate) {
+			fetchReservations(selectedDate);
+		}
+	}, [selectedDate]);
+
+	const value = {
+		seats,
+		reservations,
+		selectedDate,
+		setSelectedDate,
+		selectedTimeSlots,
+		setSelectedTimeSlots,
+		dateAvailability,
+		fetchSeats,
+		fetchReservations,
+		createReservation,
+		cancelReservation,
+		isLoading,
+		error
+	};
+
+	return (
+		<ReservationContext.Provider value={value}>
+			{children}
+		</ReservationContext.Provider>
+	);
+};
+
+// Custom hook for using the reservation context
+export const useReservation = (): ReservationContextType => {
+	const context = useContext(ReservationContext);
+	if (context === undefined) {
+		throw new Error('useReservation must be used within a ReservationProvider');
+	}
+	return context;
+};
+
+export default ReservationContext;-e 
 ### FILE: ./src/context/auth-context.tsx
 
 'use client';

@@ -18,6 +18,12 @@
 │   │   │   │   │   └── route.ts
 │   │   │   │   └── mock-charge
 │   │   │   │       └── route.ts
+│   │   │   ├── reservations
+│   │   │   │   ├── [id]
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── route.ts
+│   │   │   ├── seats
+│   │   │   │   └── route.ts
 │   │   │   ├── stripe
 │   │   │   │   ├── confirm-payment-setup
 │   │   │   │   │   └── route.ts
@@ -48,28 +54,33 @@
 │   │   ├── page.tsx
 │   │   ├── payment
 │   │   │   └── page.tsx
-│   │   └── register
-│   │       ├── complete
-│   │       │   └── page.tsx
-│   │       ├── layout.tsx
-│   │       ├── page.tsx
-│   │       ├── payment
-│   │       │   └── page.tsx
-│   │       ├── personal-info
-│   │       │   └── page.tsx
-│   │       └── verification
-│   │           └── page.tsx
+│   │   ├── register
+│   │   │   ├── complete
+│   │   │   │   └── page.tsx
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx
+│   │   │   ├── payment
+│   │   │   │   └── page.tsx
+│   │   │   ├── personal-info
+│   │   │   │   └── page.tsx
+│   │   │   └── verification
+│   │   │       └── page.tsx
+│   │   └── reservation
+│   │       └── page.tsx
 │   ├── components
 │   │   ├── auth
 │   │   │   ├── email-password-form.tsx
 │   │   │   └── protected-route.tsx
 │   │   ├── dashboard
 │   │   │   ├── qr-code.tsx
+│   │   │   ├── reservation-history.tsx
 │   │   │   └── usage-history.tsx
 │   │   ├── icons
 │   │   │   └── verification-icons.tsx
 │   │   ├── lp
 │   │   │   ├── access-section.tsx
+│   │   │   ├── availability-calendar.tsx
+│   │   │   ├── availability-section.tsx
 │   │   │   ├── cta-section.tsx
 │   │   │   ├── faq-section.tsx
 │   │   │   ├── features-section.tsx
@@ -85,6 +96,11 @@
 │   │   │   └── payment-method-selector.tsx
 │   │   ├── registration
 │   │   │   └── progress-tracker.tsx
+│   │   ├── reservation
+│   │   │   ├── calendar-view.tsx
+│   │   │   ├── login-prompt.tsx
+│   │   │   ├── reservation-form.tsx
+│   │   │   └── time-grid.tsx
 │   │   ├── ui
 │   │   │   ├── button.tsx
 │   │   │   └── loading-spinner.tsx
@@ -96,7 +112,8 @@
 │   ├── context
 │   │   ├── auth-context.tsx
 │   │   ├── ekyc-context.tsx
-│   │   └── registration-context.tsx
+│   │   ├── registration-context.tsx
+│   │   └── reservation-context.tsx
 │   ├── hooks
 │   │   └── use-veriff.ts
 │   └── lib
@@ -109,4 +126,4 @@
 ├── tailwind.config.js
 └── tsconfig.json
 
-38 directories, 71 files
+43 directories, 83 files
