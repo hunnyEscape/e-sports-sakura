@@ -6,8 +6,7 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 
 export default function HeroSection() {
-	// 文字のアニメーション用に分割
-	const title = "遊び足りない時の、秘密基地。";
+	const title = "疲れたから「ゆるゲー気分」";
 	const [titleChars, setTitleChars] = useState<string[]>([]);
 
 	useEffect(() => {
@@ -16,7 +15,6 @@ export default function HeroSection() {
 
 	return (
 		<section className="relative min-h-screen flex items-center overflow-hidden">
-			{/* 背景画像 */}
 			<div className="absolute inset-0 z-0">
 				<Image
 					src="/images/lp/hero-bg.jpg"
@@ -31,7 +29,7 @@ export default function HeroSection() {
 
 			{/* コンテンツオーバーレイ */}
 			<div className="container mx-auto px-4 relative z-10">
-				<div className="max-w-2xl">
+				<div className="max-w-4xl">
 					{/* タイトル文字ごとのアニメーション */}
 					<h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6 flex flex-wrap">
 						{titleChars.map((char, index) => (
@@ -57,7 +55,7 @@ export default function HeroSection() {
 						animate={{ opacity: 1, scale: 1 }}
 						transition={{ duration: 0.7, delay: 0.5 }}
 					>
-						ドリンク飲み放題・24h無人運営・予約不要
+						コスパもいいし。～ふらっと寄れるゲームカフェ～
 					</motion.p>
 
 					{/* CTAボタン */}

@@ -17,10 +17,7 @@ export default function LandingPage() {
 		<main className="landing-page bg-background text-foreground">
 			{/* LP専用ヘッダー */}
 			<LpHeader />
-
-			{/* メインコンテンツ */}
-			<div className="pt-16"> {/* ヘッダー分の余白 */}
-				{/* ヒーローセクション */}
+			<div className="pt-16">
 				<HeroSection />
 
 				{/* 利用シーンセクション */}

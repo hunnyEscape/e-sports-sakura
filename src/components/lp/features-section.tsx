@@ -8,22 +8,22 @@ import { motion, useInView } from 'framer-motion';
 const usageScenes = [
 	{
 		id: 'scene-1',
-		title: 'もう少し話そうか、ってなった夜に',
-		description: 'サシ飲みの後、別れるには早い。ここで話を続けませんか？居心地の良いスペースで、二人だけの時間を。',
+		title: '夕飯・サシ飯があっさり終了',
+		description: '夜街でもうちょっと時間つぶしたい！ノンアルコールで時間を潰せる場所です。ふかふかの椅子でマイホームな時間を。',
 		image: '/images/lp/scene-pair.jpg',
 		alt: 'サシ飲み後のペア'
 	},
 	{
 		id: 'scene-2',
-		title: 'ちょっとゲームして帰る？',
-		description: '飲み会の解散後、そのまま帰るには物足りない。友達と一緒に盛り上がれるワイワイ系ゲームで、夜を締めくくろう。',
+		title: '集まったけど、、ゲームだったら楽しめる？',
+		description:'共通項がなくてもマルチプレイで盛り上がるタイトルをご用意してます。監事さん思いの場所です。',
 		image: '/images/lp/scene-group.jpg',
 		alt: '飲み会帰りのグループ'
 	},
 	{
 		id: 'scene-3',
-		title: '終電逃しても、ここがある',
-		description: '終電を逃してしまっても大丈夫。24時間営業の秘密基地で、朝まで没頭できるゲームの世界が待っています。',
+		title:'久々の自由時間',
+		description:'ゲームは好きだけどたまにしかやる時間が取れない！厳選された数多くのタイトルをご用意してます。',
 		image: '/images/lp/scene-solo.jpg',
 		alt: 'ソロゲーマー'
 	}
@@ -74,8 +74,7 @@ export default function FeaturesSection() {
 						<span className="text-accent">こんな時に</span>、利用されています
 					</h2>
 					<p className="text-foreground/70 max-w-2xl mx-auto">
-						予約不要で、ふらっと立ち寄れる秘密基地。
-						一人でも、友達とでも、思い立った時にすぐ利用できます。
+						予約不要、一人でも、友達とでも、思い立った時にすぐ利用できます。
 					</p>
 				</motion.div>
 

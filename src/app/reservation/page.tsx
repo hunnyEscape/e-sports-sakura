@@ -13,6 +13,7 @@ import CalendarView from '@/components/reservation/calendar-view';
 import TimeGrid from '@/components/reservation/time-grid';
 import ReservationForm from '@/components/reservation/reservation-form';
 import LoginPrompt from '@/components/reservation/login-prompt';
+//import SeatInitializer from '@/components/ini/create-seat-documents';
 
 enum ReservationStep {
 	SELECT_BRANCH,  // 新しいステップ
@@ -182,7 +183,6 @@ const ReservationPageContent: React.FC = () => {
 						{currentStep === ReservationStep.CONFIRM && '予約の確認'}
 					</h1>
 				</div>
-
 				{/* Progress steps */}
 				<div className="max-w-3xl mx-auto mb-8">
 					<div className="flex items-center justify-between">

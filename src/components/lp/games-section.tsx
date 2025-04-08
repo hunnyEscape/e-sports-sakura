@@ -7,23 +7,11 @@ import { motion, useInView } from 'framer-motion';
 // ゲームカテゴリとタイトル
 const gameCategories = [
 	{
-		id: 'competitive',
-		title: '競技系',
-		caption: '120FPSでぬるぬる動く、プロ仕様',
-		games: [
-			{ name: 'VALORANT', icon: '/images/lp/games/valorant.png' },
-			{ name: 'PUBG', icon: '/images/lp/games/pubg.png' },
-			{ name: 'Apex Legends', icon: '/images/lp/games/apex.png' }
-		],
-		image: '/images/lp/games/competitive.jpg',
-		alt: '競技系ゲーム'
-	},
-	{
 		id: 'party',
 		title: 'ワイワイ系',
-		caption: 'コントローラーで、2人でも盛り上がれる',
+		caption: 'コントローラーで2人でも盛り上がれる',
 		games: [
-			{ name: 'Overcooked', icon: '/images/lp/games/overcooked.png' },
+			{ name: 'Party Animals', icon: '/images/lp/games/overcooked.png' },
 			{ name: 'Fall Guys', icon: '/images/lp/games/fallguys.png' },
 			{ name: 'Pummel Party', icon: '/images/lp/games/pummel.png' }
 		],
@@ -31,12 +19,24 @@ const gameCategories = [
 		alt: 'ワイワイ系ゲーム'
 	},
 	{
+		id: 'competitive',
+		title: '競技系',
+		caption: '120FPSでぬるぬる動く、プロ仕様',
+		games: [
+			{ name: 'Counter-Strike 2', icon: '/images/lp/games/valorant.png' },
+			{ name: 'PUBG', icon: '/images/lp/games/pubg.png' },
+			{ name: 'Apex Legends', icon: '/images/lp/games/apex.png' }
+		],
+		image: '/images/lp/games/competitive.jpg',
+		alt: '競技系ゲーム'
+	},
+	{
 		id: 'immersive',
 		title: 'じっくり系',
-		caption: '深夜に1人、没入できるパズル・戦略',
+		caption: '1人でも仲間とでも、',
 		games: [
-			{ name: 'Slay the Spire', icon: '/images/lp/games/slaythespire.png' },
-			{ name: 'Cities Skylines', icon: '/images/lp/games/cities.png' },
+			{ name: 'Operation: Tango', icon: '/images/lp/games/slaythespire.png' },
+			{ name: 'Portal 2', icon: '/images/lp/games/cities.png' },
 			{ name: 'The Witness', icon: '/images/lp/games/witness.png' }
 		],
 		image: '/images/lp/games/immersive.jpg',
@@ -65,8 +65,8 @@ export default function GamesSection() {
 					<h2 className="text-3xl md:text-4xl font-bold mb-4">
 						気分に合わせて<span className="text-accent">遊べるゲーム</span>
 					</h2>
-					<p className="text-foreground/70 max-w-2xl mx-auto">
-						RTX 4070搭載のハイスペックPCで、あらゆるゲームを快適に。
+					<p className="text-foreground/70 max-w-4xl mx-auto">
+						RTX 4070搭載のPCで、あらゆるゲームを快適に。
 						一人でじっくり、友達とワイワイ、あなた好みのプレイスタイルで。
 					</p>
 				</motion.div>
