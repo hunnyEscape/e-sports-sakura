@@ -2,7 +2,9 @@
 
 import { useRef } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { motion, useInView } from 'framer-motion';
+import { ChevronRight } from 'lucide-react';
 
 // ゲームカテゴリとタイトル
 const gameCategories = [
@@ -81,24 +83,33 @@ export default function GamesSection() {
 							animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 50 }}
 							transition={{ duration: 0.6, delay: index * 0.2 }}
 						>
-							{/* ゲームカテゴリ画像 */}
+							{/* ゲームカテゴリ画像 - 全体をクリック可能に */}
 							<div className="md:w-1/2">
-								<div className="relative h-64 md:h-80 rounded-2xl overflow-hidden shadow-soft">
-									<Image
-										src={category.image}
-										alt={category.alt}
-										fill
-										style={{ objectFit: 'cover' }}
-										className="transition-transform duration-700 hover:scale-105"
-									/>
-								</div>
+								<Link href={`/games/${category.id}`} className="block">
+									<div className="relative h-64 md:h-80 rounded-2xl overflow-hidden shadow-soft group cursor-pointer">
+										<Image
+											src={category.image}
+											alt={category.alt}
+											fill
+											style={{ objectFit: 'cover' }}
+											className="transition-transform duration-700 group-hover:scale-105"
+										/>
+										<div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center p-6">
+											<span className="inline-flex items-center text-white font-medium px-4 py-2 rounded-full bg-accent/80 backdrop-blur-sm">
+												詳しく見る <ChevronRight className="ml-1 h-4 w-4" />
+											</span>
+										</div>
+									</div>
+								</Link>
 							</div>
 
 							{/* ゲーム情報 */}
 							<div className="md:w-1/2">
-								<h3 className="text-2xl font-bold mb-3">
-									{category.title}
-								</h3>
+								<Link href={`/games/${category.id}`} className="block">
+									<h3 className="text-2xl font-bold mb-3 hover:text-accent transition-colors">
+										{category.title}
+									</h3>
+								</Link>
 								<p className="text-accent text-lg mb-6">
 									{category.caption}
 								</p>
@@ -108,7 +119,7 @@ export default function GamesSection() {
 									{category.games.map((game, gameIndex) => (
 										<motion.li
 											key={game.name}
-											className="flex items-center gap-3 bg-border/10 p-3 rounded-xl"
+											className="flex items-center gap-3 bg-border/10 p-3 rounded-xl hover:bg-border/20 transition-colors"
 											initial={{ opacity: 0, x: -20 }}
 											animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
 											transition={{ duration: 0.4, delay: index * 0.2 + gameIndex * 0.1 }}
@@ -126,6 +137,14 @@ export default function GamesSection() {
 										</motion.li>
 									))}
 								</ul>
+
+								{/* 詳細へのリンク */}
+								<Link
+									href={`/games/${category.id}`}
+									className="mt-6 inline-flex items-center text-accent hover:text-accent/80 font-medium transition-colors"
+								>
+									すべてのゲームを見る <ChevronRight className="ml-1 h-4 w-4" />
+								</Link>
 							</div>
 						</motion.div>
 					))}
