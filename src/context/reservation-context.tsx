@@ -1,9 +1,10 @@
 // src/context/reservation-context.tsx
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './auth-context';
 import { SeatDocument, ReservationDocument, BranchDocument } from '@/types/firebase';
-
+import { collection, getDocs, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 // 予約コンテキスト用の追加型
 interface SelectedTimeSlots {
 	seatId: string;
@@ -55,100 +56,45 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 	const [dateAvailability, setDateAvailability] = useState<DateAvailability>({});
 	const [isLoading, setIsLoading] = useState<boolean>(false);
 	const [error, setError] = useState<string | null>(null);
+	const [fetchCount, setFetchCount] = useState<number>(0); // APIコール回数を追跡
 
-	// 支店一覧を取得
-	const fetchBranches = async (): Promise<void> => {
+	// 支店一覧を取得 - useCallbackでメモ化して無限ループを防止
+	const fetchBranches = useCallback(async (): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 
-		try {
-			// ここでは仮のデータを使用。実際にはAPIから取得する
-			const mockBranches: BranchDocument[] = [
-				{
-					branchId: 'tachikawa',
-					branchCode: 'TACH',
-					branchName: '立川店',
-					address: '東京都立川市錦町2-1-2 第2ビル 2F',
-					phoneNumber: '042-XXX-XXXX',
-					email: 'tachikawa@esports-sakura.com',
-					businessHours: {
-						open: '10:00',
-						close: '22:00',
-						dayOff: []
-					},
-					totalSeats: 12,
-					description: 'JR立川駅から徒歩4分、アクセス抜群の立地です。高性能PCを12台完備しています。',
-					amenities: ['無料ドリンク', 'Wi-Fi', 'パーソナルロッカー'],
-					layoutImagePath: '/images/branches/tachikawa-layout.jpg',
-					mapImagePath: '/images/branches/tachikawa-map.jpg',
-					location: {
-						latitude: 35.698353,
-						longitude: 139.413526
-					},
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				},
-				{
-					branchId: 'shinjuku',
-					branchCode: 'SHIN',
-					branchName: '新宿店',
-					address: '東京都新宿区歌舞伎町1-X-X XXビル 5F',
-					phoneNumber: '03-XXXX-XXXX',
-					email: 'shinjuku@esports-sakura.com',
-					businessHours: {
-						open: '24:00',  // 24時間営業
-						close: '24:00',
-						dayOff: []
-					},
-					totalSeats: 20,
-					description: '新宿駅東口から徒歩5分。24時間営業の大型店舗です。トーナメント向けのグループエリアも完備。',
-					amenities: ['無料ドリンク', 'フード販売', 'シャワールーム', '仮眠スペース'],
-					layoutImagePath: '/images/branches/shinjuku-layout.jpg',
-					mapImagePath: '/images/branches/shinjuku-map.jpg',
-					location: {
-						latitude: 35.694664,
-						longitude: 139.701287
-					},
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				},
-				{
-					branchId: 'akihabara',
-					branchCode: 'AKIB',
-					branchName: '秋葉原店',
-					address: '東京都千代田区外神田X-X-X 電気街ビル 3F',
-					phoneNumber: '03-XXXX-XXXX',
-					email: 'akihabara@esports-sakura.com',
-					businessHours: {
-						open: '10:00',
-						close: '23:00',
-						dayOff: []
-					},
-					totalSeats: 16,
-					description: '秋葉原駅から徒歩3分。最新ゲーミングデバイスを体験できるショーケースも併設。',
-					amenities: ['無料ドリンク', 'デバイス販売', 'コスプレイベントスペース'],
-					layoutImagePath: '/images/branches/akihabara-layout.jpg',
-					mapImagePath: '/images/branches/akihabara-map.jpg',
-					location: {
-						latitude: 35.700645,
-						longitude: 139.771995
-					},
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				}
-			];
+		// すでにbranchesがあり、fetchCountが1以上なら再取得しない（無限ループ対策）
+		if (branches.length > 0 && fetchCount > 0) {
+			setIsLoading(false);
+			return;
+		}
 
-			setBranches(mockBranches);
+		try {
+			// Firestoreからbranchコレクションのデータを取得
+			const branchesCollection = collection(db, 'branch');
+			const branchesSnapshot = await getDocs(branchesCollection);
+
+			const branchesData: BranchDocument[] = [];
+			branchesSnapshot.forEach((doc) => {
+				// ドキュメントのデータとIDを組み合わせて配列に追加
+				branchesData.push({
+					branchId: doc.id,
+					...doc.data()
+				} as BranchDocument);
+			});
+
+			setBranches(branchesData);
+			setFetchCount(prev => prev + 1); // APIコール回数をインクリメント
 		} catch (err) {
 			console.error('Error fetching branches:', err);
 			setError('支店情報の取得に失敗しました。もう一度お試しください。');
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, [branches.length, fetchCount]);
 
-	// 座席情報を取得
-	const fetchSeats = async (branchId?: string): Promise<void> => {
+	// 座席情報を取得 - useCallbackでメモ化
+	const fetchSeats = useCallback(async (branchId?: string): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 
@@ -192,10 +138,10 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, [branches, selectedBranch]);
 
-	// 予約情報を取得
-	const fetchReservations = async (date?: Date, branchId?: string): Promise<void> => {
+	// 予約情報を取得 - useCallbackでメモ化
+	const fetchReservations = useCallback(async (date?: Date, branchId?: string): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 
@@ -249,10 +195,10 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, [branches, selectedBranch, selectedDate]);
 
-	// 日付ごとの空き状況を更新
-	const updateDateAvailability = (branchId?: string) => {
+	// 日付ごとの空き状況を更新 - useCallbackでメモ化
+	const updateDateAvailability = useCallback((branchId?: string) => {
 		const availability: DateAvailability = {};
 		const targetBranchId = branchId || selectedBranch?.branchId;
 
@@ -284,10 +230,10 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		}
 
 		setDateAvailability(availability);
-	};
+	}, [selectedBranch]);
 
-	// 予約を作成
-	const createReservation = async (reservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
+	// 予約を作成 - useCallbackでメモ化
+	const createReservation = useCallback(async (reservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 
@@ -323,10 +269,10 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 			setError('予約の作成に失敗しました。もう一度お試しください。');
 			setIsLoading(false);
 		}
-	};
+	}, [fetchReservations, selectedBranch, user]);
 
-	// 予約をキャンセル
-	const cancelReservation = async (reservationId: string): Promise<void> => {
+	// 予約をキャンセル - useCallbackでメモ化
+	const cancelReservation = useCallback(async (reservationId: string): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 
@@ -348,12 +294,12 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 			setError('予約のキャンセルに失敗しました。もう一度お試しください。');
 			setIsLoading(false);
 		}
-	};
+	}, [fetchReservations, user]);
 
-	// 初期化時に支店一覧を取得
+	// 初期化時に支店一覧を取得 - 依存配列を修正
 	useEffect(() => {
 		fetchBranches();
-	}, []);
+	}, [fetchBranches]); // useCallbackでメモ化したので依存配列にfetchBranchesを含めても問題ない
 
 	// 支店が選択されたら座席一覧を取得
 	useEffect(() => {
@@ -361,14 +307,14 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 			fetchSeats(selectedBranch.branchId);
 			updateDateAvailability(selectedBranch.branchId);
 		}
-	}, [selectedBranch]);
+	}, [selectedBranch, fetchSeats, updateDateAvailability]);
 
 	// 日付が選択された時に予約情報を取得
 	useEffect(() => {
 		if (selectedDate && selectedBranch) {
 			fetchReservations(selectedDate, selectedBranch.branchId);
 		}
-	}, [selectedDate, selectedBranch]);
+	}, [selectedDate, selectedBranch, fetchReservations]);
 
 	const value = {
 		branches,

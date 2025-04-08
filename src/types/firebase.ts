@@ -87,7 +87,7 @@ export interface SeatDocument {
 	seatNumber: number;
 	name: string;
 	ipAddress?: string;
-	ratePerMinute: number;
+	ratePerHour: number;
 	status: 'available' | 'in-use' | 'maintenance';
 	availableHours?: {
 		[key: string]: string[];

@@ -118,7 +118,7 @@ const ReservationPageContent: React.FC = () => {
 		switch (currentStep) {
 			case ReservationStep.SELECT_BRANCH:
 				return (
-					<div className="w-full max-w-4xl mx-auto">
+					<div className="w-full max-w-3xl mx-auto">
 						<BranchSelector onBranchSelect={handleBranchSelect} />
 					</div>
 				);
@@ -165,7 +165,7 @@ const ReservationPageContent: React.FC = () => {
 				className="w-full"
 			>
 				{/* Header with back button */}
-				<div className="max-w-4xl mx-auto mb-6 flex items-center">
+				<div className="max-w-3xl mx-auto mb-6 flex items-center">
 					{currentStep > ReservationStep.SELECT_BRANCH && (
 						<button
 							onClick={handleBack}
@@ -184,7 +184,7 @@ const ReservationPageContent: React.FC = () => {
 				</div>
 
 				{/* Progress steps */}
-				<div className="max-w-4xl mx-auto mb-8">
+				<div className="max-w-3xl mx-auto mb-8">
 					<div className="flex items-center justify-between">
 						<div className="flex flex-col items-center">
 							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_BRANCH

@@ -32,13 +32,9 @@ interface RangeSelection {
 
 const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 	const { seats, reservations, selectedTimeSlots, setSelectedTimeSlots } = useReservation();
-
-	// State for multiple seat selection
 	const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
 	const [seatRanges, setSeatRanges] = useState<Record<string, RangeSelection>>({});
 	const [people, setPeople] = useState<number>(1);
-
-	// Generate time slots for the day (30-minute intervals from 10:00 to 22:00)
 	const generateTimeSlots = (): TimeSlot[] => {
 		const slots: TimeSlot[] = [];
 		const startHour = 10;

@@ -66,14 +66,12 @@ export default function BranchSelector({ onBranchSelect }: BranchSelectorProps) 
 
 	return (
 		<div className="w-full space-y-6">
-			<div className="text-center max-w-xl mx-auto mb-8">
-				<h2 className="text-xl font-medium mb-2">支店を選択</h2>
+			<div className="text-center max-w-3xl mx-auto mb-8">
 				<p className="text-foreground/70">
 					ご利用になる支店を選択してください。各支店ごとに設備や座席数が異なります。
 				</p>
 			</div>
-
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
 				{branches.map((branch) => (
 					<motion.div
 						key={branch.branchId}
@@ -81,7 +79,6 @@ export default function BranchSelector({ onBranchSelect }: BranchSelectorProps) 
 						whileHover={{ y: -5 }}
 						onClick={() => onBranchSelect(branch)}
 					>
-						{/* 支店画像またはレイアウト画像 */}
 						<div className="h-48 w-full relative bg-gradient-to-br from-accent/20 to-highlight/20">
 							{branch.layoutImagePath ? (
 								<img
@@ -95,12 +92,9 @@ export default function BranchSelector({ onBranchSelect }: BranchSelectorProps) 
 								</div>
 							)}
 						</div>
-
-						{/* 支店情報 */}
 						<div className="p-4">
 							<h3 className="text-xl font-bold mb-2 flex items-center">
-								<span className="bg-accent/10 text-accent text-xs px-2 py-0.5 rounded mr-2">{branch.branchCode}</span>
-								{branch.branchName}
+								<span className="bg-accent/10 text-accent px-2 py-0.5 rounded mr-2">{branch.branchName}</span>
 							</h3>
 
 							<div className="space-y-2 mb-4">
@@ -117,17 +111,12 @@ export default function BranchSelector({ onBranchSelect }: BranchSelectorProps) 
 												? '24時間営業'
 												: `${branch.businessHours.open} - ${branch.businessHours.close}`}
 										</span>
-										{branch.businessHours.dayOff && branch.businessHours.dayOff.length > 0 && (
-											<span className="block text-xs mt-0.5">
-												定休日: {branch.businessHours.dayOff.map(day => getDayOfWeek(day)).join(', ')}
-											</span>
-										)}
 									</div>
 								</div>
 
 								<div className="flex items-start">
 									<Users className="w-4 h-4 text-accent mr-2 mt-1 flex-shrink-0" />
-									<span className="text-sm text-foreground/70">総座席数: {branch.totalSeats}席</span>
+									<span className="text-sm text-foreground/70">{branch.totalSeats}席</span>
 								</div>
 
 								{branch.phoneNumber && (
@@ -142,7 +131,7 @@ export default function BranchSelector({ onBranchSelect }: BranchSelectorProps) 
 								<div className="mt-3">
 									<div className="flex items-center mb-1">
 										<Info className="w-4 h-4 text-accent mr-1" />
-										<span className="text-xs font-medium">設備・特徴</span>
+										<span className="text-xs text-foreground/70 font-medium">設備</span>
 									</div>
 									<div className="flex flex-wrap gap-1">
 										{branch.amenities.map((amenity, index) => (
