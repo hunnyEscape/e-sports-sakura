@@ -762,8 +762,7 @@ export default function DashboardPage() {
 								<QrCodeDisplay />
 							</div>
 
-							{/* 利用履歴コンポーネント */}
-							<UsageHistory />
+							{/* <UsageHistory/>	*/}
 						</div>
 					)}
 				</main>
@@ -4275,158 +4274,44 @@ export default function UsageHistory() {
 }-e 
 ### FILE: ./src/components/dashboard/qr-code.tsx
 
-// src/components/dashboard/qr-code.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import QRCode from 'qrcode';
 import { useAuth } from '@/context/auth-context';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
-import { createHash } from 'crypto';
 
 export default function QrCodeDisplay() {
 	const { user } = useAuth();
-	const [qrValue, setQrValue] = useState<string | null>(null);
+	const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [refreshing, setRefreshing] = useState(false);
 
-	// QRコードをロード
-	/*
-	const loadQrCode = async () => {
-		if (!user) return;
-
-		try {
-			console.log('Attempting to load QR code for user:', user.uid);
-
-			const qrDocRef = doc(db, 'memberQRs', user.uid);
-			console.log('QR Document Reference:', qrDocRef.path);
-
-			const qrDoc = await getDoc(qrDocRef);
-			console.log('QR Doc exists:', qrDoc.exists());
-
-			if (qrDoc.exists()) {
-				console.log('QR Doc data:', qrDoc.data());
-			}
-		} catch (err) {
-			console.error('Detailed error loading QR code:', err);
-		}
-	};*/
-
-	const loadQrCode = async () => {
-		if (!user) return;
-
-		try {
-			setLoading(true);
-			setError(null);
-
-			// QRコードを取得
-			const qrDocRef = doc(db, 'memberQRs', user.uid);
-			const qrDoc = await getDoc(qrDocRef);
-
-			if (qrDoc.exists() && qrDoc.data().qrValue) {
-				setQrValue(qrDoc.data().qrValue);
-			} else {
-				// QRコードがなければ新規作成
-				await generateQrCode();
-			}
-		} catch (err) {
-			console.error('Error loading QR code:', err);
-			setError('QRコードの読み込みに失敗しました。');
-		} finally {
-			setLoading(false);
-		}
-	};
-
-
-
-	// QRコードを生成（実際はCloud Functionsで行うべき処理
-
-	const generateQrCode = async () => {
-		if (!user) return;
-
-		try {
-			setLoading(true);
-			setError(null);
-
-			// ソルト（秘密の文字列）を追加してハッシュ化
-			const salt = process.env.QR_SALT || 'your_secret_salt';
-			const qrValue = createHash('sha256')
-				.update(user.uid + salt)
-				.digest('hex')
-				.substring(0, 16); // 16文字に制限
-
-			// Firestoreに保存
-			const qrDocRef = doc(db, 'memberQRs', user.uid);
-			await setDoc(qrDocRef, {
-				userId: user.uid,
-				qrValue: qrValue, // ハッシュ化されたQRコード値
-				createdAt: new Date().toISOString(),
-				expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30日後
-				isActive: true
-			});
-
-			setQrValue(qrValue);
-		} catch (err) {
-			console.error('Error generating QR code:', err);
-			setError('QRコードの生成に失敗しました。');
-		} finally {
-			setLoading(false);
-		}
-	};
-	/*
-	const generateQrCode = async () => {
-		if (!user) return;
-
-		try {
-			setLoading(true);
-			setError(null);
-
-			// 簡易的なランダム文字列生成
-			const randomQr = `ESQR-${user.uid.substring(0, 6)}-${Date.now().toString(36)}`;
-
-			// Firestoreに保存
-			const qrDocRef = doc(db, 'memberQRs', user.uid);
-			await setDoc(qrDocRef, {
-				userId: user.uid,
-				qrValue: randomQr,
-				createdAt: new Date().toISOString(),
-				expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30日後
-				isActive: true
-			});
-
-			setQrValue(randomQr);
-		} catch (err) {
-			console.error('Error generating QR code:', err);
-			setError('QRコードの生成に失敗しました。');
-		} finally {
-			setLoading(false);
-		}
-	};
-	*/
-
-	// QRコードをリフレッシュ
-	const refreshQrCode = async () => {
-		if (!user) return;
-
-		try {
-			setRefreshing(true);
-			await generateQrCode();
-		} catch (err) {
-			console.error('Error refreshing QR code:', err);
-			setError('QRコードの更新に失敗しました。');
-		} finally {
-			setRefreshing(false);
-		}
-	};
-
-	// 初回ロード
 	useEffect(() => {
-		if (user) {
-			loadQrCode();
-		}
+		const generateQrCode = async () => {
+			if (!user) return;
+
+			try {
+				// ユーザーのUIDをそのままQRコードとして使用
+				const dataUrl = await QRCode.toDataURL(user.uid, {
+					width: 250,
+					margin: 2,
+					color: {
+						dark: "#000",
+						light: "#fff"
+					}
+				});
+
+				setQrCodeDataUrl(dataUrl);
+			} catch (err) {
+				setError('QRコードの生成に失敗しました');
+			} finally {
+				setLoading(false);
+			}
+		};
+
+		generateQrCode();
 	}, [user]);
 
 	if (loading) {
@@ -4441,7 +4326,7 @@ export default function QrCodeDisplay() {
 		return (
 			<div className="bg-red-500/10 text-red-500 p-4 rounded-lg">
 				<p className="mb-4">{error}</p>
-				<Button onClick={loadQrCode} size="sm" variant="outline">
+				<Button onClick={() => window.location.reload()} size="sm" variant="outline">
 					再読み込み
 				</Button>
 			</div>
@@ -4450,100 +4335,29 @@ export default function QrCodeDisplay() {
 
 	return (
 		<div className="text-center">
-			{qrValue ? (
+			{qrCodeDataUrl ? (
 				<>
-					{/* QRコード表示（SVGでリアルなQRコード風に表示） */}
 					<div className="bg-white p-4 rounded-lg w-64 h-64 mx-auto mb-4 flex items-center justify-center border-2 border-accent">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 200 200"
-							width="200"
-							height="200"
-							className="w-full h-full"
-						>
-							{/* QRコードSVGパターン */}
-							<rect width="100%" height="100%" fill="white" />
-
-							{/* 外枠 */}
-							<rect x="10" y="10" width="20" height="20" fill="black" />
-							<rect x="15" y="15" width="10" height="10" fill="white" />
-
-							<rect x="170" y="10" width="20" height="20" fill="black" />
-							<rect x="175" y="15" width="10" height="10" fill="white" />
-
-							<rect x="10" y="170" width="20" height="20" fill="black" />
-							<rect x="15" y="175" width="10" height="10" fill="white" />
-
-							{/* QRコード中央パターン（シンプルな例） */}
-							{Array.from({ length: 10 }).map((_, row) => (
-								Array.from({ length: 10 }).map((_, col) => {
-									// 角のパターンは除外
-									if ((row < 3 && col < 3) || (row < 3 && col > 6) || (row > 6 && col < 3)) {
-										return null;
-									}
-
-									// UIDのハッシュを使って黒マスを配置
-									const hash = qrValue.charCodeAt((row * 10 + col) % qrValue.length);
-									const shouldFill = hash % 3 === 0;
-
-									return shouldFill ? (
-										<rect
-											key={`${row}-${col}`}
-											x={30 + col * 14}
-											y={30 + row * 14}
-											width="14"
-											height="14"
-											fill="black"
-										/>
-									) : null;
-								})
-							))}
-
-							{/* QR内容テキスト表示 */}
-							<text
-								x="100"
-								y="95"
-								textAnchor="middle"
-								fontSize="8"
-								fill="black"
-								fontFamily="monospace"
-							>
-								{qrValue} {/* UIDを直接表示 */}
-							</text>
-
-							{/* QR内容テキスト表示 */}
-							<text
-								x="100"
-								y="95"
-								textAnchor="middle"
-								fontSize="8"
-								fill="black"
-								fontFamily="monospace"
-							>
-								E-Sports Sakura
-							</text>
-						</svg>
+						<img
+							src={qrCodeDataUrl}
+							alt="QRコード"
+							className="w-full h-full object-contain"
+						/>
 					</div>
 
 					<p className="text-sm text-foreground/70 mb-4">
 						このQRコードを店舗の入口リーダーにかざして入室できます。
 					</p>
 
-					<Button
-						onClick={refreshQrCode}
-						disabled={refreshing}
-						size="sm"
-						variant="outline"
-					>
-						{refreshing ? <LoadingSpinner size="small" /> : 'QRコードを更新'}
-					</Button>
+					<div className="text-center text-sm">
+						<span className="bg-gray-800 text-white p-2 rounded-md">
+							{user?.uid}
+						</span>
+					</div>
 				</>
 			) : (
 				<div className="bg-orange-500/10 text-orange-500 p-4 rounded-lg mb-4">
 					<p className="mb-2">QRコードが見つかりません。</p>
-					<Button onClick={generateQrCode} size="sm">
-						QRコードを生成
-					</Button>
 				</div>
 			)}
 		</div>
@@ -7296,6 +7110,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
 export const useRegistration = () => useContext(RegistrationContext);-e 
 ### FILE: ./tailwind.config.js
 
+//tailwind.config.js
 /** @type {import('tailwindcss').Config} */
 module.exports = {
 	content: [
