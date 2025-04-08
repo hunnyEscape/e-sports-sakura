@@ -99,13 +99,58 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				},
 				{
 					id: 'pc03',
-					name: 'Standard PC #1',
+					name: 'Gaming PC #3',
 					ipAddress: '192.168.1.103',
 					ratePerMinute: 5,
 					status: 'available',
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString()
-				}
+				},
+				{
+					id: 'pc04',
+					name: 'Gaming PC #4',
+					ipAddress: '192.168.1.104',
+					ratePerMinute: 10,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
+				{
+					id: 'pc05',
+					name: 'Gaming PC #5',
+					ipAddress: '192.168.1.105',
+					ratePerMinute: 10,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
+				{
+					id: 'pc06',
+					name: 'Gaming PC #6',
+					ipAddress: '192.168.1.106',
+					ratePerMinute: 5,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
+				{
+					id: 'pc07',
+					name: 'Gaming PC #7',
+					ipAddress: '192.168.1.107',
+					ratePerMinute: 5,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
+				{
+					id: 'pc08',
+					name: 'Gaming PC #8',
+					ipAddress: '192.168.1.108',
+					ratePerMinute: 5,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
 			];
 
 			setSeats(mockSeats);

@@ -216,15 +216,7 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 				)}
 
 				{/* Action buttons */}
-				<div className="flex justify-between">
-					<button
-						type="button"
-						onClick={onCancel}
-						className="px-4 py-2 border border-border rounded-md hover:bg-background/10 transition-colors"
-					>
-						戻る
-					</button>
-
+				<div className="flex justify-end">
 					<button
 						type="submit"
 						disabled={!isFormValid || isLoading}

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { ReservationProvider } from '@/context/reservation-context';
+import { ChevronLeft } from 'lucide-react';
 
 import CalendarView from '@/components/reservation/calendar-view';
 import TimeGrid from '@/components/reservation/time-grid';
@@ -90,29 +91,28 @@ const ReservationPage: React.FC = () => {
 		router.push('/dashboard');
 	};
 
+	// Handle back navigation
+	const handleBack = () => {
+		if (currentStep === ReservationStep.CONFIRM) {
+			setCurrentStep(ReservationStep.SELECT_TIME);
+		} else if (currentStep === ReservationStep.SELECT_TIME) {
+			setCurrentStep(ReservationStep.SELECT_DATE);
+		}
+	};
+
 	// Render appropriate step
 	const renderStep = () => {
 		switch (currentStep) {
 			case ReservationStep.SELECT_DATE:
 				return (
 					<div className="w-full max-w-3xl mx-auto">
-						<h1 className="text-2xl font-bold text-foreground mb-6">予約日を選択</h1>
 						<CalendarView onDateSelect={handleDateSelect} />
 					</div>
 				);
 
 			case ReservationStep.SELECT_TIME:
 				return (
-					<div className="w-full max-w-5xl mx-auto">
-						<div className="flex items-center justify-between mb-6">
-							<h1 className="text-2xl font-bold text-foreground">時間と座席を選択</h1>
-							<button
-								onClick={() => setCurrentStep(ReservationStep.SELECT_DATE)}
-								className="text-accent hover:underline"
-							>
-								日付を変更
-							</button>
-						</div>
+					<div className="w-full max-w-3xl mx-auto">
 						{selectedDate && (
 							<TimeGrid
 								date={selectedDate}
@@ -125,10 +125,9 @@ const ReservationPage: React.FC = () => {
 			case ReservationStep.CONFIRM:
 				return (
 					<div className="w-full max-w-3xl mx-auto">
-						<h1 className="text-2xl font-bold text-foreground mb-6">予約の確認</h1>
 						<ReservationForm
 							onSuccess={handleReservationSuccess}
-							onCancel={() => setCurrentStep(ReservationStep.SELECT_TIME)}
+							onCancel={handleBack}
 						/>
 					</div>
 				);
@@ -146,6 +145,24 @@ const ReservationPage: React.FC = () => {
 					animate={{ opacity: 1, y: 0 }}
 					className="w-full"
 				>
+					{/* Header with back button */}
+					<div className="max-w-3xl mx-auto mb-6 flex items-center">
+						{currentStep > ReservationStep.SELECT_DATE && (
+							<button
+								onClick={handleBack}
+								className="mr-3 p-2 rounded-full bg-border/50 border border-border/20 hover:bg-border/20 transition-colors"
+								aria-label="戻る"
+							>
+								<ChevronLeft size={20} className="text-foreground/70" />
+							</button>
+						)}
+						<h1 className="text-2xl font-bold text-foreground">
+							{currentStep === ReservationStep.SELECT_DATE && '予約日を選択'}
+							{currentStep === ReservationStep.SELECT_TIME && '時間と座席を選択'}
+							{currentStep === ReservationStep.CONFIRM && '予約の確認'}
+						</h1>
+					</div>
+
 					{/* Progress steps */}
 					<div className="max-w-3xl mx-auto mb-8">
 						<div className="flex items-center justify-between">
