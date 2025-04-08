@@ -3,6 +3,7 @@ import { getFirestore, collection, addDoc, query, where, getDocs, Timestamp, ord
 import { getAuth } from 'firebase/auth';
 import { initializeApp } from 'firebase/app';
 import { firebaseConfig } from '@/lib/firebase';
+import { ReservationDocument } from '@/types/firebase';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
 		const reservations = querySnapshot.docs.map(doc => ({
 			id: doc.id,
 			...doc.data()
-		}));
+		})) as ReservationDocument[];
 
 		return NextResponse.json({ reservations });
 	} catch (error) {
@@ -175,7 +176,7 @@ export async function POST(req: NextRequest) {
 		}
 
 		// Create new reservation
-		const newReservation = {
+		const newReservation: Omit<ReservationDocument, 'id'> = {
 			userId: user.uid,
 			userEmail: user.email,
 			seatId,

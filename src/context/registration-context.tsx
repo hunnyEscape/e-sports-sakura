@@ -1,164 +1,141 @@
-'use client';
-
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/context/auth-context';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuth } from './auth-context';
+import { VeriffSession, VeriffStatus } from '@/types';
 
-// Veriff情報の型定義
-interface VeriffInfo {
-	sessionId?: string;
-	status: 'pending' | 'completed' | 'failed';
-	verifiedAt?: string;
-}
-
-// 登録コンテキストの型定義
-interface RegistrationContextType {
-	currentStep: number;
-	setCurrentStep: (step: number) => void;
-	veriffInfo: VeriffInfo;
-	setVeriffInfo: (info: Partial<VeriffInfo>) => void;
-	loading: boolean;
-	saveVeriffInfo: () => Promise<void>;
-	completeRegistration: () => Promise<void>;
+interface UseVeriffReturn {
+	status: VeriffStatus;
+	sessionId: string | null;
+	isLoading: boolean;
 	error: string | null;
+	startVerification: () => Promise<void>;
+	simulateVerification: () => Promise<void>; // 開発用
 }
 
-const defaultVeriffInfo: VeriffInfo = {
-	status: 'pending',
-};
-
-// コンテキスト作成
-const RegistrationContext = createContext<RegistrationContextType>({
-	currentStep: 0,
-	setCurrentStep: () => { },
-	veriffInfo: defaultVeriffInfo,
-	setVeriffInfo: () => { },
-	loading: true,
-	saveVeriffInfo: async () => { },
-	completeRegistration: async () => { },
-	error: null,
-});
-
-// コンテキストプロバイダーコンポーネント
-export function RegistrationProvider({ children }: { children: ReactNode }) {
-	const { user, userData, loading: authLoading } = useAuth();
-	const router = useRouter();
-	const [currentStep, setCurrentStep] = useState(0);
-	const [veriffInfo, setVeriffInfoState] = useState<VeriffInfo>(defaultVeriffInfo);
-	const [loading, setLoading] = useState(true);
+/**
+ * Veriff統合のためのカスタムフック
+ */
+export function useVeriff(): UseVeriffReturn {
+	const { user } = useAuth();
+	const [status, setStatus] = useState<VeriffStatus>('pending');
+	const [sessionId, setSessionId] = useState<string | null>(null);
+	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	// ユーザーデータの初期ロード
+	// ユーザーのVeriff状態を読み込む
 	useEffect(() => {
-		async function loadUserData() {
-			if (user && userData) {
-				try {
-					setLoading(true);
+		const loadVeriffStatus = async () => {
+			if (!user) return;
 
-					// 現在のステップを設定
-					if (userData.registrationStep !== undefined) {
-						setCurrentStep(userData.registrationStep);
+			try {
+				const userDoc = await getDoc(doc(db, 'users', user.uid));
+				if (userDoc.exists() && userDoc.data().eKYC) {
+					const eKYC = userDoc.data().eKYC;
+					setStatus(eKYC.status || 'pending');
+					if (eKYC.sessionId) {
+						setSessionId(eKYC.sessionId);
 					}
-
-					// eKYC情報があれば読み込む
-					if (userData.eKYC) {
-						setVeriffInfoState({
-							status: userData.eKYC.status || 'pending',
-							sessionId: userData.eKYC.sessionId,
-							verifiedAt: userData.eKYC.verifiedAt,
-						});
-					}
-
-					setLoading(false);
-				} catch (err) {
-					console.error('Error loading user registration data:', err);
-					setError('登録データの読み込み中にエラーが発生しました。');
-					setLoading(false);
 				}
-			} else if (!authLoading) {
-				setLoading(false);
+			} catch (err) {
+				console.error('Error loading verification status:', err);
+				setError('検証状態の取得中にエラーが発生しました。');
 			}
+		};
+
+		loadVeriffStatus();
+	}, [user]);
+
+	// Veriffセッションを開始する
+	const startVerification = async () => {
+		if (!user || !user.uid) {
+			setError('ユーザー情報が取得できません。ログインし直してください。');
+			return;
 		}
 
-		loadUserData();
-	}, [user, userData, authLoading]);
-
-	// Veriff情報の更新
-	const setVeriffInfo = (info: Partial<VeriffInfo>) => {
-		setVeriffInfoState(prev => ({ ...prev, ...info }));
-	};
-
-	// Veriff情報をFirestoreに保存
-	const saveVeriffInfo = async () => {
-		if (!user) return;
+		setIsLoading(true);
+		setError(null);
 
 		try {
-			setLoading(true);
-			setError(null);
+			// Firebase IDトークンを取得
+			const idToken = await user.getIdToken();
 
-			const userDocRef = doc(db, 'users', user.uid);
-			await setDoc(userDocRef, {
-				eKYC: {
-					status: veriffInfo.status,
-					sessionId: veriffInfo.sessionId,
-					verifiedAt: veriffInfo.verifiedAt || new Date().toISOString(),
-				},
-				registrationStep: 0, // 本人確認ステップ完了（最初のステップなので0）
-			}, { merge: true });
+			// APIを呼び出してセッションを作成
+			const response = await fetch('/api/veriff/create-session', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${idToken}`
+				}
+			});
 
-			setCurrentStep(0); // ステップを更新
-			setLoading(false);
+			if (!response.ok) {
+				throw new Error('セッション作成に失敗しました');
+			}
 
-			// 次のステップへ移動
-			router.push('/register/payment');
+			const data = await response.json();
+
+			// すでに検証が完了している場合
+			if (data.status === 'completed') {
+				setStatus('completed');
+				setIsLoading(false);
+				return;
+			}
+
+			// セッションIDを保存
+			setSessionId(data.sessionId);
+
+			// Veriffのページにリダイレクト
+			window.location.href = data.sessionUrl;
+
 		} catch (err) {
-			console.error('Error saving verification info:', err);
-			setError('本人確認情報の保存中にエラーが発生しました。');
-			setLoading(false);
+			console.error('Error starting verification:', err);
+			setError('検証の開始中にエラーが発生しました。後でもう一度お試しください。');
+			setIsLoading(false);
 		}
 	};
 
-	// 登録完了処理
-	const completeRegistration = async () => {
+	// 開発用: 検証完了をシミュレート
+	const simulateVerification = async () => {
 		if (!user) return;
 
+		setIsLoading(true);
+		setError(null);
+
 		try {
-			setLoading(true);
-			setError(null);
+			// モックセッションID
+			const mockSessionId = `mock-session-${Date.now()}`;
+			setSessionId(mockSessionId);
 
-			const userDocRef = doc(db, 'users', user.uid);
-			await setDoc(userDocRef, {
-				registrationCompleted: true,
-				registrationStep: 1, // 全ステップ完了（最後のステップなので1）
-			}, { merge: true });
+			// 検証完了をシミュレート
+			setTimeout(async () => {
+				setStatus('completed');
 
-			setCurrentStep(1); // ステップを更新
-			setLoading(false);
+				// Firestoreを更新
+				await setDoc(doc(db, 'users', user.uid), {
+					eKYC: {
+						sessionId: mockSessionId,
+						status: 'completed',
+						verifiedAt: new Date().toISOString()
+					},
+					registrationStep: 0  // eKYCステップ完了
+				}, { merge: true });
 
-			// ダッシュボードへ移動
-			router.push('/dashboard');
+				setIsLoading(false);
+			}, 2000);
 		} catch (err) {
-			console.error('Error completing registration:', err);
-			setError('会員登録の完了処理中にエラーが発生しました。');
-			setLoading(false);
+			console.error('Error in mock verification:', err);
+			setError('検証のシミュレーション中にエラーが発生しました。');
+			setIsLoading(false);
 		}
 	};
 
-	const value = {
-		currentStep,
-		setCurrentStep,
-		veriffInfo,
-		setVeriffInfo,
-		loading,
-		saveVeriffInfo,
-		completeRegistration,
+	return {
+		status,
+		sessionId,
+		isLoading,
 		error,
+		startVerification,
+		simulateVerification
 	};
-
-	return <RegistrationContext.Provider value={value}>{children}</RegistrationContext.Provider>;
 }
-
-// カスタムフック
-export const useRegistration = () => useContext(RegistrationContext);

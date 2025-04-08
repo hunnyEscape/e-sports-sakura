@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { VeriffSession, VeriffStatus } from '@/lib/veriff';
+import { VeriffSession, VeriffStatus } from '@/types';
 
 interface UseVeriffReturn {
 	status: VeriffStatus;

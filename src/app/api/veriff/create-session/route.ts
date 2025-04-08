@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { initAdminApp } from '@/lib/firebase-admin';
+import { VeriffSessionResponse } from '@/types/api';
 
 // Firebase Admin初期化
 initAdminApp();
@@ -41,10 +42,13 @@ export async function POST(request: NextRequest) {
 
 			// eKYCが既に完了している場合
 			if (userData?.eKYC?.status === 'completed') {
-				return NextResponse.json({
+				const response: VeriffSessionResponse = {
 					message: 'Verification already completed',
-					status: 'completed'
-				});
+					status: 'completed',
+					sessionId: userData.eKYC.sessionId || '',
+					sessionUrl: ''
+				};
+				return NextResponse.json(response);
 			}
 		}
 
@@ -92,11 +96,13 @@ export async function POST(request: NextRequest) {
 			}
 		}, { merge: true });
 
-		return NextResponse.json({
+		const sessionResponse: VeriffSessionResponse = {
 			sessionId: data.verification.id,
 			sessionUrl: data.verification.url,
 			status: 'created'
-		});
+		};
+
+		return NextResponse.json(sessionResponse);
 
 	} catch (error) {
 		console.error('Error creating Veriff session:', error);

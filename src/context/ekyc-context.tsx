@@ -4,17 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from './auth-context';
-
-// eKYCの状態の型
-export type EkycStatus = 'pending' | 'in-progress' | 'completed' | 'failed' | 'expired';
-
-// eKYCのデータ型
-interface EkycData {
-	status: EkycStatus;
-	sessionId?: string;
-	verifiedAt?: string;
-	lastUpdated?: string;
-}
+import { EkycData, EkycStatus } from '@/types';
 
 // コンテキストの型
 interface EkycContextType {
@@ -58,7 +48,7 @@ export function EkycProvider({ children }: { children: ReactNode }) {
 				if (snapshot.exists()) {
 					const userData = snapshot.data();
 					if (userData.eKYC) {
-						setEkycData(userData.eKYC);
+						setEkycData(userData.eKYC as EkycData);
 					} else {
 						setEkycData(defaultEkycData);
 					}

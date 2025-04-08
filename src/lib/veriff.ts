@@ -1,4 +1,6 @@
-// Veriff API連携用ユーティリティ
+// src/lib/veriff.ts
+
+import { VeriffSession, VeriffStatus } from '@/types';
 
 /**
  * Veriff API の設定
@@ -14,48 +16,48 @@ const VERIFF_API_SECRET = process.env.VERIFF_API_SECRET || '';
  * @param userEmail ユーザーのメールアドレス
  * @returns 作成されたセッション情報
  */
-export async function createVeriffSession(userId: string, userEmail: string) {
-  try {
-    // APIリクエストのペイロード
-    const payload = {
-      verification: {
-        callback: `${process.env.NEXT_PUBLIC_APP_URL}/api/veriff/callback`,
-        person: {
-          firstName: '',
-          lastName: '',
-          idNumber: userId,
-          email: userEmail
-        },
-        vendorData: userId,
-        timestamp: new Date().toISOString()
-      }
-    };
+export async function createVeriffSession(userId: string, userEmail: string): Promise<VeriffSession> {
+	try {
+		// APIリクエストのペイロード
+		const payload = {
+			verification: {
+				callback: `${process.env.NEXT_PUBLIC_APP_URL}/api/veriff/callback`,
+				person: {
+					firstName: '',
+					lastName: '',
+					idNumber: userId,
+					email: userEmail
+				},
+				vendorData: userId,
+				timestamp: new Date().toISOString()
+			}
+		};
 
-    // Veriff APIへのリクエスト
-    const response = await fetch(`${VERIFF_API_URL}/sessions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-AUTH-CLIENT': VERIFF_API_KEY
-      },
-      body: JSON.stringify(payload)
-    });
+		// Veriff APIへのリクエスト
+		const response = await fetch(`${VERIFF_API_URL}/sessions`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-AUTH-CLIENT': VERIFF_API_KEY
+			},
+			body: JSON.stringify(payload)
+		});
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Veriff API error: ${errorData.message || response.statusText}`);
-    }
+		if (!response.ok) {
+			const errorData = await response.json();
+			throw new Error(`Veriff API error: ${errorData.message || response.statusText}`);
+		}
 
-    const data = await response.json();
-    return {
-      sessionId: data.verification.id,
-      sessionUrl: data.verification.url,
-      status: 'created'
-    };
-  } catch (error) {
-    console.error('Error creating Veriff session:', error);
-    throw error;
-  }
+		const data = await response.json();
+		return {
+			sessionId: data.verification.id,
+			sessionUrl: data.verification.url,
+			status: 'created'
+		};
+	} catch (error) {
+		console.error('Error creating Veriff session:', error);
+		throw error;
+	}
 }
 
 /**
@@ -63,29 +65,32 @@ export async function createVeriffSession(userId: string, userEmail: string) {
  * @param sessionId セッションID
  * @returns セッションのステータス情報
  */
-export async function checkVeriffSessionStatus(sessionId: string) {
-  try {
-    const response = await fetch(`${VERIFF_API_URL}/sessions/${sessionId}`, {
-      method: 'GET',
-      headers: {
-        'X-AUTH-CLIENT': VERIFF_API_KEY
-      }
-    });
+export async function checkVeriffSessionStatus(sessionId: string): Promise<{
+	status: VeriffStatus;
+	updatedAt: string;
+}> {
+	try {
+		const response = await fetch(`${VERIFF_API_URL}/sessions/${sessionId}`, {
+			method: 'GET',
+			headers: {
+				'X-AUTH-CLIENT': VERIFF_API_KEY
+			}
+		});
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Veriff API error: ${errorData.message || response.statusText}`);
-    }
+		if (!response.ok) {
+			const errorData = await response.json();
+			throw new Error(`Veriff API error: ${errorData.message || response.statusText}`);
+		}
 
-    const data = await response.json();
-    return {
-      status: data.verification.status,
-      updatedAt: data.verification.updatedAt
-    };
-  } catch (error) {
-    console.error('Error checking Veriff session status:', error);
-    throw error;
-  }
+		const data = await response.json();
+		return {
+			status: data.verification.status,
+			updatedAt: data.verification.updatedAt
+		};
+	} catch (error) {
+		console.error('Error checking Veriff session status:', error);
+		throw error;
+	}
 }
 
 /**
@@ -94,20 +99,8 @@ export async function checkVeriffSessionStatus(sessionId: string) {
  * @param payload Veriffから受け取ったデータ
  * @returns 検証結果
  */
-export function verifyVeriffCallback(signature: string, payload: any) {
-  // 実際の実装では、HMACを使用して署名を検証するコードが必要
-  // 今回はモック実装
-  return true;
-}
-
-// Veriffの検証ステータスタイプ
-export type VeriffStatus = 'created' | 'pending' | 'submitted' | 'completed' | 'failed' | 'expired';
-
-// Veriffセッション情報の型
-export interface VeriffSession {
-  sessionId: string;
-  sessionUrl: string;
-  status: VeriffStatus;
-  createdAt?: string;
-  updatedAt?: string;
+export function verifyVeriffCallback(signature: string, payload: any): boolean {
+	// 実際の実装では、HMACを使用して署名を検証するコードが必要
+	// 今回はモック実装
+	return true;
 }

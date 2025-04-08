@@ -1,30 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from './auth-context';
+import { SeatDocument, ReservationDocument } from '@/types/firebase';
 
-// Define types for our context
-interface Seat {
-	id: string;
-	name: string;
-	ipAddress: string;
-	ratePerMinute: number;
-	status: 'available' | 'in-use' | 'maintenance';
-	createdAt: string;
-	updatedAt: string;
-}
-
-interface Reservation {
-	id: string;
-	userId: string;
-	seatId: string;
-	date: string;
-	startTime: string;
-	endTime: string;
-	duration: number;
-	status: 'confirmed' | 'cancelled' | 'completed';
-	createdAt: string;
-	updatedAt: string;
-}
-
+// 予約コンテキスト用の追加型
 interface SelectedTimeSlots {
 	seatId: string;
 	startTime: string;
@@ -36,8 +14,8 @@ interface DateAvailability {
 }
 
 interface ReservationContextType {
-	seats: Seat[];
-	reservations: Reservation[];
+	seats: SeatDocument[];
+	reservations: ReservationDocument[];
 	selectedDate: Date | null;
 	setSelectedDate: (date: Date | null) => void;
 	selectedTimeSlots: SelectedTimeSlots;
@@ -45,7 +23,7 @@ interface ReservationContextType {
 	dateAvailability: DateAvailability;
 	fetchSeats: () => Promise<void>;
 	fetchReservations: (date?: Date) => Promise<void>;
-	createReservation: (reservation: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+	createReservation: (reservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
 	cancelReservation: (reservationId: string) => Promise<void>;
 	isLoading: boolean;
 	error: string | null;
@@ -58,8 +36,8 @@ const ReservationContext = createContext<ReservationContextType | undefined>(und
 export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 	const { user } = useAuth();
 
-	const [seats, setSeats] = useState<Seat[]>([]);
-	const [reservations, setReservations] = useState<Reservation[]>([]);
+	const [seats, setSeats] = useState<SeatDocument[]>([]);
+	const [reservations, setReservations] = useState<ReservationDocument[]>([]);
 	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 	const [selectedTimeSlots, setSelectedTimeSlots] = useState<SelectedTimeSlots>({
 		seatId: '',
@@ -78,76 +56,108 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		try {
 			// This will be replaced by an actual API call later
 			// For now, we'll use mock data
-			const mockSeats: Seat[] = [
+			const mockSeats: SeatDocument[] = [
 				{
-					id: 'pc01',
+					seatId: 'pc01',
 					name: 'Gaming PC #1',
 					ipAddress: '192.168.1.101',
 					ratePerMinute: 10,
 					status: 'available',
+					branchCode: 'TACH',
+					branchName: '立川店',
+					seatType: 'PC',
+					seatNumber: 1,
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString()
 				},
 				{
-					id: 'pc02',
+					seatId: 'pc02',
 					name: 'Gaming PC #2',
 					ipAddress: '192.168.1.102',
 					ratePerMinute: 10,
 					status: 'available',
+					branchCode: 'TACH',
+					branchName: '立川店',
+					seatType: 'PC',
+					seatNumber: 2,
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString()
 				},
 				{
-					id: 'pc03',
+					seatId: 'pc03',
 					name: 'Gaming PC #3',
 					ipAddress: '192.168.1.103',
 					ratePerMinute: 5,
 					status: 'available',
+					branchCode: 'TACH',
+					branchName: '立川店',
+					seatType: 'PC',
+					seatNumber: 3,
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString()
 				},
 				{
-					id: 'pc04',
+					seatId: 'pc04',
 					name: 'Gaming PC #4',
 					ipAddress: '192.168.1.104',
 					ratePerMinute: 10,
 					status: 'available',
+					branchCode: 'TACH',
+					branchName: '立川店',
+					seatType: 'PC',
+					seatNumber: 4,
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString()
 				},
 				{
-					id: 'pc05',
+					seatId: 'pc05',
 					name: 'Gaming PC #5',
 					ipAddress: '192.168.1.105',
 					ratePerMinute: 10,
 					status: 'available',
+					branchCode: 'TACH',
+					branchName: '立川店',
+					seatType: 'PC',
+					seatNumber: 5,
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString()
 				},
 				{
-					id: 'pc06',
+					seatId: 'pc06',
 					name: 'Gaming PC #6',
 					ipAddress: '192.168.1.106',
 					ratePerMinute: 5,
 					status: 'available',
+					branchCode: 'TACH',
+					branchName: '立川店',
+					seatType: 'PC',
+					seatNumber: 6,
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString()
 				},
 				{
-					id: 'pc07',
+					seatId: 'pc07',
 					name: 'Gaming PC #7',
 					ipAddress: '192.168.1.107',
 					ratePerMinute: 5,
 					status: 'available',
+					branchCode: 'TACH',
+					branchName: '立川店',
+					seatType: 'PC',
+					seatNumber: 7,
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString()
 				},
 				{
-					id: 'pc08',
+					seatId: 'pc08',
 					name: 'Gaming PC #8',
 					ipAddress: '192.168.1.108',
 					ratePerMinute: 5,
 					status: 'available',
+					branchCode: 'TACH',
+					branchName: '立川店',
+					seatType: 'PC',
+					seatNumber: 8,
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString()
 				},
@@ -175,11 +185,12 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 
 			// This will be replaced by an actual API call later
 			// For now, we'll use mock data
-			const mockReservations: Reservation[] = [
+			const mockReservations: ReservationDocument[] = [
 				{
 					id: 'res001',
 					userId: 'user1',
 					seatId: 'pc01',
+					seatName: 'Gaming PC #1',
 					date: dateStr,
 					startTime: '14:00',
 					endTime: '16:00',
@@ -192,6 +203,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 					id: 'res002',
 					userId: 'user2',
 					seatId: 'pc02',
+					seatName: 'Gaming PC #2',
 					date: dateStr,
 					startTime: '18:00',
 					endTime: '20:00',
@@ -243,7 +255,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 	};
 
 	// Create a new reservation (mock implementation for now)
-	const createReservation = async (reservation: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
+	const createReservation = async (reservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 

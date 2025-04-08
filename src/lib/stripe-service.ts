@@ -1,9 +1,7 @@
 // src/lib/stripe-service.ts
 import Stripe from 'stripe';
 import { stripe } from '@/lib/stripe';
-
-// 支払い方法のタイプ
-export type PaymentMethodType = 'card' | 'google_pay' | 'apple_pay';
+import { PaymentMethodType } from '@/types';
 
 // 顧客情報のインターフェース
 interface CustomerData {

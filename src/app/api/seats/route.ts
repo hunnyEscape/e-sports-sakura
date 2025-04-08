@@ -2,30 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getFirestore, collection, getDocs, query, where } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { firebaseConfig } from '@/lib/firebase';
-
-interface Seat {
-	id: string;
-	seatId: string;
-	name: string;
-	status: string;
-	ratePerMinute: number;
-	ipAddress?: string;
-	createdAt?: string;
-	updatedAt?: string;
-	[key: string]: any; // その他のプロパティを許可
-  }
-  
-  // 予約情報のインターフェース
-  interface Reservation {
-	id?: string;
-	userId: string;
-	seatId: string;
-	date: string;
-	startTime: string;
-	endTime: string;
-	status: 'confirmed' | 'cancelled' | 'completed';
-	[key: string]: any;
-  }
+import { SeatDocument, ReservationDocument } from '@/types/firebase';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -52,7 +29,7 @@ export async function GET(req: NextRequest) {
 		const seats = querySnapshot.docs.map(doc => ({
 			id: doc.id,
 			...doc.data()
-		}));
+		})) as SeatDocument[];
 
 		// Get date param for availability check
 		const date = url.searchParams.get('date');
@@ -66,7 +43,7 @@ export async function GET(req: NextRequest) {
 			);
 
 			const reservationsSnapshot = await getDocs(reservationsQuery);
-			const reservations = reservationsSnapshot.docs.map(doc => doc.data());
+			const reservations = reservationsSnapshot.docs.map(doc => doc.data()) as ReservationDocument[];
 
 			// Enhance seats with availability info
 			const seatsWithAvailability = seats.map(seat => {
@@ -119,7 +96,7 @@ export async function POST(req: NextRequest) {
 		const seats = seatsSnapshot.docs.map(doc => ({
 			id: doc.id,
 			...doc.data()
-		}));
+		})) as SeatDocument[];
 
 		// Query reservations for the specified date
 		const reservationsQuery = query(
@@ -129,7 +106,7 @@ export async function POST(req: NextRequest) {
 		);
 
 		const reservationsSnapshot = await getDocs(reservationsQuery);
-		const reservations = reservationsSnapshot.docs.map(doc => doc.data());
+		const reservations = reservationsSnapshot.docs.map(doc => doc.data()) as ReservationDocument[];
 
 		// Convert times to Date objects for comparison
 		const requestStart = new Date(`${date}T${startTime}`);

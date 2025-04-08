@@ -3,6 +3,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { initAdminApp } from '@/lib/firebase-admin';
 import { getOrCreateCustomer } from '@/lib/stripe';
+import { StripeCustomerResponse } from '@/types/api';
 
 // Firebase Admin初期化
 initAdminApp();
@@ -44,9 +45,11 @@ export async function POST(request: NextRequest) {
 			}
 		});
 
-		return NextResponse.json({
+		const response: StripeCustomerResponse = {
 			customerId: customer.id
-		});
+		};
+
+		return NextResponse.json(response);
 
 	} catch (error) {
 		console.error('Error creating Stripe customer:', error);
