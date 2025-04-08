@@ -385,8 +385,6 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 					))}
 				</div>
 			</div>
-
-			{/* Selected time slots information and action buttons */}
 			{hasSelection ? (
 				<motion.div
 					initial={{ opacity: 0, y: 10 }}

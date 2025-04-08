@@ -739,6 +739,17 @@ export default function DashboardPage() {
 					{/* メインコンテンツ */}
 					<main className="container mx-auto px-4 py-8">
 						<h1 className="text-2xl font-bold mb-6">マイダッシュボード</h1>
+						<div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-8">
+							<Link
+								href="/reservation"
+								className="bg-border/5 hover:bg-border/10 rounded-xl p-4 flex flex-col items-center justify-center transition-colors"
+							>
+								<Calendar className="w-8 h-8 text-accent mb-2" />
+								<span className="font-medium text-foreground">新規予約</span>
+								<span className="text-sm text-foreground/60">座席を予約する</span>
+							</Link>
+
+						</div>
 
 						{/* 会員登録が完了していない場合は登録フローに誘導 */}
 						{userData && !userData.registrationCompleted && (
@@ -765,8 +776,8 @@ export default function DashboardPage() {
 									<button
 										onClick={() => setActiveTab('qr')}
 										className={`py-2 px-4 font-medium ${activeTab === 'qr'
-												? 'text-accent border-b-2 border-accent'
-												: 'text-foreground/70 hover:text-foreground'
+											? 'text-accent border-b-2 border-accent'
+											: 'text-foreground/70 hover:text-foreground'
 											}`}
 									>
 										会員QRコード
@@ -774,20 +785,29 @@ export default function DashboardPage() {
 									<button
 										onClick={() => setActiveTab('reservations')}
 										className={`py-2 px-4 font-medium ${activeTab === 'reservations'
-												? 'text-accent border-b-2 border-accent'
-												: 'text-foreground/70 hover:text-foreground'
+											? 'text-accent border-b-2 border-accent'
+											: 'text-foreground/70 hover:text-foreground'
 											}`}
 									>
-										予約履歴
+										予約情報
 									</button>
 									<button
 										onClick={() => setActiveTab('usage')}
 										className={`py-2 px-4 font-medium ${activeTab === 'usage'
-												? 'text-accent border-b-2 border-accent'
-												: 'text-foreground/70 hover:text-foreground'
+											? 'text-accent border-b-2 border-accent'
+											: 'text-foreground/70 hover:text-foreground'
 											}`}
 									>
-										利用履歴
+										過去の利用
+									</button>
+									<button
+										onClick={() => setActiveTab('payment')}
+										className={`py-2 px-4 font-medium ${activeTab === 'payment'
+											? 'text-accent border-b-2 border-accent'
+											: 'text-foreground/70 hover:text-foreground'
+											}`}
+									>
+										支払い方法
 									</button>
 								</div>
 
@@ -811,37 +831,74 @@ export default function DashboardPage() {
 											<UsageHistory />
 										</div>
 									)}
+
+									{activeTab === 'payment' && (
+										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+											<h2 className="text-lg font-semibold mb-4">決済情報管理</h2>
+											{userData?.stripe?.paymentMethodId ? (
+												<div className="space-y-6">
+													<div className="p-4 border border-border/30 rounded-lg">
+														<div className="flex items-center justify-between mb-2">
+															<div className="flex items-center">
+																<CreditCard className="w-5 h-5 text-accent mr-2" />
+																<span className="font-medium">登録済みのカード</span>
+															</div>
+															<span className="text-xs bg-highlight/10 text-highlight px-2 py-1 rounded-full">
+																有効
+															</span>
+														</div>
+														<div className="text-sm text-foreground/70">
+															<p>••••••••••••{userData.stripe.paymentMethodId.slice(-4)}</p>
+															<p className="mt-1">更新日: {new Date(userData.stripe.updatedAt).toLocaleDateString('ja-JP')}</p>
+														</div>
+													</div>
+
+													<div className="flex justify-between items-center">
+														<Button
+															href="/payment"
+															variant="outline"
+														>
+															カード情報を更新
+														</Button>
+
+														<button
+															className="text-sm text-foreground/60 hover:text-accent"
+														>
+															カード情報について
+														</button>
+													</div>
+
+													<div className="mt-6 border-t border-border/20 pt-6">
+														<h3 className="text-md font-medium mb-3">請求について</h3>
+														<p className="text-sm text-foreground/70 mb-4">
+															利用料金は月末にまとめて請求されます。従量課金制のため、実際に利用した分のみの請求となります。
+														</p>
+														<div className="bg-border/10 p-3 rounded-md text-sm">
+															<p className="font-medium">次回請求予定</p>
+															<p className="text-foreground/70 mt-1">2025年4月30日</p>
+														</div>
+													</div>
+												</div>
+											) : (
+												<div className="text-center py-8">
+													<CreditCard className="w-12 h-12 text-accent/40 mx-auto mb-4" />
+													<h3 className="text-lg font-medium mb-2">支払い方法が未登録です</h3>
+													<p className="text-foreground/60 mb-6 max-w-md mx-auto">
+														サービスをご利用いただくには、クレジットカードまたはデビットカードの登録が必要です。
+													</p>
+													<Button
+														href="/payment"
+														variant="primary"
+													>
+														支払い方法を登録する
+													</Button>
+												</div>
+											)}
+										</div>
+									)}
 								</div>
 
 								{/* クイックアクション */}
-								<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
-									<Link
-										href="/reservation"
-										className="bg-border/5 hover:bg-border/10 rounded-xl p-4 flex flex-col items-center justify-center transition-colors"
-									>
-										<Calendar className="w-8 h-8 text-accent mb-2" />
-										<span className="font-medium text-foreground">新規予約</span>
-										<span className="text-sm text-foreground/60">座席を予約する</span>
-									</Link>
-
-									<button
-										onClick={() => setActiveTab('usage')}
-										className="bg-border/5 hover:bg-border/10 rounded-xl p-4 flex flex-col items-center justify-center transition-colors"
-									>
-										<Clock className="w-8 h-8 text-accent mb-2" />
-										<span className="font-medium text-foreground">利用履歴</span>
-										<span className="text-sm text-foreground/60">過去の利用を確認</span>
-									</button>
-
-									<Link
-										href="/payment"
-										className="bg-border/5 hover:bg-border/10 rounded-xl p-4 flex flex-col items-center justify-center transition-colors"
-									>
-										<CreditCard className="w-8 h-8 text-accent mb-2" />
-										<span className="font-medium text-foreground">決済情報</span>
-										<span className="text-sm text-foreground/60">支払い方法を管理</span>
-									</Link>
-								</div>
 							</>
 						)}
 					</main>
@@ -859,6 +916,7 @@ import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { ReservationProvider } from '@/context/reservation-context';
+import { ChevronLeft } from 'lucide-react';
 
 import CalendarView from '@/components/reservation/calendar-view';
 import TimeGrid from '@/components/reservation/time-grid';
@@ -944,29 +1002,28 @@ const ReservationPage: React.FC = () => {
 		router.push('/dashboard');
 	};
 
+	// Handle back navigation
+	const handleBack = () => {
+		if (currentStep === ReservationStep.CONFIRM) {
+			setCurrentStep(ReservationStep.SELECT_TIME);
+		} else if (currentStep === ReservationStep.SELECT_TIME) {
+			setCurrentStep(ReservationStep.SELECT_DATE);
+		}
+	};
+
 	// Render appropriate step
 	const renderStep = () => {
 		switch (currentStep) {
 			case ReservationStep.SELECT_DATE:
 				return (
 					<div className="w-full max-w-3xl mx-auto">
-						<h1 className="text-2xl font-bold text-foreground mb-6">予約日を選択</h1>
 						<CalendarView onDateSelect={handleDateSelect} />
 					</div>
 				);
 
 			case ReservationStep.SELECT_TIME:
 				return (
-					<div className="w-full max-w-5xl mx-auto">
-						<div className="flex items-center justify-between mb-6">
-							<h1 className="text-2xl font-bold text-foreground">時間と座席を選択</h1>
-							<button
-								onClick={() => setCurrentStep(ReservationStep.SELECT_DATE)}
-								className="text-accent hover:underline"
-							>
-								日付を変更
-							</button>
-						</div>
+					<div className="w-full max-w-3xl mx-auto">
 						{selectedDate && (
 							<TimeGrid
 								date={selectedDate}
@@ -979,10 +1036,9 @@ const ReservationPage: React.FC = () => {
 			case ReservationStep.CONFIRM:
 				return (
 					<div className="w-full max-w-3xl mx-auto">
-						<h1 className="text-2xl font-bold text-foreground mb-6">予約の確認</h1>
 						<ReservationForm
 							onSuccess={handleReservationSuccess}
-							onCancel={() => setCurrentStep(ReservationStep.SELECT_TIME)}
+							onCancel={handleBack}
 						/>
 					</div>
 				);
@@ -1000,6 +1056,24 @@ const ReservationPage: React.FC = () => {
 					animate={{ opacity: 1, y: 0 }}
 					className="w-full"
 				>
+					{/* Header with back button */}
+					<div className="max-w-3xl mx-auto mb-6 flex items-center">
+						{currentStep > ReservationStep.SELECT_DATE && (
+							<button
+								onClick={handleBack}
+								className="mr-3 p-2 rounded-full bg-border/50 border border-border/20 hover:bg-border/20 transition-colors"
+								aria-label="戻る"
+							>
+								<ChevronLeft size={20} className="text-foreground/70" />
+							</button>
+						)}
+						<h1 className="text-2xl font-bold text-foreground">
+							{currentStep === ReservationStep.SELECT_DATE && '予約日を選択'}
+							{currentStep === ReservationStep.SELECT_TIME && '時間と座席を選択'}
+							{currentStep === ReservationStep.CONFIRM && '予約の確認'}
+						</h1>
+					</div>
+
 					{/* Progress steps */}
 					<div className="max-w-3xl mx-auto mb-8">
 						<div className="flex items-center justify-between">
@@ -2313,6 +2387,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getFirestore, collection, getDocs, query, where } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { firebaseConfig } from '@/lib/firebase';
+
+interface Seat {
+	id: string;
+	seatId: string;
+	name: string;
+	status: string;
+	ratePerMinute: number;
+	ipAddress?: string;
+	createdAt?: string;
+	updatedAt?: string;
+	[key: string]: any; // その他のプロパティを許可
+  }
+  
+  // 予約情報のインターフェース
+  interface Reservation {
+	id?: string;
+	userId: string;
+	seatId: string;
+	date: string;
+	startTime: string;
+	endTime: string;
+	status: 'confirmed' | 'cancelled' | 'completed';
+	[key: string]: any;
+  }
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -5878,15 +5976,7 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 				)}
 
 				{/* Action buttons */}
-				<div className="flex justify-between">
-					<button
-						type="button"
-						onClick={onCancel}
-						className="px-4 py-2 border border-border rounded-md hover:bg-background/10 transition-colors"
-					>
-						戻る
-					</button>
-
+				<div className="flex justify-end">
 					<button
 						type="submit"
 						disabled={!isFormValid || isLoading}
@@ -6226,10 +6316,11 @@ export default LoginPrompt;-e
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useReservation } from '@/context/reservation-context';
+import { ArrowRight, Calendar, Clock, AlertCircle, Users, Plus, Minus, Check } from 'lucide-react';
 
 interface TimeGridProps {
 	date: Date;
-	onTimeSelect?: (seatId: string, startTime: string, endTime: string) => void;
+	onTimeSelect?: (reservations: SeatReservation[], people: number) => void;
 }
 
 interface TimeSlot {
@@ -6243,13 +6334,24 @@ interface Seat {
 	ratePerMinute: number;
 }
 
+interface SeatReservation {
+	seatId: string;
+	startTime: string;
+	endTime: string;
+}
+
+interface RangeSelection {
+	rangeStart: string | null;
+	rangeEnd: string | null;
+}
+
 const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 	const { seats, reservations, selectedTimeSlots, setSelectedTimeSlots } = useReservation();
 
-	// State for drag selection
-	const [dragStart, setDragStart] = useState<{ seatId: string, time: string } | null>(null);
-	const [dragEnd, setDragEnd] = useState<{ seatId: string, time: string } | null>(null);
-	const [isDragging, setIsDragging] = useState(false);
+	// State for multiple seat selection
+	const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
+	const [seatRanges, setSeatRanges] = useState<Record<string, RangeSelection>>({});
+	const [people, setPeople] = useState<number>(1);
 
 	// Generate time slots for the day (30-minute intervals from 10:00 to 22:00)
 	const generateTimeSlots = (): TimeSlot[] => {
@@ -6287,156 +6389,379 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		);
 	};
 
-	// Check if a time slot is selected
-	const isSelected = (seatId: string, timeSlot: string): boolean => {
-		if (!selectedTimeSlots.seatId || selectedTimeSlots.seatId !== seatId) return false;
-
-		const slotTime = new Date(`${date.toISOString().split('T')[0]}T${timeSlot}`);
-		const startTime = new Date(`${date.toISOString().split('T')[0]}T${selectedTimeSlots.startTime}`);
-		const endTime = new Date(`${date.toISOString().split('T')[0]}T${selectedTimeSlots.endTime}`);
-
-		return slotTime >= startTime && slotTime < endTime;
-	};
-
-	// Handle mouse down on a time slot (start dragging)
-	const handleMouseDown = (seatId: string, time: string) => {
+	// Handle slot click for range selection
+	const handleSlotClick = (seatId: string, time: string) => {
 		if (isReserved(seatId, time)) return;
 
-		setDragStart({ seatId, time });
-		setDragEnd({ seatId, time });
-		setIsDragging(true);
-	};
+		// Get current range for this seat
+		const currentRange = seatRanges[seatId] || { rangeStart: null, rangeEnd: null };
 
-	// Handle mouse enter on a time slot during dragging
-	const handleMouseEnter = (seatId: string, time: string) => {
-		if (!isDragging || !dragStart || dragStart.seatId !== seatId || isReserved(seatId, time)) return;
+		// Check if seat is already selected
+		const isSeatSelected = selectedSeatIds.includes(seatId);
 
-		setDragEnd({ seatId, time });
-	};
-
-	// Handle mouse up (end dragging and set selection)
-	const handleMouseUp = () => {
-		if (!isDragging || !dragStart || !dragEnd) return;
-
-		// Ensure start time is earlier than end time
-		let startTime = dragStart.time;
-		let endTime = dragEnd.time;
-
-		if (startTime > endTime) {
-			[startTime, endTime] = [endTime, startTime];
+		if (!isSeatSelected) {
+			// Add new seat to selection
+			setSelectedSeatIds(prev => [...prev, seatId]);
+			setSeatRanges(prev => ({
+				...prev,
+				[seatId]: { rangeStart: time, rangeEnd: null }
+			}));
+			return;
 		}
 
-		// Calculate the end time (30 minutes after the last selected slot)
-		const endTimeDate = new Date(`${date.toISOString().split('T')[0]}T${endTime}`);
-		endTimeDate.setMinutes(endTimeDate.getMinutes() + 30);
-		const adjustedEndTime = `${endTimeDate.getHours().toString().padStart(2, '0')}:${endTimeDate.getMinutes().toString().padStart(2, '0')}`;
+		// First click sets start time
+		if (currentRange.rangeStart === null) {
+			setSeatRanges(prev => ({
+				...prev,
+				[seatId]: { rangeStart: time, rangeEnd: null }
+			}));
+			return;
+		}
 
-		setSelectedTimeSlots({
-			seatId: dragStart.seatId,
-			startTime,
-			endTime: adjustedEndTime
+		// If clicking on the same slot, deselect it
+		if (currentRange.rangeStart === time && currentRange.rangeEnd === null) {
+			// If this was the only selected time slot for this seat, remove the seat from selection
+			setSeatRanges(prev => {
+				const newRanges = { ...prev };
+				delete newRanges[seatId];
+				return newRanges;
+			});
+			setSelectedSeatIds(prev => prev.filter(id => id !== seatId));
+			return;
+		}
+
+		// Second click sets end time
+		if (currentRange.rangeEnd === null) {
+			// Ensure start is before end
+			if (time < currentRange.rangeStart) {
+				setSeatRanges(prev => ({
+					...prev,
+					[seatId]: { rangeStart: time, rangeEnd: currentRange.rangeStart }
+				}));
+			} else {
+				setSeatRanges(prev => ({
+					...prev,
+					[seatId]: { ...prev[seatId], rangeEnd: time }
+				}));
+			}
+			return;
+		}
+
+		// If range is already set, start a new selection
+		setSeatRanges(prev => ({
+			...prev,
+			[seatId]: { rangeStart: time, rangeEnd: null }
+		}));
+	};
+
+	// Check if a slot is within the selected range
+	const isInSelectedRange = (seatId: string, time: string): boolean => {
+		if (!selectedSeatIds.includes(seatId)) return false;
+
+		const range = seatRanges[seatId];
+		if (!range || !range.rangeStart) return false;
+
+		// If only start is selected, highlight just that slot
+		if (!range.rangeEnd) return time === range.rangeStart;
+
+		// Check if time is within range
+		return time >= range.rangeStart && time <= range.rangeEnd;
+	};
+
+	// Calculate end time (30 minutes after the last slot)
+	const calculateEndTime = (time: string): string => {
+		if (!time) return '';
+
+		const timeDate = new Date(`${date.toISOString().split('T')[0]}T${time}`);
+		timeDate.setMinutes(timeDate.getMinutes() + 30);
+		return `${timeDate.getHours().toString().padStart(2, '0')}:${timeDate.getMinutes().toString().padStart(2, '0')}`;
+	};
+
+	// Update selected time slots when selections change
+	useEffect(() => {
+		// Create an array of SeatReservation objects
+		const newSelectedTimeSlots: SeatReservation[] = selectedSeatIds
+			.filter(seatId => seatRanges[seatId] && seatRanges[seatId].rangeStart)
+			.map(seatId => {
+				const range = seatRanges[seatId];
+				return {
+					seatId,
+					startTime: range.rangeStart as string,
+					endTime: range.rangeEnd
+						? calculateEndTime(range.rangeEnd)
+						: calculateEndTime(range.rangeStart as string)
+				};
+			});
+
+		// Update context with multiple seat selections
+		if (newSelectedTimeSlots.length > 0) {
+			// If there's a setSelectedTimeSlots that expects an array
+			// This might require updating the context to support multiple selections
+			if (Array.isArray(selectedTimeSlots)) {
+				setSelectedTimeSlots(newSelectedTimeSlots);
+			} else {
+				// Fallback for backward compatibility - just use the first selection
+				const firstSelection = newSelectedTimeSlots[0];
+				setSelectedTimeSlots(firstSelection);
+			}
+		} else {
+			// Clear selection
+			if (Array.isArray(selectedTimeSlots)) {
+				setSelectedTimeSlots([]);
+			} else {
+				setSelectedTimeSlots({ seatId: '', startTime: '', endTime: '' });
+			}
+		}
+	}, [seatRanges, selectedSeatIds, setSelectedTimeSlots]);
+
+	// Handle increase/decrease people count
+	const handlePeopleChange = (increment: boolean) => {
+		setPeople(prev => {
+			if (increment) {
+				return prev < 10 ? prev + 1 : prev;
+			} else {
+				return prev > 1 ? prev - 1 : prev;
+			}
 		});
-
-		if (onTimeSelect) {
-			onTimeSelect(dragStart.seatId, startTime, adjustedEndTime);
-		}
-
-		setIsDragging(false);
-		setDragStart(null);
-		setDragEnd(null);
 	};
 
-	// Handle mouse leave from grid
-	const handleMouseLeave = () => {
-		if (isDragging) {
-			setIsDragging(false);
-			setDragStart(null);
-			setDragEnd(null);
+	// Handle continue to confirmation
+	const handleContinue = () => {
+		if (selectedSeatIds.length > 0 && onTimeSelect) {
+			const seatReservations = selectedSeatIds
+				.filter(seatId => seatRanges[seatId] && seatRanges[seatId].rangeStart)
+				.map(seatId => {
+					const range = seatRanges[seatId];
+					return {
+						seatId,
+						startTime: range.rangeStart as string,
+						endTime: range.rangeEnd
+							? calculateEndTime(range.rangeEnd)
+							: calculateEndTime(range.rangeStart as string)
+					};
+				});
+
+			onTimeSelect(seatReservations, people);
 		}
-	};
-
-	// Calculate the selection range for visual indication during dragging
-	const getSelectionRange = (seatId: string, time: string) => {
-		if (!isDragging || !dragStart || !dragEnd || dragStart.seatId !== seatId) return false;
-
-		const timeValue = time;
-		const startValue = dragStart.time < dragEnd.time ? dragStart.time : dragEnd.time;
-		const endValue = dragStart.time < dragEnd.time ? dragEnd.time : dragStart.time;
-
-		return timeValue >= startValue && timeValue <= endValue;
 	};
 
 	// Reset selection when date changes
 	useEffect(() => {
-		setSelectedTimeSlots({ seatId: '', startTime: '', endTime: '' });
+		setSelectedSeatIds([]);
+		setSeatRanges({});
+		if (Array.isArray(selectedTimeSlots)) {
+			setSelectedTimeSlots([]);
+		} else {
+			setSelectedTimeSlots({ seatId: '', startTime: '', endTime: '' });
+		}
 	}, [date, setSelectedTimeSlots]);
 
+	// Format date for display
+	const formatDate = (date: Date): string => {
+		const year = date.getFullYear();
+		const month = date.getMonth() + 1;
+		const day = date.getDate();
+		const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+
+		return `${year}年${month}月${day}日(${dayOfWeek})`;
+	};
+
+	// Calculate total duration in minutes across all selections
+	const calculateTotalDuration = (): number => {
+		return selectedSeatIds.reduce((total, seatId) => {
+			const range = seatRanges[seatId];
+			if (!range || !range.rangeStart) return total;
+
+			const endTimeForCalc = range.rangeEnd ? range.rangeEnd : range.rangeStart;
+			const startParts = range.rangeStart.split(':').map(Number);
+			const endParts = endTimeForCalc.split(':').map(Number);
+
+			let startMinutes = startParts[0] * 60 + startParts[1];
+			let endMinutes = endParts[0] * 60 + endParts[1];
+
+			// Add 30 minutes to end time for actual duration
+			endMinutes += 30;
+
+			return total + (endMinutes - startMinutes);
+		}, 0);
+	};
+
+	// Get selected seats
+	const selectedSeatsInfo = selectedSeatIds
+		.filter(id => seatRanges[id] && seatRanges[id].rangeStart)
+		.map(id => {
+			const seat = seats.find(s => s.id === id);
+			const range = seatRanges[id];
+
+			if (!seat || !range || !range.rangeStart) return null;
+
+			const endTime = range.rangeEnd
+				? calculateEndTime(range.rangeEnd)
+				: calculateEndTime(range.rangeStart);
+
+			const startParts = range.rangeStart.split(':').map(Number);
+			const endParts = (range.rangeEnd || range.rangeStart).split(':').map(Number);
+
+			let startMinutes = startParts[0] * 60 + startParts[1];
+			let endMinutes = endParts[0] * 60 + endParts[1] + 30; // Add 30 minutes
+
+			const duration = endMinutes - startMinutes;
+
+			return {
+				seat,
+				startTime: range.rangeStart,
+				endTime,
+				duration
+			};
+		})
+		.filter(Boolean);
+
+	// Check if we have any selection
+	const hasSelection = selectedSeatIds.length > 0 && selectedSeatIds.some(id =>
+		seatRanges[id] && seatRanges[id].rangeStart
+	);
+
+	// Calculate total cost across all seat selections
+	const calculateTotalCost = (): number => {
+		return selectedSeatsInfo.reduce((total, info) => {
+			if (!info) return total;
+			return total + (info.seat.ratePerMinute * info.duration);
+		}, 0);
+	};
+
 	return (
-		<div
-			className="w-full overflow-x-auto"
-			onMouseLeave={handleMouseLeave}
-			onMouseUp={handleMouseUp}
-		>
-			<div className="min-w-max">
-				{/* Time slots header */}
-				<div className="flex border-b border-border/30">
-					<div className="w-32 flex-shrink-0 p-2 font-medium text-foreground">座席</div>
-					{timeSlots.map((slot) => (
+		<div className="space-y-6">
+			<div
+				className="w-full overflow-x-auto border border-border/20 rounded-lg bg-background/30"
+			>
+				<div className="min-w-max">
+					{/* Time slots header */}
+					<div className="flex border-b border-border/30 bg-border/5">
+						<div className="w-32 flex-shrink-0 p-2 font-medium text-foreground sticky left-0 bg-border/5">座席</div>
+						{timeSlots.map((slot) => (
+							<div
+								key={slot.time}
+								className="w-16 flex-shrink-0 p-2 text-center text-sm border-l border-border/30 text-foreground/70"
+							>
+								{slot.formattedTime}
+							</div>
+						))}
+					</div>
+
+					{/*Seats and time slots grid */}
+					{seats.map((seat) => (
 						<div
-							key={slot.time}
-							className="w-16 flex-shrink-0 p-2 text-center text-sm border-l border-border/30 text-foreground/70"
+							key={seat.id}
+							className="flex border-b border-border/20 hover:bg-background/5"
 						>
-							{slot.formattedTime}
+							{/* Seat name */}
+							<div className="w-32 flex-shrink-0 p-2 border-r border-border/20 flex flex-col sticky left-0 bg-background">
+								<div className="flex items-center justify-between">
+									<span className="font-medium text-foreground">{seat.name}</span>
+									{selectedSeatIds.includes(seat.id) && (
+										<Check className="h-4 w-4 text-accent"/>
+									)}
+								</div>
+								<span className="text-xs text-foreground/60">¥{seat.ratePerMinute}/分</span>
+							</div>
+
+							{/* Time slots */}
+							{timeSlots.map((slot) => {
+								const isSlotReserved = isReserved(seat.id, slot.time);
+								const isSelected = isInSelectedRange(seat.id, slot.time);
+
+								const range = seatRanges[seat.id] || { rangeStart: null, rangeEnd: null };
+								const isRangeStart = range.rangeStart === slot.time;
+								const isRangeEnd = range.rangeEnd === slot.time;
+
+								return (
+									<motion.div
+										key={`${seat.id}-${slot.time}`}
+										className={`
+                      w-16 h-16 flex-shrink-0 border-l border-border/20
+                      ${isSlotReserved ? 'bg-border/50 cursor-not-allowed' : 'cursor-pointer'}
+                      ${isSelected ? 'bg-accent/40' : ''}
+                      ${isRangeStart ? 'bg-accent/70' : ''}
+                      ${isRangeEnd ? 'bg-accent/70' : ''}
+                      ${!isSlotReserved && !isSelected ? 'hover:bg-background/10' : ''}
+                      flex items-center justify-center
+                    `}
+										whileHover={!isSlotReserved ? { scale: 1.05 } : {}}
+										whileTap={!isSlotReserved ? { scale: 0.95 } : {}}
+										onClick={() => !isSlotReserved && handleSlotClick(seat.id, slot.time)}
+									>
+										{(isRangeStart || isRangeEnd) && (
+											<div className="w-2 h-2 bg-white rounded-full"></div>
+										)}
+									</motion.div>
+								);
+							})}
 						</div>
 					))}
 				</div>
+			</div>
+			{hasSelection ? (
+				<motion.div
+					initial={{ opacity: 0, y: 10 }}
+					animate={{ opacity: 1, y: 0 }}
+					className="mt-6 p-4 border border-accent/20 rounded-lg bg-accent/5 space-y-4"
+				>
+					<h3 className="font-medium text-foreground text-lg">選択中の予約枠</h3>
 
-				{/* Seats and time slots grid */}
-				{seats.map((seat) => (
-					<div
-						key={seat.id}
-						className="flex border-b border-border/20 hover:bg-background/5"
-					>
-						{/* Seat name */}
-						<div className="w-32 flex-shrink-0 p-2 border-r border-border/20 flex flex-col">
-							<span className="font-medium text-foreground">{seat.name}</span>
-							<span className="text-xs text-foreground/60">¥{seat.ratePerMinute}/分</span>
+					<div className="flex flex-col gap-5">
+						<div className="space-y-4">
+							<div className="space-y-2">
+								<div className="flex items-center">
+									<Calendar className="w-4 h-4 text-accent mr-2" />
+									<span className="text-foreground/80">{formatDate(date)}</span>
+								</div>
+
+								{/* Selected seats information */}
+								<div className="space-y-3 mt-3">
+									{selectedSeatsInfo.map((info, index) => {
+										if (!info) return null;
+										return (
+											<div key={info.seat.id} className="p-2 bg-border/10 rounded-md">
+												<div className="font-medium text-foreground/80">
+													{info.seat.name}
+												</div>
+												<div className="flex items-center mt-1">
+													<Clock className="w-4 h-4 text-accent mr-2" />
+													<span className="text-foreground/80">
+														{info.startTime} から {info.endTime} まで
+														<span className="ml-1 text-sm">({info.duration}分)</span>
+													</span>
+												</div>
+												<div className="text-sm text-foreground/70 mt-1">
+													予想料金: ¥{(info.seat.ratePerMinute * info.duration).toLocaleString()}
+												</div>
+											</div>
+										);
+									})}
+								</div>
+
+								<div className="pt-2 mt-2 border-t border-border/20 font-medium text-foreground/80">
+									合計予想料金: ¥{calculateTotalCost().toLocaleString()}
+								</div>
+							</div>
 						</div>
 
-						{/* Time slots */}
-						{timeSlots.map((slot) => {
-							const isSlotReserved = isReserved(seat.id, slot.time);
-							const isSlotSelected = isSelected(seat.id, slot.time);
-							const isInDragSelection = getSelectionRange(seat.id, slot.time);
-
-							return (
-								<motion.div
-									key={`${seat.id}-${slot.time}`}
-									className={`
-                    w-16 h-16 flex-shrink-0 border-l border-border/20
-                    ${isSlotReserved ? 'bg-border/50 cursor-not-allowed' : 'cursor-pointer'}
-                    ${isSlotSelected ? 'bg-accent/40' : ''}
-                    ${isInDragSelection && isDragging ? 'bg-accent/20' : ''}
-                    ${!isSlotReserved && !isSlotSelected && !isInDragSelection ? 'hover:bg-background/10' : ''}
-                  `}
-									whileHover={!isSlotReserved ? { scale: 1.05 } : {}}
-									whileTap={!isSlotReserved ? { scale: 0.95 } : {}}
-									onMouseDown={() => !isSlotReserved && handleMouseDown(seat.id, slot.time)}
-									onMouseEnter={() => handleMouseEnter(seat.id, slot.time)}
-								/>
-							);
-						})}
+						<motion.button
+							whileHover={{ scale: 1.03 }}
+							whileTap={{ scale: 0.97 }}
+							onClick={handleContinue}
+							className="px-6 py-3 bg-accent text-white rounded-lg flex items-center justify-center shadow-sm hover:bg-accent/90 transition-colors whitespace-nowrap"
+						>
+							<span>予約内容を確認</span>
+							<ArrowRight className="ml-2" size={18} />
+						</motion.button>
 					</div>
-				))}
-			</div>
-
-			{/* Selected time slots information */}
-			{selectedTimeSlots.seatId && (
-				<div className="mt-4 p-3 border border-accent/20 rounded-lg bg-accent/5">
-					<h3 className="font-medium text-foreground">選択中の予約枠</h3>
+				</motion.div>
+			) : (
+				<div className="bg-border/5 p-3 rounded-lg flex items-start">
+					<AlertCircle className="text-accent mr-2 mt-0.5 flex-shrink-0" size={18} />
 					<p className="text-sm text-foreground/80">
-						{seats.find(s => s.id === selectedTimeSlots.seatId)?.name} -
-						{selectedTimeSlots.startTime} から {selectedTimeSlots.endTime} まで
+						希望する座席と開始時間をクリックしてください。複数の座席を同時に予約できます。
 					</p>
 				</div>
 			)}
@@ -9201,13 +9526,58 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				},
 				{
 					id: 'pc03',
-					name: 'Standard PC #1',
+					name: 'Gaming PC #3',
 					ipAddress: '192.168.1.103',
 					ratePerMinute: 5,
 					status: 'available',
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString()
-				}
+				},
+				{
+					id: 'pc04',
+					name: 'Gaming PC #4',
+					ipAddress: '192.168.1.104',
+					ratePerMinute: 10,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
+				{
+					id: 'pc05',
+					name: 'Gaming PC #5',
+					ipAddress: '192.168.1.105',
+					ratePerMinute: 10,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
+				{
+					id: 'pc06',
+					name: 'Gaming PC #6',
+					ipAddress: '192.168.1.106',
+					ratePerMinute: 5,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
+				{
+					id: 'pc07',
+					name: 'Gaming PC #7',
+					ipAddress: '192.168.1.107',
+					ratePerMinute: 5,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
+				{
+					id: 'pc08',
+					name: 'Gaming PC #8',
+					ipAddress: '192.168.1.108',
+					ratePerMinute: 5,
+					status: 'available',
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				},
 			];
 
 			setSeats(mockSeats);
