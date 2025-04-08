@@ -1,6 +1,33 @@
 // src/types/firebase.ts
 
 import { Timestamp } from './index';
+// src/types/firebase.ts に追加
+
+// 支店情報
+export interface BranchDocument {
+	branchId: string;
+	branchCode: string;
+	branchName: string;
+	address: string;
+	phoneNumber?: string;
+	email?: string;
+	businessHours: {
+	  open: string;  // "10:00" のような形式
+	  close: string; // "22:00" のような形式
+	  dayOff?: string[]; // 定休日（"sunday", "monday" など）
+	};
+	totalSeats: number;
+	description?: string;
+	amenities?: string[];
+	layoutImagePath?: string;
+	mapImagePath?: string;
+	location?: {
+	  latitude: number;
+	  longitude: number;
+	};
+	createdAt: Timestamp | string;
+	updatedAt: Timestamp | string;
+  }
 
 // Firestore User ドキュメントのインターフェース
 export interface UserDocument {
