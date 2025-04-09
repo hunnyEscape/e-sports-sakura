@@ -2,25 +2,69 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import StickyGameVideo from './StickyGameVideo';
-
-interface Game {
-	id: string;
-	title: string;
-	description: string;
-	playerCount: string;
-	recommendedTime: string;
-	difficulty: string;
-	videoSrc: string;
-	thumbnailSrc: string;
-	similarGames: string[];
-}
-
+import { Game } from '../../lib/gameData';
 interface GameSectionProps {
 	game: Game;
 	isActive: boolean;
 	onVisibilityChange: (isVisible: boolean) => void;
 	globalAudioEnabled?: boolean; // 新しいプロップ
 }
+
+const COLOR_MAP = {
+	primary: 'text-primary-600 dark:text-primary-300',
+	secondary: 'text-secondary-600 dark:text-secondary-300',
+	accent: 'text-accent-600 dark:text-accent-300',
+	foreground: 'text-foreground',
+	muted: 'text-foreground/60', // More muted base text
+	strong: 'text-foreground/70',
+	danger: 'text-red-600 dark:text-red-400',
+	warning: 'text-orange-600 dark:text-orange-400',
+	success: 'text-green-600 dark:text-green-400',
+};
+
+// Custom Markdown-like text renderer
+const renderMarkdownText = (text: string, baseMuted = true) => {
+	// Split the text into parts
+	const parts = text.split(/(\*\*.*?\*\*|__.*?__|<.*?>|\^.*?\^)/g);
+
+	return parts.map((part, index) => {
+		// Bold with **
+		if (/^\*\*.*\*\*$/.test(part)) {
+			return <strong key={index}>{part.slice(2, -2)}</strong>;
+		}
+
+		// Bold with __
+		if (/^__.*__$/.test(part)) {
+			return <strong key={index}>{part.slice(2, -2)}</strong>;
+		}
+
+		// Color emphasis with ^color^
+		if (/^\^.*\^$/.test(part)) {
+			const [, color, text] = part.match(/\^(.*?):(.+)\^/) || [];
+			const colorClass = COLOR_MAP[color] || COLOR_MAP.strong;
+			return <span key={index} className={colorClass}>{text}</span>;
+		}
+
+		// HTML tags (like <em>, <strong>, <mark>)
+		if (/^<.*>$/.test(part)) {
+			// Remove angle brackets
+			const tagContent = part.slice(1, -1);
+
+			// Split tag into type and content
+			const matches = tagContent.match(/^(\w+)>(.*)<\/\1$/);
+			if (matches) {
+				const [, tagType, content] = matches;
+				const TagComponent = tagType as keyof JSX.IntrinsicElements;
+				return <TagComponent key={index}>{content}</TagComponent>;
+			}
+
+			return part;
+		}
+
+		// Plain text
+		return baseMuted ? <span key={index} className="text-foreground/60">{part}</span> : part;
+	});
+};
 
 export default function GameSection({
 	game,
@@ -89,7 +133,7 @@ export default function GameSection({
 						/>
 					</div>
 					<div className="max-w-3xl mx-auto">
-						<h2 className="text-3xl font-bold mb-6">{game.title}</h2>
+						<h2 className="text-3xl font-bold mb-2">{game.title}</h2>
 						<p className="mb-8 text-lg">{game.description}</p>
 						{renderGameDetails(game)}
 					</div>
@@ -125,19 +169,19 @@ export default function GameSection({
 			<>
 				<div className="w-full">
 					<h2 className="text-3xl font-bold mb-1 ml-2">{game.title}</h2>
-					<p className="mb-4 text-lg ml-2">{game.description}</p>
+					<p className="mb-4 ml-2">{renderMarkdownText(game.description)}</p>
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 bg-border/10 p-6 rounded-2xl">
 						<div>
 							<h4 className="text-foreground/60 font-medium mb-2">プレイ人数</h4>
-							<p className="text-lg font-bold">{game.playerCount}</p>
+							<p className="text-lg text-foreground/60">{game.playerCount}</p>
 						</div>
 						<div>
 							<h4 className="text-foreground/60 font-medium mb-2">推奨プレイ時間</h4>
-							<p className="text-lg font-bold">{game.recommendedTime}</p>
+							<p className="text-lg text-foreground/60">{game.recommendedTime}</p>
 						</div>
 						<div>
 							<h4 className="text-foreground/60 font-medium mb-2">難易度</h4>
-							<p className="text-lg font-bold">{game.difficulty}</p>
+							<p className="text-lg text-foreground/60">{game.difficulty}</p>
 						</div>
 					</div>
 				</div>
@@ -149,29 +193,10 @@ export default function GameSection({
 		return (
 			<>
 				<div className="mb-8">
-					<h3 className="text-xl font-bold mb-4">ゲーム体験</h3>
-					<p className="mb-4">
-						当店では、最高の環境でこのゲームをお楽しみいただけます。最新のハードウェアと大画面モニターで、
-						臨場感あふれるゲーム体験をご提供します。
+					<h3 className="text-xl font-bold mb-1">ルール・コツ</h3>
+					<p className="mb-2">
+						{renderMarkdownText(game.rule)}
 					</p>
-					<p className="mb-4">
-						友達との対戦や協力プレイも可能です。初心者の方にもスタッフがサポートいたします。
-					</p>
-				</div>
-
-				<div className="mb-8">
-					<h3 className="text-xl font-bold mb-4">類似ゲーム</h3>
-					<p className="mb-3">このゲームを気に入ったら、こちらもおすすめです：</p>
-					<div className="flex flex-wrap gap-2">
-						{game.similarGames.map(similarGame => (
-							<span
-								key={similarGame}
-								className="px-4 py-2 bg-border/20 rounded-full text-base"
-							>
-								{similarGame}
-							</span>
-						))}
-					</div>
 				</div>
 			</>
 		);

@@ -17,7 +17,7 @@ export default function GameCategoryPage({ params }: Params) {
 	const { category } = params;
 	const [isLoading, setIsLoading] = useState(true);
 	const [activeIndex, setActiveIndex] = useState(0);
-	const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL || 'https://d1abhb48aypmuo.cloudfront.net/e-sports-sakura';
+	const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL;
 
 	useEffect(() => {
 		// Simulate loading data
