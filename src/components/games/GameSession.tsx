@@ -140,10 +140,10 @@ export default function GameSection({
 				</div>
 				<div className="hidden md:flex">
 					<div className="w-1/2 pr-8">
-						<div className="max-w-xl ml-auto h-screen flex items-center">
+						<div className="max-w-4xl ml-auto h-screen flex items-center">
 							{gameTitleDetails(game)}
 						</div>
-						<div className="max-w-xl ml-auto h-screen">
+						<div className="max-w-4xl ml-auto h-screen">
 							{renderGameDetails(game)}
 						</div>
 					</div>
@@ -182,6 +182,10 @@ export default function GameSection({
 						<div>
 							<h4 className="text-foreground/60 font-medium mb-2">難易度</h4>
 							<p className="text-lg text-foreground/60">{game.difficulty}</p>
+						</div>
+						<div>
+							<h4 className="text-foreground/60 font-medium mb-2">ジャンル</h4>
+							<p className="text-lg text-foreground/60">{game.genre}</p>
 						</div>
 					</div>
 				</div>
