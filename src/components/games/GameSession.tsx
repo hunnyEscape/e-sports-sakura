@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import StickyGameVideo from './StickyGameVideo';
 
 interface Game {
@@ -19,10 +19,26 @@ interface GameSectionProps {
 	game: Game;
 	isActive: boolean;
 	onVisibilityChange: (isVisible: boolean) => void;
+	globalAudioEnabled?: boolean; // 新しいプロップ
 }
 
-export default function GameSection({ game, isActive, onVisibilityChange }: GameSectionProps) {
+export default function GameSection({
+	game,
+	isActive,
+	onVisibilityChange,
+	globalAudioEnabled = false
+}: GameSectionProps) {
 	const sectionRef = useRef<HTMLDivElement>(null);
+	const [audioState, setAudioState] = useState(false);
+
+	// オーディオ状態の変更を追跡
+	useEffect(() => {
+		if (isActive) {
+			// アクティブになったときにグローバルオーディオ設定を適用
+			setAudioState(globalAudioEnabled);
+		}
+	}, [isActive, globalAudioEnabled]);
+	//}, []);
 
 	// 可視性を監視
 	useEffect(() => {
@@ -48,6 +64,12 @@ export default function GameSection({ game, isActive, onVisibilityChange }: Game
 			}
 		};
 	}, [onVisibilityChange]);
+	//}, []);
+
+	// 個別の動画のオーディオ状態が変更されたときの処理
+	const handleAudioStateChange = (isAudioOn: boolean) => {
+		setAudioState(isAudioOn);
+	};
 
 	return (
 		<div
@@ -62,6 +84,8 @@ export default function GameSection({ game, isActive, onVisibilityChange }: Game
 							title={game.title}
 							thumbnailSrc={game.thumbnailSrc}
 							isActive={isActive}
+							globalAudioEnabled={globalAudioEnabled}
+							onAudioStateChange={handleAudioStateChange}
 						/>
 					</div>
 					<div className="max-w-3xl mx-auto">
@@ -86,11 +110,12 @@ export default function GameSection({ game, isActive, onVisibilityChange }: Game
 								title={game.title}
 								thumbnailSrc={game.thumbnailSrc}
 								isActive={isActive}
+								globalAudioEnabled={globalAudioEnabled}
+								onAudioStateChange={handleAudioStateChange}
 							/>
 						</div>
 					</div>
 				</div>
-
 			</div>
 		</div>
 	);
@@ -120,11 +145,9 @@ export default function GameSection({ game, isActive, onVisibilityChange }: Game
 		);
 	}
 
-
 	function renderGameDetails(game: Game) {
 		return (
 			<>
-
 				<div className="mb-8">
 					<h3 className="text-xl font-bold mb-4">ゲーム体験</h3>
 					<p className="mb-4">

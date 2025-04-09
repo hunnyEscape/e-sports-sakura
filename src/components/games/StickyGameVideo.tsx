@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { Play, Pause, Volume2, VolumeX, Eye, Download } from 'lucide-react';
+import { useAudio } from '@/context/AudioContext';
 
 interface StickyGameVideoProps {
 	videoSrc: string;
@@ -23,6 +24,9 @@ export default function StickyGameVideo({
 	globalAudioEnabled = false,
 	onAudioStateChange
 }: StickyGameVideoProps) {
+	// AudioContextを使用
+	const { hasUserInteracted, enableAudio } = useAudio();
+
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [isMuted, setIsMuted] = useState(!globalAudioEnabled);
 	const [isLoading, setIsLoading] = useState(true);
@@ -32,7 +36,9 @@ export default function StickyGameVideo({
 	const [videoDuration, setVideoDuration] = useState(0);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [isBuffering, setIsBuffering] = useState(false);
-	const [hasUserInteracted, setHasUserInteracted] = useState(false);
+	const [hasLocalUserInteracted, setHasLocalUserInteracted] = useState(false);
+	const [wasEverPlayed, setWasEverPlayed] = useState(false); // この動画が一度でも再生されたかを記録
+	const [showThumbnail, setShowThumbnail] = useState(true); // サムネイル表示制御用
 
 	// Load state tracking
 	useEffect(() => {
@@ -52,11 +58,11 @@ export default function StickyGameVideo({
 		};
 	}, [isLoading, loadProgress]);
 
-	// Handle video play/pause
+	// Handle video play/pause - ユーザーインタラクション状態を考慮
 	useEffect(() => {
-		if (!videoRef.current) return;
+		if (!videoRef.current || hasError) return;
 
-		if (isActive && isPlaying && !hasError) {
+		if (isPlaying) {
 			const playPromise = videoRef.current.play();
 			if (playPromise !== undefined) {
 				playPromise.catch(error => {
@@ -67,18 +73,36 @@ export default function StickyGameVideo({
 		} else {
 			videoRef.current.pause();
 		}
-	}, [isActive, isPlaying, hasError]);
+	}, [isPlaying, hasError]);
+
+	// ビデオのアクティブ状態による制御
+	useEffect(() => {
+		// アクティブになった時の処理
+		if (isActive) {
+			// 一度でも再生されたことがあり、ユーザーがインタラクションしていれば
+			if (wasEverPlayed && hasUserInteracted) {
+				// サムネイルを非表示にして動画を表示
+				setShowThumbnail(false);
+				// 再生開始
+				setIsPlaying(true);
+			}
+		} else {
+			// 非アクティブになったときは再生停止
+			if (isPlaying) {
+				setIsPlaying(false);
+			}
+		}
+	}, [isActive, wasEverPlayed, hasUserInteracted]);
 
 	// グローバル音声設定が変更されたときの処理
 	useEffect(() => {
 		if (!videoRef.current) return;
 
-		if (isActive && globalAudioEnabled && !hasUserInteracted) {
+		if (isActive && globalAudioEnabled && !hasLocalUserInteracted) {
 			// ユーザーがまだ手動で変更していない場合のみグローバル設定を適用
-			videoRef.current.muted = !globalAudioEnabled;
 			setIsMuted(!globalAudioEnabled);
 		}
-	}, [globalAudioEnabled, isActive, hasUserInteracted]);
+	}, [globalAudioEnabled, isActive, hasLocalUserInteracted]);
 
 	// Handle video mute/unmute
 	useEffect(() => {
@@ -90,17 +114,6 @@ export default function StickyGameVideo({
 			onAudioStateChange(!isMuted);
 		}
 	}, [isMuted, isActive, onAudioStateChange]);
-
-	// Auto-play when component becomes active
-	useEffect(() => {
-		if (isActive && !isPlaying && !hasError && !isLoading) {
-			setIsPlaying(true);
-		}
-
-		if (!isActive && isPlaying) {
-			setIsPlaying(false);
-		}
-	}, [isActive, isPlaying, hasError, isLoading]);
 
 	// Track video time
 	useEffect(() => {
@@ -135,13 +148,44 @@ export default function StickyGameVideo({
 		};
 	}, []);
 
+	// サムネイルをクリックして再生開始
+	const handleThumbnailClick = () => {
+		if (hasError || isLoading) return;
+
+		// ユーザーインタラクションフラグを設定
+		enableAudio();
+		setHasLocalUserInteracted(true);
+
+		// 一度でも再生された状態にする
+		setWasEverPlayed(true);
+
+		// サムネイルを非表示にして動画を表示
+		setShowThumbnail(false);
+
+		// 再生開始
+		setIsPlaying(true);
+
+		// 音量設定（グローバル設定に従う）
+		setIsMuted(!globalAudioEnabled);
+	};
+
 	const togglePlay = () => {
 		if (hasError) return;
+
+		// もし初めての再生なら、この動画が再生されたことを記録
+		if (!wasEverPlayed) {
+			setWasEverPlayed(true);
+			enableAudio(); // ユーザーインタラクションを記録
+		}
+
 		setIsPlaying(!isPlaying);
+		if (showThumbnail) {
+			setShowThumbnail(false);
+		}
 	};
 
 	const toggleMute = () => {
-		setHasUserInteracted(true); // ユーザーが手動で変更したことを記録
+		setHasLocalUserInteracted(true); // ユーザーが手動で変更したことを記録
 		setIsMuted(!isMuted);
 	};
 
@@ -181,7 +225,7 @@ export default function StickyGameVideo({
 			)}
 
 			{/* Buffering indicator */}
-			{isBuffering && !isLoading && !hasError && (
+			{isBuffering && !isLoading && !hasError && !showThumbnail && (
 				<div className="absolute inset-0 flex items-center justify-center z-10 bg-background/30">
 					<div className="w-8 h-8 border-4 border-white/60 border-t-transparent rounded-full animate-spin"></div>
 				</div>
@@ -216,24 +260,40 @@ export default function StickyGameVideo({
 				</div>
 			)}
 
-			{/* Video thumbnail placeholder before video loads */}
-			{isLoading && thumbnailSrc && (
-				<div className="absolute inset-0 z-0">
+			{/* クリック可能なサムネイル（初回表示または非再生時） */}
+			{!isLoading && !hasError && showThumbnail && thumbnailSrc && (
+				<div
+					className="absolute inset-0 z-20 cursor-pointer group"
+					onClick={handleThumbnailClick}
+				>
 					<Image
 						src={thumbnailSrc}
 						alt={`${title} サムネイル`}
 						fill
 						style={{ objectFit: 'cover' }}
-						className="opacity-50"
+						className="brightness-75 group-hover:brightness-90 transition-all duration-300"
 					/>
-					<div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+					<div className="absolute inset-0 flex flex-col items-center justify-center">
+						<div className="bg-accent/80 rounded-full p-5 shadow-lg transform transition-transform group-hover:scale-110">
+							<Play className="h-12 w-12 text-white" />
+						</div>
+						<p className="mt-4 text-white text-lg font-medium text-shadow shadow-black">
+							クリックして再生
+						</p>
+					</div>
+					<div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent h-24">
+						<div className="absolute bottom-4 left-4">
+							<p className="text-white font-medium text-lg">{title}</p>
+							<p className="text-white/70 text-sm">タップして動画を再生</p>
+						</div>
+					</div>
 				</div>
 			)}
 
 			{/* Video element */}
 			<video
 				ref={videoRef}
-				className={`w-full h-full object-cover ${isLoading || hasError ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}
+				className={`w-full h-full object-cover ${isLoading || hasError || showThumbnail ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}
 				src={videoSrc}
 				playsInline
 				loop
@@ -243,61 +303,59 @@ export default function StickyGameVideo({
 				preload="auto"
 			/>
 
-			{/* Video controls */}
-			<div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent flex flex-col">
-				{/* Progress bar */}
-				{!isLoading && !hasError && videoDuration > 0 && (
-					<div className="w-full h-1 bg-white/20 rounded-full mb-3 overflow-hidden">
-						<div
-							className="h-full bg-accent"
-							style={{ width: `${(currentTime / videoDuration) * 100}%` }}
-						></div>
-					</div>
-				)}
+			{/* Video controls - only show when video is playing */}
+			{!showThumbnail && !isLoading && !hasError && (
+				<div className="absolute bottom-0 left-0 right-0 py-2 px-4 bg-gradient-to-t from-black/70 to-transparent flex flex-col">
+					{/* Progress bar */}
+					{videoDuration > 0 && (
+						<div className="w-full h-1 bg-white/20 rounded-full mb-3 overflow-hidden">
+							<div
+								className="h-full bg-accent"
+								style={{ width: `${(currentTime / videoDuration) * 100}%` }}
+							></div>
+						</div>
+					)}
 
-				<div className="flex justify-between items-center">
-					<div className="flex-1">
-						<p className="text-white font-medium text-lg">{title}</p>
-						{isPlaying && !isLoading && !hasError && (
-							<div className="flex items-center text-white/70 text-xs">
-								<Eye className="h-3 w-3 mr-1" />
-								<span>リアルタイムゲームプレイ映像</span>
-								<span className="ml-2">{formatTime(currentTime)} / {formatTime(videoDuration)}</span>
+					<div className="flex justify-between items-center">
+						<div className="flex-1">
+							<div className="flex items-end justify-left text-white font-medium text-lg">
+								<span>{title}</span>
+								<div className="flex items-center text-white/70 text-xs ml-2 mb-1">
+									<span>
+										{formatTime(currentTime)} / {formatTime(videoDuration)}
+									</span>
+								</div>
 							</div>
-						)}
-					</div>
 
-					<div className="flex gap-2">
-						<button
-							onClick={togglePlay}
-							disabled={hasError || isLoading}
-							className={`rounded-full p-2 bg-background/30 backdrop-blur-sm hover:bg-background/50 transition-colors ${(hasError || isLoading) ? 'opacity-50 cursor-not-allowed' : ''
-								}`}
-							aria-label={isPlaying ? 'Pause video' : 'Play video'}
-						>
-							{isPlaying ? (
-								<Pause className="h-5 w-5 text-white" />
-							) : (
-								<Play className="h-5 w-5 text-white" />
-							)}
-						</button>
+						</div>
+						<div className="flex gap-2">
+							<button
+								onClick={togglePlay}
+								className="rounded-full p-2 bg-background/30 backdrop-blur-sm hover:bg-background/50 transition-colors"
+								aria-label={isPlaying ? 'Pause video' : 'Play video'}
+							>
+								{isPlaying ? (
+									<Pause className="h-5 w-5 text-white" />
+								) : (
+									<Play className="h-5 w-5 text-white" />
+								)}
+							</button>
 
-						<button
-							onClick={toggleMute}
-							disabled={hasError || isLoading}
-							className={`rounded-full p-2 bg-background/30 backdrop-blur-sm hover:bg-background/50 transition-colors ${(hasError || isLoading) ? 'opacity-50 cursor-not-allowed' : ''
-								}`}
-							aria-label={isMuted ? 'Unmute video' : 'Mute video'}
-						>
-							{isMuted ? (
-								<VolumeX className="h-5 w-5 text-white" />
-							) : (
-								<Volume2 className="h-5 w-5 text-white" />
-							)}
-						</button>
+							<button
+								onClick={toggleMute}
+								className="rounded-full p-2 bg-background/30 backdrop-blur-sm hover:bg-background/50 transition-colors"
+								aria-label={isMuted ? 'Unmute video' : 'Mute video'}
+							>
+								{isMuted ? (
+									<VolumeX className="h-5 w-5 text-white" />
+								) : (
+									<Volume2 className="h-5 w-5 text-white" />
+								)}
+							</button>
+						</div>
 					</div>
 				</div>
-			</div>
+			)}
 		</div>
 	);
 }

@@ -85,6 +85,8 @@
 │   │   │   ├── reservation-history.tsx
 │   │   │   └── usage-history.tsx
 │   │   ├── games
+│   │   │   ├── AudioPermissionBanner.tsx
+│   │   │   ├── AudioPermissionModal.tsx
 │   │   │   ├── CategoryHeader.tsx
 │   │   │   ├── GameCategoryLayout.tsx
 │   │   │   ├── GameDetailExpansion.tsx
@@ -141,6 +143,7 @@
 │   ├── lib
 │   │   ├── firebase-admin.ts
 │   │   ├── firebase.ts
+│   │   ├── gameData.ts
 │   │   ├── stripe-payment-methods.ts
 │   │   ├── stripe-service.ts
 │   │   ├── stripe.ts
@@ -153,4 +156,4 @@
 ├── tailwind.config.js
 └── tsconfig.json
 
-50 directories, 103 files
+50 directories, 106 files

@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import CategoryHeader from './CategoryHeader';
 import GameSection from './GameSession';
+import AudioPermissionModal from './AudioPermissionModal';
+import { useAudio } from '@/context/AudioContext';
 
 interface Game {
 	id: string;
@@ -34,6 +36,9 @@ export default function GameCategoryLayout({
 	const [activeGameIndex, setActiveGameIndex] = useState(0);
 	const [visibleSections, setVisibleSections] = useState<boolean[]>(Array(games.length).fill(false));
 	const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL || 'https://d1abhb48aypmuo.cloudfront.net/e-sports-sakura';
+
+	// オーディオコンテキストを使用
+	const { globalAudioEnabled } = useAudio();
 
 	// Prepare games with full video URLs
 	const gamesWithFullUrls = games.map(game => ({
@@ -67,17 +72,22 @@ export default function GameCategoryLayout({
 
 	return (
 		<>
+			{/* オーディオ許可モーダル - 初回訪問時のみ表示 */}
+			<AudioPermissionModal />
+
 			<CategoryHeader
 				category={category}
 				title={title}
 				description={description}
 			/>
+
 			{gamesWithFullUrls.map((game, index) => (
 				<GameSection
 					key={game.id}
 					game={game}
 					isActive={index === activeGameIndex}
 					onVisibilityChange={(isVisible) => handleVisibilityChange(index, isVisible)}
+					globalAudioEnabled={globalAudioEnabled}
 				/>
 			))}
 		</>

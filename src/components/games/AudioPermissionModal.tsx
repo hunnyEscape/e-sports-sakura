@@ -1,42 +1,68 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
+import { useAudio } from '@/context/AudioContext';
 
-interface AudioPermissionModalProps {
-	onAccept: () => void;
-	onDecline: () => void;
-	isOpen: boolean;
-}
+export default function AudioPermissionModal() {
+	const { hasUserInteracted, enableAudio, disableAudio } = useAudio();
+	const [isVisible, setIsVisible] = useState(false);
 
-export default function AudioPermissionModal({
-	onAccept,
-	onDecline,
-	isOpen
-}: AudioPermissionModalProps) {
-	if (!isOpen) return null;
+	// ユーザーが初めて訪問したときだけモーダルを表示
+	useEffect(() => {
+		if (!hasUserInteracted) {
+			// ページ読み込み後少し遅延させて表示する
+			const timer = setTimeout(() => {
+				setIsVisible(true);
+			}, 1000);
+
+			return () => clearTimeout(timer);
+		}
+	}, [hasUserInteracted]);
+
+	// モーダル非表示
+	const handleClose = (audioEnabled: boolean) => {
+		if (audioEnabled) {
+			enableAudio();
+		} else {
+			disableAudio();
+		}
+		setIsVisible(false);
+	};
+
+	if (!isVisible) return null;
 
 	return (
-		<div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
-			<div className="bg-background rounded-2xl max-w-md w-full p-6 border border-border/30 shadow-xl">
-				<h2 className="text-2xl font-bold mb-4">音声を再生しますか？</h2>
-				<p className="text-foreground/80 mb-6">
-					動画の音声をONにすると、ゲームの雰囲気をよりお楽しみいただけます。
-					音声をONにしますか？
+		<div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50">
+			<div className="bg-background rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+				<h3 className="text-xl font-bold mb-4">ゲーム映像のオーディオ設定</h3>
+
+				<p className="mb-4">
+					より良いゲーム体験のために、音声付きでゲームプレイ映像をご覧いただけます。
+					このページでは一度許可すると、すべての動画で音声を楽しめます。
 				</p>
-				<div className="flex space-x-3">
+
+				<div className="grid grid-cols-2 gap-4 mb-6">
 					<button
-						onClick={onDecline}
-						className="flex-1 px-4 py-2 rounded-lg border border-border/30 hover:bg-border/10 transition-colors"
+						onClick={() => handleClose(false)}
+						className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-border/10 transition-colors"
 					>
-						今はしない
+						<VolumeX className="h-8 w-8 mb-2 text-foreground/70" />
+						<span className="font-medium">音声なし</span>
 					</button>
+
 					<button
-						onClick={onAccept}
-						className="flex-1 px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent/90 transition-colors"
+						onClick={() => handleClose(true)}
+						className="flex flex-col items-center justify-center p-4 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
 					>
-						音声をONにする
+						<Volume2 className="h-8 w-8 mb-2" />
+						<span className="font-medium">音声あり</span>
 					</button>
 				</div>
+
+				<p className="text-xs text-foreground/60 text-center">
+					※ この設定はいつでも各動画のコントロールから変更できます
+				</p>
 			</div>
 		</div>
 	);

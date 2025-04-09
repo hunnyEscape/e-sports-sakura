@@ -1008,6 +1008,150 @@ export async function getCustomerPaymentMethods(
 		throw error;
 	}
 }-e 
+### FILE: ./src/lib/gameData.ts
+
+// Define the game categories and their IDs that match the route parameters
+export const VALID_CATEGORIES = ['party', 'competitive', 'immersive'];
+
+// Interface for game data
+export interface Game {
+	id: string;
+	title: string;
+	description: string;
+	playerCount: string;
+	recommendedTime: string;
+	difficulty: string;
+	videoSrc: string;
+	thumbnailSrc: string;
+	similarGames: string[];
+}
+
+export interface CategoryData {
+	title: string;
+	description: string;
+	games: Game[];
+}
+
+// Game data - in a real application, this would come from a database or API
+export const GAME_DATA: Record<string, CategoryData> = {
+	party: {
+		title: 'ワイワイ系ゲーム',
+		description: 'コントローラーで2人でも盛り上がれる',
+		games: [
+			{
+				id: 'party-animals',
+				title: 'Party Animals',
+				description: '可愛い動物たちが戦うカオスなパーティーゲーム。ふわふわしたキャラクターで物理演算を利用した格闘ゲームを楽しめます。友達と一緒に遊ぶと最高に盛り上がります。',
+				playerCount: '2-8人',
+				recommendedTime: '30分-1時間',
+				difficulty: '初心者向け',
+				videoSrc: '/PartyAnimals.mp4',
+				thumbnailSrc: '/images/lp/games/overcooked.png',
+				similarGames: ['Fall Guys', 'Gang Beasts']
+			},
+			{
+				id: 'fall-guys',
+				title: 'Fall Guys',
+				description: '障害物競走のバトルロイヤル！最後まで生き残れ。カラフルなゼリービーンズのようなキャラクターを操作して、様々な障害物コースを突破しながら他のプレイヤーと競争します。',
+				playerCount: '1-4人',
+				recommendedTime: '20-40分',
+				difficulty: '初心者向け',
+				videoSrc: '/GolfIt.mp4',
+				thumbnailSrc: '/images/lp/games/fallguys.png',
+				similarGames: ['Party Animals', 'Pummel Party']
+			},
+			{
+				id: 'pummel-party',
+				title: 'Pummel Party',
+				description: '友情を破壊するミニゲームコレクション。ボードゲーム形式で進行し、各ターンごとに様々なミニゲームが発生します。友達との競争心を刺激する作品です。',
+				playerCount: '4-8人',
+				recommendedTime: '1-2時間',
+				difficulty: '中級者向け',
+				videoSrc: '/Crossout.mp4',
+				thumbnailSrc: '/images/lp/games/pummel.png',
+				similarGames: ['Mario Party', 'Fall Guys']
+			}
+		]
+	},
+	competitive: {
+		title: '競技系ゲーム',
+		description: '120FPSでぬるぬる動く、プロ仕様',
+		games: [
+			{
+				id: 'counter-strike-2',
+				title: 'Counter-Strike 2',
+				description: 'タクティカルFPSの金字塔、最新バージョン。テロリストと対テロ部隊に分かれて戦う5対5の対戦型シューティングゲーム。戦略性と正確なエイムが求められます。',
+				playerCount: '5v5',
+				recommendedTime: '30-90分',
+				difficulty: '上級者向け',
+				videoSrc: '/CS2.mp4',
+				thumbnailSrc: '/images/lp/games/valorant.png',
+				similarGames: ['Valorant', 'Rainbow Six Siege']
+			},
+			{
+				id: 'pubg',
+				title: 'PUBG',
+				description: 'バトルロイヤルの先駆者、100人での生存競争。広大なマップで最後の1人（または1チーム）になるまで戦い続けるサバイバルシューティング。',
+				playerCount: '1-4人',
+				recommendedTime: '20-30分',
+				difficulty: '中級者向け',
+				videoSrc: '/Tango.mp4',
+				thumbnailSrc: '/images/lp/games/pubg.png',
+				similarGames: ['Apex Legends', 'Fortnite']
+			},
+			{
+				id: 'apex-legends',
+				title: 'Apex Legends',
+				description: '高速移動とチームプレイが特徴のヒーローシューター。独自の能力を持つキャラクターを選び、3人チームで戦うバトルロイヤルゲーム。スムーズな動きと連携が勝利のカギです。',
+				playerCount: '3人チーム',
+				recommendedTime: '15-25分',
+				difficulty: '中級者向け',
+				videoSrc: '/WitchIt.mp4',
+				thumbnailSrc: '/images/lp/games/apex.png',
+				similarGames: ['PUBG', 'Valorant']
+			}
+		]
+	},
+	immersive: {
+		title: 'じっくり系ゲーム',
+		description: '1人でも仲間とでも、じっくり楽しめる',
+		games: [
+			{
+				id: 'operation-tango',
+				title: 'Operation: Tango',
+				description: '2人協力のスパイアドベンチャー、コミュニケーションが鍵。一方がハッカー役、もう一方がエージェント役となり、お互いに見えている情報を伝え合いながらミッションを遂行します。',
+				playerCount: '2人',
+				recommendedTime: '1-2時間',
+				difficulty: '中級者向け',
+				videoSrc: '/WeWereHereForever.mp4',
+				thumbnailSrc: '/images/lp/games/slaythespire.png',
+				similarGames: ['Keep Talking and Nobody Explodes', 'We Were Here']
+			},
+			{
+				id: 'portal-2',
+				title: 'Portal 2',
+				description: '物理パズルの傑作、協力プレイも可能。ポータルガンを使って空間を自由に行き来しながら、様々なパズルを解いていきます。独特のユーモアと高いゲーム性が魅力です。',
+				playerCount: '1-2人',
+				recommendedTime: '1-2時間',
+				difficulty: '中級者向け',
+				videoSrc: '/portal.mp4',
+				thumbnailSrc: '/images/lp/games/cities.png',
+				similarGames: ['The Witness', 'The Talos Principle']
+			},
+			{
+				id: 'the-witness',
+				title: 'The Witness',
+				description: '美しい島を舞台にした一人称パズルゲーム。線を描くという単純な操作から始まり、徐々に複雑になっていくパズルを解きながら島の謎に迫ります。思考力が試されるゲームです。',
+				playerCount: '1人',
+				recommendedTime: '2-3時間',
+				difficulty: '上級者向け',
+				videoSrc: '/WitchIt.mp4',
+				thumbnailSrc: '/images/lp/games/witness.png',
+				similarGames: ['Portal 2', 'Braid']
+			}
+		]
+	}
+};-e 
 ### FILE: ./src/app/login/page.tsx
 
 'use client';
@@ -1159,130 +1303,7 @@ import { notFound } from 'next/navigation';
 import GameCategoryLayout from '@/components/games/GameCategoryLayout';
 import VideoPreloader from '@/components/games/VideoPreloader';
 import { CategoryPageContainer } from '@/components/ui/PageTransition';
-
-// Define the game categories and their IDs that match the route parameters
-const VALID_CATEGORIES = ['party', 'competitive', 'immersive'];
-
-// Game data - in a real application, this would come from a database or API
-const GAME_DATA = {
-	party: {
-		title: 'ワイワイ系ゲーム',
-		description: 'コントローラーで2人でも盛り上がれる',
-		games: [
-			{
-				id: 'party-animals',
-				title: 'Party Animals',
-				description: '可愛い動物たちが戦うカオスなパーティーゲーム',
-				playerCount: '2-8人',
-				recommendedTime: '30分-1時間',
-				difficulty: '初心者向け',
-				videoSrc: '/videos/party/party-animals.mp4', // Local path for initial development
-				thumbnailSrc: '/images/lp/games/overcooked.png',
-				similarGames: ['Fall Guys', 'Gang Beasts']
-			},
-			{
-				id: 'fall-guys',
-				title: 'Fall Guys',
-				description: '障害物競走のバトルロイヤル！最後まで生き残れ',
-				playerCount: '1-4人',
-				recommendedTime: '20-40分',
-				difficulty: '初心者向け',
-				videoSrc: '/videos/party/fall-guys.mp4',
-				thumbnailSrc: '/images/lp/games/fallguys.png',
-				similarGames: ['Party Animals', 'Pummel Party']
-			},
-			{
-				id: 'pummel-party',
-				title: 'Pummel Party',
-				description: '友情を破壊するミニゲームコレクション',
-				playerCount: '4-8人',
-				recommendedTime: '1-2時間',
-				difficulty: '中級者向け',
-				videoSrc: '/videos/party/pummel-party.mp4',
-				thumbnailSrc: '/images/lp/games/pummel.png',
-				similarGames: ['Mario Party', 'Fall Guys']
-			}
-		]
-	},
-	competitive: {
-		title: '競技系ゲーム',
-		description: '120FPSでぬるぬる動く、プロ仕様',
-		games: [
-			{
-				id: 'counter-strike-2',
-				title: 'Counter-Strike 2',
-				description: 'タクティカルFPSの金字塔、最新バージョン',
-				playerCount: '5v5',
-				recommendedTime: '30-90分',
-				difficulty: '上級者向け',
-				videoSrc: '/videos/competitive/cs2.mp4',
-				thumbnailSrc: '/images/lp/games/valorant.png',
-				similarGames: ['Valorant', 'Rainbow Six Siege']
-			},
-			{
-				id: 'pubg',
-				title: 'PUBG',
-				description: 'バトルロイヤルの先駆者、100人での生存競争',
-				playerCount: '1-4人',
-				recommendedTime: '20-30分',
-				difficulty: '中級者向け',
-				videoSrc: '/videos/competitive/pubg.mp4',
-				thumbnailSrc: '/images/lp/games/pubg.png',
-				similarGames: ['Apex Legends', 'Fortnite']
-			},
-			{
-				id: 'apex-legends',
-				title: 'Apex Legends',
-				description: '高速移動とチームプレイが特徴のヒーローシューター',
-				playerCount: '3人チーム',
-				recommendedTime: '15-25分',
-				difficulty: '中級者向け',
-				videoSrc: '/videos/competitive/apex.mp4',
-				thumbnailSrc: '/images/lp/games/apex.png',
-				similarGames: ['PUBG', 'Valorant']
-			}
-		]
-	},
-	immersive: {
-		title: 'じっくり系ゲーム',
-		description: '1人でも仲間とでも、じっくり楽しめる',
-		games: [
-			{
-				id: 'operation-tango',
-				title: 'Operation: Tango',
-				description: '2人協力のスパイアドベンチャー、コミュニケーションが鍵',
-				playerCount: '2人',
-				recommendedTime: '1-2時間',
-				difficulty: '中級者向け',
-				videoSrc: '/videos/immersive/operation-tango.mp4',
-				thumbnailSrc: '/images/lp/games/slaythespire.png',
-				similarGames: ['Keep Talking and Nobody Explodes', 'We Were Here']
-			},
-			{
-				id: 'portal-2',
-				title: 'Portal 2',
-				description: '物理パズルの傑作、協力プレイも可能',
-				playerCount: '1-2人',
-				recommendedTime: '1-2時間',
-				difficulty: '中級者向け',
-				videoSrc: '/videos/immersive/portal2.mp4',
-				thumbnailSrc: '/images/lp/games/cities.png',
-				similarGames: ['The Witness', 'The Talos Principle']
-			},
-			{
-				id: 'the-witness',
-				title: 'The Witness',
-				description: '美しい島を舞台にした一人称パズルゲーム',
-				playerCount: '1人',
-				recommendedTime: '2-3時間',
-				difficulty: '上級者向け',
-				videoSrc: '/videos/immersive/witness.mp4',
-				thumbnailSrc: '/images/lp/games/witness.png',
-				similarGames: ['Portal 2', 'Braid']
-			}
-		]
-	}
-};
+import { VALID_CATEGORIES, GAME_DATA } from '@/lib/gameData';
 
 type Params = {
 	params: {
@@ -1294,6 +1315,7 @@ export default function GameCategoryPage({ params }: Params) {
 	const { category } = params;
 	const [isLoading, setIsLoading] = useState(true);
 	const [activeIndex, setActiveIndex] = useState(0);
+	const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL || 'https://d1abhb48aypmuo.cloudfront.net/e-sports-sakura';
 
 	useEffect(() => {
 		// Simulate loading data
@@ -1317,7 +1339,9 @@ export default function GameCategoryPage({ params }: Params) {
 	}
 
 	// Get all video sources for preloading
-	const videoSources = categoryData.games.map(game => game.videoSrc);
+	const videoSources = categoryData.games.map(game => 
+		game.videoSrc.startsWith('http') ? game.videoSrc : `${cloudFrontUrl}${game.videoSrc}`
+	);
 
 	return (
 		<CategoryPageContainer category={category}>
@@ -5645,6 +5669,99 @@ export default function VerificationComplete({
 		</motion.div>
 	);
 }-e 
+### FILE: ./src/components/games/AudioPermissionModal.tsx
+
+'use client';
+
+import React from 'react';
+
+interface AudioPermissionModalProps {
+	onAccept: () => void;
+	onDecline: () => void;
+	isOpen: boolean;
+}
+
+export default function AudioPermissionModal({
+	onAccept,
+	onDecline,
+	isOpen
+}: AudioPermissionModalProps) {
+	if (!isOpen) return null;
+
+	return (
+		<div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
+			<div className="bg-background rounded-2xl max-w-md w-full p-6 border border-border/30 shadow-xl">
+				<h2 className="text-2xl font-bold mb-4">音声を再生しますか？</h2>
+				<p className="text-foreground/80 mb-6">
+					動画の音声をONにすると、ゲームの雰囲気をよりお楽しみいただけます。
+					音声をONにしますか？
+				</p>
+				<div className="flex space-x-3">
+					<button
+						onClick={onDecline}
+						className="flex-1 px-4 py-2 rounded-lg border border-border/30 hover:bg-border/10 transition-colors"
+					>
+						今はしない
+					</button>
+					<button
+						onClick={onAccept}
+						className="flex-1 px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent/90 transition-colors"
+					>
+						音声をONにする
+					</button>
+				</div>
+			</div>
+		</div>
+	);
+}-e 
+### FILE: ./src/components/games/AudioPermissionBanner.tsx
+
+'use client';
+
+import React from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
+
+interface AudioPermissionBannerProps {
+  onEnable: () => void;
+  onDisable: () => void;
+}
+
+export default function AudioPermissionBanner({ onEnable, onDisable }: AudioPermissionBannerProps) {
+  return (
+    <div className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur-sm border-b border-border/20 shadow-md">
+      <div className="container mx-auto px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Volume2 className="h-5 w-5 text-accent" />
+            <p className="text-sm md:text-base">
+              動画の音声を再生しますか？スクロールするとアクティブなゲームの音声が自動的に再生されます。
+            </p>
+          </div>
+          
+          <div className="flex space-x-2">
+            <button
+              onClick={onDisable}
+              className="px-3 py-1.5 text-sm rounded-md border border-border/30 hover:bg-border/10 transition-colors flex items-center"
+            >
+              <VolumeX className="h-4 w-4 mr-1" />
+              <span className="hidden md:inline">音声オフ</span>
+              <span className="md:hidden">オフ</span>
+            </button>
+            
+            <button
+              onClick={onEnable}
+              className="px-3 py-1.5 text-sm bg-accent text-accent-foreground rounded-md hover:bg-accent/90 transition-colors flex items-center"
+            >
+              <Volume2 className="h-4 w-4 mr-1" />
+              <span className="hidden md:inline">音声オン</span>
+              <span className="md:hidden">オン</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}-e 
 ### FILE: ./src/components/games/GameSession.tsx
 
 'use client';
@@ -5807,7 +5924,7 @@ export default function GameSection({ game, isActive, onVisibilityChange }: Game
 
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import CategoryHeader from './CategoryHeader';
 import GameSection from './GameSession';
 
@@ -5840,6 +5957,13 @@ export default function GameCategoryLayout({
 }: GameCategoryLayoutProps) {
 	const [activeGameIndex, setActiveGameIndex] = useState(0);
 	const [visibleSections, setVisibleSections] = useState<boolean[]>(Array(games.length).fill(false));
+	const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL || 'https://d1abhb48aypmuo.cloudfront.net/e-sports-sakura';
+
+	// Prepare games with full video URLs
+	const gamesWithFullUrls = games.map(game => ({
+		...game,
+		videoSrc: game.videoSrc.startsWith('http') ? game.videoSrc : `${cloudFrontUrl}${game.videoSrc}`
+	}));
 
 	// Notify parent of active index changes
 	useEffect(() => {
@@ -5867,7 +5991,12 @@ export default function GameCategoryLayout({
 
 	return (
 		<>
-			{games.map((game, index) => (
+			<CategoryHeader
+				category={category}
+				title={title}
+				description={description}
+			/>
+			{gamesWithFullUrls.map((game, index) => (
 				<GameSection
 					key={game.id}
 					game={game}
@@ -5877,14 +6006,7 @@ export default function GameCategoryLayout({
 			))}
 		</>
 	);
-}
-/*
-			<CategoryHeader
-				category={category}
-				title={title}
-				description={description}
-			/>
-*/-e 
+}-e 
 ### FILE: ./src/components/games/CategoryHeader.tsx
 
 'use client';
@@ -6120,6 +6242,8 @@ interface StickyGameVideoProps {
 	isActive: boolean;
 	thumbnailSrc?: string;
 	onLoaded?: () => void;
+	globalAudioEnabled?: boolean;
+	onAudioStateChange?: (isAudioOn: boolean) => void;
 }
 
 export default function StickyGameVideo({
@@ -6127,10 +6251,12 @@ export default function StickyGameVideo({
 	title,
 	isActive,
 	thumbnailSrc,
-	onLoaded
+	onLoaded,
+	globalAudioEnabled = false,
+	onAudioStateChange
 }: StickyGameVideoProps) {
 	const [isPlaying, setIsPlaying] = useState(false);
-	const [isMuted, setIsMuted] = useState(true);
+	const [isMuted, setIsMuted] = useState(!globalAudioEnabled);
 	const [isLoading, setIsLoading] = useState(true);
 	const [hasError, setHasError] = useState(false);
 	const [loadProgress, setLoadProgress] = useState(0);
@@ -6138,6 +6264,7 @@ export default function StickyGameVideo({
 	const [videoDuration, setVideoDuration] = useState(0);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [isBuffering, setIsBuffering] = useState(false);
+	const [hasUserInteracted, setHasUserInteracted] = useState(false);
 
 	// Load state tracking
 	useEffect(() => {
@@ -6174,11 +6301,27 @@ export default function StickyGameVideo({
 		}
 	}, [isActive, isPlaying, hasError]);
 
+	// グローバル音声設定が変更されたときの処理
+	useEffect(() => {
+		if (!videoRef.current) return;
+
+		if (isActive && globalAudioEnabled && !hasUserInteracted) {
+			// ユーザーがまだ手動で変更していない場合のみグローバル設定を適用
+			videoRef.current.muted = !globalAudioEnabled;
+			setIsMuted(!globalAudioEnabled);
+		}
+	}, [globalAudioEnabled, isActive, hasUserInteracted]);
+
 	// Handle video mute/unmute
 	useEffect(() => {
 		if (!videoRef.current) return;
 		videoRef.current.muted = isMuted;
-	}, [isMuted]);
+
+		// 音声状態が変更されたら親コンポーネントに通知
+		if (onAudioStateChange && isActive) {
+			onAudioStateChange(!isMuted);
+		}
+	}, [isMuted, isActive, onAudioStateChange]);
 
 	// Auto-play when component becomes active
 	useEffect(() => {
@@ -6230,6 +6373,7 @@ export default function StickyGameVideo({
 	};
 
 	const toggleMute = () => {
+		setHasUserInteracted(true); // ユーザーが手動で変更したことを記録
 		setIsMuted(!isMuted);
 	};
 
