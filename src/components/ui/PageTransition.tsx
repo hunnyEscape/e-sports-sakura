@@ -54,7 +54,7 @@ export function CategoryPageContainer({
 	category: string
 }) {
 	return (
-		<div className={`min-h-screen landing-page bg-background text-foreground`}>
+		<div className={`bg-background text-foreground`}>
 			<PageTransition>
 				{children}
 			</PageTransition>

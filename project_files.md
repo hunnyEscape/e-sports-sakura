@@ -1,104 +1,603 @@
 -e 
+### FILE: ./src/types/firebase.ts
+
+// src/types/firebase.ts
+
+import { Timestamp } from './index';
+// src/types/firebase.ts に追加
+
+// 支店情報
+export interface BranchDocument {
+	branchId: string;
+	branchCode: string;
+	branchName: string;
+	address: string;
+	phoneNumber?: string;
+	email?: string;
+	businessHours: {
+	  open: string;  // "10:00" のような形式
+	  close: string; // "22:00" のような形式
+	  dayOff?: string[]; // 定休日（"sunday", "monday" など）
+	};
+	totalSeats: number;
+	description?: string;
+	amenities?: string[];
+	layoutImagePath?: string;
+	mapImagePath?: string;
+	location?: {
+	  latitude: number;
+	  longitude: number;
+	};
+	createdAt: Timestamp | string;
+	updatedAt: Timestamp | string;
+  }
+
+// Firestore User ドキュメントのインターフェース
+export interface UserDocument {
+	uid: string;
+	email: string | null;
+	displayName: string | null;
+	photoURL: string | null;
+	createdAt: Timestamp | string;
+	lastLogin: Timestamp | string;
+	registrationCompleted: boolean;
+	registrationCompletedAt?: string;
+	registrationStep?: number;
+
+	// eKYC情報
+	eKYC?: {
+		sessionId?: string;
+		status: string;
+		verifiedAt?: string;
+		lastUpdated?: string;
+	};
+
+	// Stripe情報
+	stripe?: {
+		customerId?: string;
+		paymentMethodId?: string;
+		paymentSetupCompleted?: boolean;
+		createdAt?: string;
+		updatedAt?: string;
+		paymentMethodType?: string;
+		paymentMethodBrand?: string;
+		paymentMethodLast4?: string;
+		paymentStatus?: string;
+		lastPaymentError?: string;
+		lastPaymentErrorAt?: string;
+	};
+}
+
+// セッション情報
+export interface SessionDocument {
+	sessionId: string;
+	userId: string;
+	seatId: string;
+	startTime: Timestamp | string;
+	endTime: Timestamp | string;
+	durationMinutes: number;
+	amount: number;
+	pricePerMinute: number;
+	active: boolean;
+}
+
+// 座席情報
+export interface SeatDocument {
+	seatId: string;
+	branchCode: string;
+	branchName: string;
+	seatType: string;
+	seatNumber: number;
+	name: string;
+	ipAddress?: string;
+	ratePerHour: number;
+	status: 'available' | 'in-use' | 'maintenance';
+	availableHours?: {
+		[key: string]: string[];
+	};
+	maxAdvanceBookingDays?: number;
+	createdAt: Timestamp | string;
+	updatedAt: Timestamp | string;
+}
+
+// 予約情報
+export interface ReservationDocument {
+	id?: string;
+	userId: string;
+	userEmail?: string;
+	seatId: string;
+	seatName?: string;
+	date: string;
+	startTime: string;
+	endTime: string;
+	duration: number;
+	status: 'confirmed' | 'cancelled' | 'completed';
+	notes?: string;
+	createdAt: Timestamp | string;
+	updatedAt: Timestamp | string;
+}-e 
+### FILE: ./src/types/api.ts
+
+// src/types/api.ts
+
+import { ReservationDocument, SeatDocument } from './firebase';
+
+// 認証関連
+export interface AuthResponse {
+	success: boolean;
+	message?: string;
+	error?: string;
+}
+
+// 予約関連
+export interface CreateReservationRequest {
+	seatId: string;
+	date: string;
+	startTime: string;
+	endTime: string;
+	notes?: string;
+}
+
+export interface ReservationResponse {
+	reservations: ReservationDocument[];
+	pagination?: {
+		total: number;
+		page: number;
+		limit: number;
+		pages: number;
+	};
+}
+
+export interface ReservationAvailabilityRequest {
+	date: string;
+	startTime: string;
+	endTime: string;
+}
+
+export interface ReservationAvailabilityResponse {
+	availability: Array<{
+		seatId: string;
+		name: string;
+		isAvailable: boolean;
+		ratePerMinute: number;
+	}>;
+}
+
+// 座席関連
+export interface SeatResponse {
+	seats: (SeatDocument & {
+		reservations?: Array<{
+			startTime: string;
+			endTime: string;
+		}>;
+		isFullyBooked?: boolean;
+	})[];
+}
+
+// Stripe関連
+export interface StripeSetupIntentResponse {
+	clientSecret: string;
+}
+
+export interface StripeCustomerResponse {
+	customerId: string;
+}
+
+export interface StripePaymentSetupRequest {
+	setupIntentId: string;
+	paymentMethodId: string;
+}
+
+export interface MockChargeRequest {
+	durationMinutes: number;
+	description?: string;
+}
+
+export interface BillingHistoryResponse {
+	history: Array<{
+		id: string;
+		userId: string;
+		invoiceId: string;
+		amount: number;
+		durationMinutes?: number;
+		status: string;
+		timestamp: string;
+		description: string;
+		isTest?: boolean;
+	}>;
+	pagination: {
+		total: number;
+		page: number;
+		limit: number;
+		pages: number;
+	};
+}
+
+// Veriff関連
+export interface VeriffSessionResponse {
+	sessionId: string;
+	sessionUrl: string;
+	status: string;
+}
+
+export interface VeriffCallbackRequest {
+	status: string;
+	vendorData: string;
+	id: string;
+	code: string;
+}-e 
+### FILE: ./src/types/auth-context.tsx
+
+'use client';
+
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import {
+	User,
+	GoogleAuthProvider,
+	signInWithPopup,
+	createUserWithEmailAndPassword as firebaseCreateUserWithEmailAndPassword,
+	signInWithEmailAndPassword as firebaseSignInWithEmailAndPassword,
+	sendPasswordResetEmail,
+	signOut as firebaseSignOut,
+	onAuthStateChanged
+} from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db, googleProvider } from '@/lib/firebase';
+import { UserDocument } from '@/types/firebase';
+
+// コンテキストの型定義
+interface AuthContextType {
+	user: User | null;
+	userData: UserDocument | null;
+	loading: boolean;
+	signInWithGoogle: () => Promise<void>;
+	signInWithEmailAndPassword: (email: string, password: string) => Promise<void>;
+	createUserWithEmailAndPassword: (email: string, password: string) => Promise<void>;
+	resetPassword: (email: string) => Promise<void>;
+	signOut: () => Promise<void>;
+	error: string | null;
+	clearError: () => void;
+}
+
+// デフォルト値
+const defaultContextValue: AuthContextType = {
+	user: null,
+	userData: null,
+	loading: true,
+	signInWithGoogle: async () => { },
+	signInWithEmailAndPassword: async () => { },
+	createUserWithEmailAndPassword: async () => { },
+	resetPassword: async () => { },
+	signOut: async () => { },
+	error: null,
+	clearError: () => { }
+};
+
+// コンテキスト作成
+const AuthContext = createContext<AuthContextType>(defaultContextValue);
+
+// コンテキストプロバイダーコンポーネント
+export function AuthProvider({ children }: { children: ReactNode }) {
+	const [user, setUser] = useState<User | null>(null);
+	const [userData, setUserData] = useState<UserDocument | null>(null);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+
+	// エラーをクリア
+	const clearError = () => setError(null);
+
+	// ユーザーの認証状態を監視
+	useEffect(() => {
+		const unsubscribe = onAuthStateChanged(auth, async (user) => {
+			setUser(user);
+
+			if (user) {
+				try {
+					// Firestoreからユーザーデータを取得
+					const userDocRef = doc(db, 'users', user.uid);
+					const userDoc = await getDoc(userDocRef);
+
+					if (userDoc.exists()) {
+						// 既存ユーザー - 最終ログイン時間を更新
+						const userData = userDoc.data() as UserDocument;
+						await setDoc(userDocRef, {
+							...userData,
+							lastLogin: serverTimestamp()
+						}, { merge: true });
+						setUserData(userData);
+					} else {
+						// 新規ユーザー
+						const newUserData: UserDocument = {
+							uid: user.uid,
+							email: user.email,
+							displayName: user.displayName,
+							photoURL: user.photoURL,
+							createdAt: serverTimestamp(),
+							lastLogin: serverTimestamp(),
+							registrationCompleted: false,
+							registrationStep: 0,
+							eKYC: {
+								status: 'pending'
+							}
+						};
+
+						await setDoc(userDocRef, newUserData);
+						setUserData(newUserData);
+					}
+				} catch (err) {
+					console.error('Error fetching user data:', err);
+					setError('ユーザーデータの取得中にエラーが発生しました。');
+				}
+			} else {
+				setUserData(null);
+			}
+
+			setLoading(false);
+		});
+
+		// クリーンアップ関数
+		return () => unsubscribe();
+	}, []);
+
+	// Google認証でサインイン
+	const signInWithGoogle = async () => {
+		try {
+			setError(null);
+			await signInWithPopup(auth, googleProvider);
+		} catch (err: any) {
+			console.error('Google sign in error:', err);
+			setError('Googleログイン中にエラーが発生しました。もう一度お試しください。');
+			throw err;
+		}
+	};
+
+	// メールパスワードでサインイン
+	const signInWithEmailAndPassword = async (email: string, password: string) => {
+		try {
+			setError(null);
+			await firebaseSignInWithEmailAndPassword(auth, email, password);
+		} catch (err: any) {
+			console.error('Email/password sign in error:', err);
+
+			// エラーメッセージをユーザーフレンドリーに変換
+			if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+				setError('メールアドレスまたはパスワードが正しくありません。');
+			} else if (err.code === 'auth/too-many-requests') {
+				setError('ログイン試行回数が多すぎます。しばらく経ってから再度お試しください。');
+			} else {
+				setError('ログイン中にエラーが発生しました。もう一度お試しください。');
+			}
+
+			throw err;
+		}
+	};
+
+	// メールパスワードで新規ユーザー作成
+	const createUserWithEmailAndPassword = async (email: string, password: string) => {
+		try {
+			setError(null);
+			await firebaseCreateUserWithEmailAndPassword(auth, email, password);
+		} catch (err: any) {
+			console.error('Create user error:', err);
+
+			// エラーメッセージをユーザーフレンドリーに変換
+			if (err.code === 'auth/email-already-in-use') {
+				setError('このメールアドレスは既に使用されています。');
+			} else if (err.code === 'auth/weak-password') {
+				setError('パスワードは6文字以上の強力なものを設定してください。');
+			} else {
+				setError('アカウント作成中にエラーが発生しました。もう一度お試しください。');
+			}
+
+			throw err;
+		}
+	};
+
+	// パスワードリセットメール送信
+	const resetPassword = async (email: string) => {
+		try {
+			setError(null);
+			await sendPasswordResetEmail(auth, email);
+		} catch (err: any) {
+			console.error('Password reset error:', err);
+
+			if (err.code === 'auth/user-not-found') {
+				setError('このメールアドレスに登録されているアカウントが見つかりません。');
+			} else {
+				setError('パスワードリセットメールの送信中にエラーが発生しました。');
+			}
+
+			throw err;
+		}
+	};
+
+	// サインアウト
+	const signOut = async () => {
+		try {
+			await firebaseSignOut(auth);
+		} catch (err) {
+			console.error('Sign out error:', err);
+			setError('ログアウト中にエラーが発生しました。');
+			throw err;
+		}
+	};
+
+	const value = {
+		user,
+		userData,
+		loading,
+		signInWithGoogle,
+		signInWithEmailAndPassword,
+		createUserWithEmailAndPassword,
+		resetPassword,
+		signOut,
+		error,
+		clearError
+	};
+
+	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+// カスタムフック
+export const useAuth = () => useContext(AuthContext);-e 
+### FILE: ./src/types/index.ts
+
+// src/types/index.ts
+
+// 基本型
+export type Timestamp = {
+	seconds: number;
+	nanoseconds: number;
+};
+
+// Firebase関連
+export * from './firebase';
+
+// API関連
+export * from './api';
+
+// eKYC関連
+export type EkycStatus = 'pending' | 'in-progress' | 'completed' | 'failed' | 'expired';
+
+export interface EkycData {
+	status: EkycStatus;
+	sessionId?: string;
+	verifiedAt?: string;
+	lastUpdated?: string;
+}
+
+// Veriff関連
+export type VeriffStatus = 'created' | 'pending' | 'submitted' | 'completed' | 'failed' | 'expired';
+
+export interface VeriffSession {
+	sessionId: string;
+	sessionUrl: string;
+	status: VeriffStatus;
+	createdAt?: string;
+	updatedAt?: string;
+}
+
+// Stripe関連
+export type PaymentMethodType = 'card' | 'google_pay' | 'apple_pay';
+
+// 支払い情報
+export interface StripeInfo {
+	customerId?: string;
+	paymentMethodId?: string;
+	paymentSetupCompleted?: boolean;
+	createdAt?: string;
+	updatedAt?: string;
+	paymentMethodType?: string;
+	paymentMethodBrand?: string;
+	paymentMethodLast4?: string;
+	paymentStatus?: string;
+	lastPaymentError?: string;
+	lastPaymentErrorAt?: string;
+}-e 
 ### FILE: ./src/lib/stripe-payment-methods.ts
 
 // src/lib/stripe-payment-methods.ts
 import { loadStripe, Stripe } from '@stripe/stripe-js';
+import { PaymentMethodType } from '@/types';
 
 // Google Pay関連の定数
 export const GOOGLE_PAY_CONFIG = {
-  apiVersion: 2,
-  apiVersionMinor: 0,
-  allowedPaymentMethods: [{
-    type: 'CARD',
-    parameters: {
-      allowedAuthMethods: ['PAN_ONLY', 'CRYPTOGRAM_3DS'],
-      allowedCardNetworks: ['AMEX', 'DISCOVER', 'JCB', 'MASTERCARD', 'VISA'],
-    },
-    tokenizationSpecification: {
-      type: 'PAYMENT_GATEWAY',
-      parameters: {
-        gateway: 'stripe',
-        'stripe:version': '2023-10-16',
-        'stripe:publishableKey': process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
-      },
-    },
-  }],
-  merchantInfo: {
-    merchantName: 'E-Sports Sakura',
-    merchantId: process.env.NEXT_PUBLIC_GOOGLE_MERCHANT_ID || '',
-  },
+	apiVersion: 2,
+	apiVersionMinor: 0,
+	allowedPaymentMethods: [{
+		type: 'CARD',
+		parameters: {
+			allowedAuthMethods: ['PAN_ONLY', 'CRYPTOGRAM_3DS'],
+			allowedCardNetworks: ['AMEX', 'DISCOVER', 'JCB', 'MASTERCARD', 'VISA'],
+		},
+		tokenizationSpecification: {
+			type: 'PAYMENT_GATEWAY',
+			parameters: {
+				gateway: 'stripe',
+				'stripe:version': '2023-10-16',
+				'stripe:publishableKey': process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
+			},
+		},
+	}],
+	merchantInfo: {
+		merchantName: 'E-Sports Sakura',
+		merchantId: process.env.NEXT_PUBLIC_GOOGLE_MERCHANT_ID || '',
+	},
 };
 
 // Apple Pay関連の定数
 export const APPLE_PAY_CONFIG = {
-  merchantIdentifier: process.env.NEXT_PUBLIC_APPLE_MERCHANT_ID || '',
-  merchantCapabilities: ['supports3DS'],
-  countryCode: 'JP',
-  currencyCode: 'JPY',
-  supportedNetworks: ['amex', 'discover', 'jcb', 'masterCard', 'visa'],
+	merchantIdentifier: process.env.NEXT_PUBLIC_APPLE_MERCHANT_ID || '',
+	merchantCapabilities: ['supports3DS'],
+	countryCode: 'JP',
+	currencyCode: 'JPY',
+	supportedNetworks: ['amex', 'discover', 'jcb', 'masterCard', 'visa'],
 };
 
 // 利用可能な支払い方法とその表示に関する設定
 export const PAYMENT_METHODS = {
-  card: {
-    name: 'クレジット/デビットカード',
-    icon: '/images/card-icon.svg',
-    supportedBrands: ['visa', 'mastercard', 'amex', 'jcb'],
-  },
-  googlePay: {
-    name: 'Google Pay',
-    icon: '/images/google-pay-icon.svg',
-    isAvailable: false, // 初期値、後で動的に判定
-  },
-  applePay: {
-    name: 'Apple Pay',
-    icon: '/images/apple-pay-icon.svg',
-    isAvailable: false, // 初期値、後で動的に判定
-  },
+	card: {
+		name: 'クレジット/デビットカード',
+		icon: '/images/card-icon.svg',
+		supportedBrands: ['visa', 'mastercard', 'amex', 'jcb'],
+	},
+	googlePay: {
+		name: 'Google Pay',
+		icon: '/images/google-pay-icon.svg',
+		isAvailable: false, // 初期値、後で動的に判定
+	},
+	applePay: {
+		name: 'Apple Pay',
+		icon: '/images/apple-pay-icon.svg',
+		isAvailable: false, // 初期値、後で動的に判定
+	},
 };
 
 // 利用可能な支払い方法を確認するためのユーティリティ関数
-export async function checkAvailablePaymentMethods(stripe: Stripe | null) {
-  const result = {
-    card: true, // カードは常に利用可能
-    googlePay: false,
-    applePay: false,
-  };
+export async function checkAvailablePaymentMethods(stripe: Stripe | null): Promise<Record<string, boolean>> {
+	const result = {
+		card: true, // カードは常に利用可能
+		googlePay: false,
+		applePay: false,
+	};
 
-  // Google Payの利用可能性をチェック
-  if (window?.PaymentRequest) {
-    try {
-      const request = new PaymentRequest(
-        [{ supportedMethods: 'https://google.com/pay' }],
-        { total: { label: 'Test', amount: { currency: 'JPY', value: '0' } } }
-      );
-      result.googlePay = await request.canMakePayment();
-    } catch (e) {
-      console.error('Google Pay check failed:', e);
-    }
-  }
+	// Google Payの利用可能性をチェック
+	if (window?.PaymentRequest) {
+		try {
+			const request = new PaymentRequest(
+				[{ supportedMethods: 'https://google.com/pay' }],
+				{ total: { label: 'Test', amount: { currency: 'JPY', value: '0' } } }
+			);
+			result.googlePay = await request.canMakePayment();
+		} catch (e) {
+			console.error('Google Pay check failed:', e);
+		}
+	}
 
-  // Apple Payの利用可能性をチェック
-  if (stripe && window?.ApplePaySession && typeof window.ApplePaySession.canMakePayments === 'function') {
-    try {
-      result.applePay = window.ApplePaySession.canMakePayments();
-    } catch (e) {
-      console.error('Apple Pay check failed:', e);
-    }
-  }
+	// Apple Payの利用可能性をチェック
+	if (stripe && window?.ApplePaySession && typeof window.ApplePaySession.canMakePayments === 'function') {
+		try {
+			result.applePay = window.ApplePaySession.canMakePayments();
+		} catch (e) {
+			console.error('Apple Pay check failed:', e);
+		}
+	}
 
-  return result;
+	return result;
 }
 
 // Stripeを初期化し、支払い方法の利用可能性をチェックするラッパー関数
-export async function initializeStripeWithPaymentMethods() {
-  const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
-  const availableMethods = await checkAvailablePaymentMethods(stripe);
-  
-  return {
-    stripe,
-    availableMethods,
-  };
+export async function initializeStripeWithPaymentMethods(): Promise<{
+	stripe: Stripe | null;
+	availableMethods: Record<string, boolean>;
+}> {
+	const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
+	const availableMethods = await checkAvailablePaymentMethods(stripe);
+
+	return {
+		stripe,
+		availableMethods,
+	};
 }-e 
 ### FILE: ./src/lib/firebase.ts
 
@@ -250,7 +749,9 @@ export const testCards = {
 };-e 
 ### FILE: ./src/lib/veriff.ts
 
-// Veriff API連携用ユーティリティ
+// src/lib/veriff.ts
+
+import { VeriffSession, VeriffStatus } from '@/types';
 
 /**
  * Veriff API の設定
@@ -266,48 +767,48 @@ const VERIFF_API_SECRET = process.env.VERIFF_API_SECRET || '';
  * @param userEmail ユーザーのメールアドレス
  * @returns 作成されたセッション情報
  */
-export async function createVeriffSession(userId: string, userEmail: string) {
-  try {
-    // APIリクエストのペイロード
-    const payload = {
-      verification: {
-        callback: `${process.env.NEXT_PUBLIC_APP_URL}/api/veriff/callback`,
-        person: {
-          firstName: '',
-          lastName: '',
-          idNumber: userId,
-          email: userEmail
-        },
-        vendorData: userId,
-        timestamp: new Date().toISOString()
-      }
-    };
+export async function createVeriffSession(userId: string, userEmail: string): Promise<VeriffSession> {
+	try {
+		// APIリクエストのペイロード
+		const payload = {
+			verification: {
+				callback: `${process.env.NEXT_PUBLIC_APP_URL}/api/veriff/callback`,
+				person: {
+					firstName: '',
+					lastName: '',
+					idNumber: userId,
+					email: userEmail
+				},
+				vendorData: userId,
+				timestamp: new Date().toISOString()
+			}
+		};
 
-    // Veriff APIへのリクエスト
-    const response = await fetch(`${VERIFF_API_URL}/sessions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-AUTH-CLIENT': VERIFF_API_KEY
-      },
-      body: JSON.stringify(payload)
-    });
+		// Veriff APIへのリクエスト
+		const response = await fetch(`${VERIFF_API_URL}/sessions`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-AUTH-CLIENT': VERIFF_API_KEY
+			},
+			body: JSON.stringify(payload)
+		});
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Veriff API error: ${errorData.message || response.statusText}`);
-    }
+		if (!response.ok) {
+			const errorData = await response.json();
+			throw new Error(`Veriff API error: ${errorData.message || response.statusText}`);
+		}
 
-    const data = await response.json();
-    return {
-      sessionId: data.verification.id,
-      sessionUrl: data.verification.url,
-      status: 'created'
-    };
-  } catch (error) {
-    console.error('Error creating Veriff session:', error);
-    throw error;
-  }
+		const data = await response.json();
+		return {
+			sessionId: data.verification.id,
+			sessionUrl: data.verification.url,
+			status: 'created'
+		};
+	} catch (error) {
+		console.error('Error creating Veriff session:', error);
+		throw error;
+	}
 }
 
 /**
@@ -315,29 +816,32 @@ export async function createVeriffSession(userId: string, userEmail: string) {
  * @param sessionId セッションID
  * @returns セッションのステータス情報
  */
-export async function checkVeriffSessionStatus(sessionId: string) {
-  try {
-    const response = await fetch(`${VERIFF_API_URL}/sessions/${sessionId}`, {
-      method: 'GET',
-      headers: {
-        'X-AUTH-CLIENT': VERIFF_API_KEY
-      }
-    });
+export async function checkVeriffSessionStatus(sessionId: string): Promise<{
+	status: VeriffStatus;
+	updatedAt: string;
+}> {
+	try {
+		const response = await fetch(`${VERIFF_API_URL}/sessions/${sessionId}`, {
+			method: 'GET',
+			headers: {
+				'X-AUTH-CLIENT': VERIFF_API_KEY
+			}
+		});
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Veriff API error: ${errorData.message || response.statusText}`);
-    }
+		if (!response.ok) {
+			const errorData = await response.json();
+			throw new Error(`Veriff API error: ${errorData.message || response.statusText}`);
+		}
 
-    const data = await response.json();
-    return {
-      status: data.verification.status,
-      updatedAt: data.verification.updatedAt
-    };
-  } catch (error) {
-    console.error('Error checking Veriff session status:', error);
-    throw error;
-  }
+		const data = await response.json();
+		return {
+			status: data.verification.status,
+			updatedAt: data.verification.updatedAt
+		};
+	} catch (error) {
+		console.error('Error checking Veriff session status:', error);
+		throw error;
+	}
 }
 
 /**
@@ -346,31 +850,17 @@ export async function checkVeriffSessionStatus(sessionId: string) {
  * @param payload Veriffから受け取ったデータ
  * @returns 検証結果
  */
-export function verifyVeriffCallback(signature: string, payload: any) {
-  // 実際の実装では、HMACを使用して署名を検証するコードが必要
-  // 今回はモック実装
-  return true;
-}
-
-// Veriffの検証ステータスタイプ
-export type VeriffStatus = 'created' | 'pending' | 'submitted' | 'completed' | 'failed' | 'expired';
-
-// Veriffセッション情報の型
-export interface VeriffSession {
-  sessionId: string;
-  sessionUrl: string;
-  status: VeriffStatus;
-  createdAt?: string;
-  updatedAt?: string;
+export function verifyVeriffCallback(signature: string, payload: any): boolean {
+	// 実際の実装では、HMACを使用して署名を検証するコードが必要
+	// 今回はモック実装
+	return true;
 }-e 
 ### FILE: ./src/lib/stripe-service.ts
 
 // src/lib/stripe-service.ts
 import Stripe from 'stripe';
 import { stripe } from '@/lib/stripe';
-
-// 支払い方法のタイプ
-export type PaymentMethodType = 'card' | 'google_pay' | 'apple_pay';
+import { PaymentMethodType } from '@/types';
 
 // 顧客情報のインターフェース
 interface CustomerData {
@@ -660,6 +1150,201 @@ export default function LoginPage() {
 		</div>
 	);
 }-e 
+### FILE: ./src/app/games/[category]/page.tsx
+
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { notFound } from 'next/navigation';
+import GameCategoryLayout from '@/components/games/GameCategoryLayout';
+import VideoPreloader from '@/components/games/VideoPreloader';
+import { CategoryPageContainer } from '@/components/ui/PageTransition';
+
+// Define the game categories and their IDs that match the route parameters
+const VALID_CATEGORIES = ['party', 'competitive', 'immersive'];
+
+// Game data - in a real application, this would come from a database or API
+const GAME_DATA = {
+	party: {
+		title: 'ワイワイ系ゲーム',
+		description: 'コントローラーで2人でも盛り上がれる',
+		games: [
+			{
+				id: 'party-animals',
+				title: 'Party Animals',
+				description: '可愛い動物たちが戦うカオスなパーティーゲーム',
+				playerCount: '2-8人',
+				recommendedTime: '30分-1時間',
+				difficulty: '初心者向け',
+				videoSrc: '/videos/party/party-animals.mp4', // Local path for initial development
+				thumbnailSrc: '/images/lp/games/overcooked.png',
+				similarGames: ['Fall Guys', 'Gang Beasts']
+			},
+			{
+				id: 'fall-guys',
+				title: 'Fall Guys',
+				description: '障害物競走のバトルロイヤル！最後まで生き残れ',
+				playerCount: '1-4人',
+				recommendedTime: '20-40分',
+				difficulty: '初心者向け',
+				videoSrc: '/videos/party/fall-guys.mp4',
+				thumbnailSrc: '/images/lp/games/fallguys.png',
+				similarGames: ['Party Animals', 'Pummel Party']
+			},
+			{
+				id: 'pummel-party',
+				title: 'Pummel Party',
+				description: '友情を破壊するミニゲームコレクション',
+				playerCount: '4-8人',
+				recommendedTime: '1-2時間',
+				difficulty: '中級者向け',
+				videoSrc: '/videos/party/pummel-party.mp4',
+				thumbnailSrc: '/images/lp/games/pummel.png',
+				similarGames: ['Mario Party', 'Fall Guys']
+			}
+		]
+	},
+	competitive: {
+		title: '競技系ゲーム',
+		description: '120FPSでぬるぬる動く、プロ仕様',
+		games: [
+			{
+				id: 'counter-strike-2',
+				title: 'Counter-Strike 2',
+				description: 'タクティカルFPSの金字塔、最新バージョン',
+				playerCount: '5v5',
+				recommendedTime: '30-90分',
+				difficulty: '上級者向け',
+				videoSrc: '/videos/competitive/cs2.mp4',
+				thumbnailSrc: '/images/lp/games/valorant.png',
+				similarGames: ['Valorant', 'Rainbow Six Siege']
+			},
+			{
+				id: 'pubg',
+				title: 'PUBG',
+				description: 'バトルロイヤルの先駆者、100人での生存競争',
+				playerCount: '1-4人',
+				recommendedTime: '20-30分',
+				difficulty: '中級者向け',
+				videoSrc: '/videos/competitive/pubg.mp4',
+				thumbnailSrc: '/images/lp/games/pubg.png',
+				similarGames: ['Apex Legends', 'Fortnite']
+			},
+			{
+				id: 'apex-legends',
+				title: 'Apex Legends',
+				description: '高速移動とチームプレイが特徴のヒーローシューター',
+				playerCount: '3人チーム',
+				recommendedTime: '15-25分',
+				difficulty: '中級者向け',
+				videoSrc: '/videos/competitive/apex.mp4',
+				thumbnailSrc: '/images/lp/games/apex.png',
+				similarGames: ['PUBG', 'Valorant']
+			}
+		]
+	},
+	immersive: {
+		title: 'じっくり系ゲーム',
+		description: '1人でも仲間とでも、じっくり楽しめる',
+		games: [
+			{
+				id: 'operation-tango',
+				title: 'Operation: Tango',
+				description: '2人協力のスパイアドベンチャー、コミュニケーションが鍵',
+				playerCount: '2人',
+				recommendedTime: '1-2時間',
+				difficulty: '中級者向け',
+				videoSrc: '/videos/immersive/operation-tango.mp4',
+				thumbnailSrc: '/images/lp/games/slaythespire.png',
+				similarGames: ['Keep Talking and Nobody Explodes', 'We Were Here']
+			},
+			{
+				id: 'portal-2',
+				title: 'Portal 2',
+				description: '物理パズルの傑作、協力プレイも可能',
+				playerCount: '1-2人',
+				recommendedTime: '1-2時間',
+				difficulty: '中級者向け',
+				videoSrc: '/videos/immersive/portal2.mp4',
+				thumbnailSrc: '/images/lp/games/cities.png',
+				similarGames: ['The Witness', 'The Talos Principle']
+			},
+			{
+				id: 'the-witness',
+				title: 'The Witness',
+				description: '美しい島を舞台にした一人称パズルゲーム',
+				playerCount: '1人',
+				recommendedTime: '2-3時間',
+				difficulty: '上級者向け',
+				videoSrc: '/videos/immersive/witness.mp4',
+				thumbnailSrc: '/images/lp/games/witness.png',
+				similarGames: ['Portal 2', 'Braid']
+			}
+		]
+	}
+};
+
+type Params = {
+	params: {
+		category: string;
+	};
+};
+
+export default function GameCategoryPage({ params }: Params) {
+	const { category } = params;
+	const [isLoading, setIsLoading] = useState(true);
+	const [activeIndex, setActiveIndex] = useState(0);
+
+	useEffect(() => {
+		// Simulate loading data
+		const timer = setTimeout(() => {
+			setIsLoading(false);
+		}, 500);
+
+		return () => clearTimeout(timer);
+	}, []);
+
+	// Validate that the category exists
+	if (!VALID_CATEGORIES.includes(category)) {
+		notFound();
+	}
+
+	// Get the category data
+	const categoryData = GAME_DATA[category as keyof typeof GAME_DATA];
+
+	if (!categoryData) {
+		notFound();
+	}
+
+	// Get all video sources for preloading
+	const videoSources = categoryData.games.map(game => game.videoSrc);
+
+	return (
+		<CategoryPageContainer category={category}>
+			{isLoading ? (
+				<div className="flex items-center justify-center min-h-screen">
+					<div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
+				</div>
+			) : (
+				<div className="min-h-screen">
+					<GameCategoryLayout
+						category={category}
+						title={categoryData.title}
+						description={categoryData.description}
+						games={categoryData.games}
+						onActiveIndexChange={setActiveIndex}
+					/>
+
+					{/* プリロード用の非表示コンポーネント */}
+					<VideoPreloader
+						videoSrcs={videoSources}
+						currentIndex={activeIndex}
+					/>
+				</div>
+			)}
+		</CategoryPageContainer>
+	);
+}-e 
 ### FILE: ./src/app/dashboard/page.tsx
 
 'use client';
@@ -909,31 +1594,36 @@ export default function DashboardPage() {
 }-e 
 ### FILE: ./src/app/reservation/page.tsx
 
+// src/app/reservation/page.tsx
 'use client';
-
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
+import { useReservation } from '@/context/reservation-context';
 import { ReservationProvider } from '@/context/reservation-context';
 import { ChevronLeft } from 'lucide-react';
-
+import { BranchDocument } from '@/types/firebase';
+import BranchSelector from '@/components/reservation/branch-selector';
 import CalendarView from '@/components/reservation/calendar-view';
 import TimeGrid from '@/components/reservation/time-grid';
 import ReservationForm from '@/components/reservation/reservation-form';
 import LoginPrompt from '@/components/reservation/login-prompt';
+//import SeatInitializer from '@/components/ini/create-seat-documents';
 
 enum ReservationStep {
+	SELECT_BRANCH,  // 新しいステップ
 	SELECT_DATE,
 	SELECT_TIME,
 	CONFIRM
 }
 
-const ReservationPage: React.FC = () => {
+const ReservationPageContent: React.FC = () => {
 	const { user, loading } = useAuth();
+	const { setSelectedBranch } = useReservation(); // ここでフックを呼び出す
 	const router = useRouter();
 
-	const [currentStep, setCurrentStep] = useState<ReservationStep>(ReservationStep.SELECT_DATE);
+	const [currentStep, setCurrentStep] = useState<ReservationStep>(ReservationStep.SELECT_BRANCH);
 	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 	const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 	const [reservationDetails, setReservationDetails] = useState<{
@@ -967,6 +1657,13 @@ const ReservationPage: React.FC = () => {
 			}
 		}
 	}, [user, loading]);
+
+	// 支店選択ハンドラー
+	const handleBranchSelect = (branch: BranchDocument) => {
+		// useReservationフックを使用した結果をここで使う
+		setSelectedBranch(branch);
+		setCurrentStep(ReservationStep.SELECT_DATE);
+	};
 
 	// Handle date selection
 	const handleDateSelect = (date: Date) => {
@@ -1008,12 +1705,21 @@ const ReservationPage: React.FC = () => {
 			setCurrentStep(ReservationStep.SELECT_TIME);
 		} else if (currentStep === ReservationStep.SELECT_TIME) {
 			setCurrentStep(ReservationStep.SELECT_DATE);
+		} else if (currentStep === ReservationStep.SELECT_DATE) {
+			setCurrentStep(ReservationStep.SELECT_BRANCH);
 		}
 	};
 
 	// Render appropriate step
 	const renderStep = () => {
 		switch (currentStep) {
+			case ReservationStep.SELECT_BRANCH:
+				return (
+					<div className="w-full max-w-3xl mx-auto">
+						<BranchSelector onBranchSelect={handleBranchSelect} />
+					</div>
+				);
+
 			case ReservationStep.SELECT_DATE:
 				return (
 					<div className="w-full max-w-3xl mx-auto">
@@ -1049,88 +1755,110 @@ const ReservationPage: React.FC = () => {
 	};
 
 	return (
-		<ReservationProvider>
-			<div className="min-h-screen bg-background py-12 px-4">
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					className="w-full"
-				>
-					{/* Header with back button */}
-					<div className="max-w-3xl mx-auto mb-6 flex items-center">
-						{currentStep > ReservationStep.SELECT_DATE && (
-							<button
-								onClick={handleBack}
-								className="mr-3 p-2 rounded-full bg-border/50 border border-border/20 hover:bg-border/20 transition-colors"
-								aria-label="戻る"
-							>
-								<ChevronLeft size={20} className="text-foreground/70" />
-							</button>
-						)}
-						<h1 className="text-2xl font-bold text-foreground">
-							{currentStep === ReservationStep.SELECT_DATE && '予約日を選択'}
-							{currentStep === ReservationStep.SELECT_TIME && '時間と座席を選択'}
-							{currentStep === ReservationStep.CONFIRM && '予約の確認'}
-						</h1>
-					</div>
-
-					{/* Progress steps */}
-					<div className="max-w-3xl mx-auto mb-8">
-						<div className="flex items-center justify-between">
-							<div className="flex flex-col items-center">
-								<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_DATE
-										? 'bg-accent text-white'
-										: 'bg-border text-foreground/70'
-									}`}>
-									1
-								</div>
-								<span className="text-sm mt-1 text-foreground/70">日付</span>
+		<div className="min-h-screen bg-background py-12 px-4">
+			<motion.div
+				initial={{ opacity: 0, y: 20 }}
+				animate={{ opacity: 1, y: 0 }}
+				className="w-full"
+			>
+				{/* Header with back button */}
+				<div className="max-w-3xl mx-auto mb-6 flex items-center">
+					{currentStep > ReservationStep.SELECT_BRANCH && (
+						<button
+							onClick={handleBack}
+							className="mr-3 p-2 rounded-full bg-border/50 border border-border/20 hover:bg-border/20 transition-colors"
+							aria-label="戻る"
+						>
+							<ChevronLeft size={20} className="text-foreground/70" />
+						</button>
+					)}
+					<h1 className="text-2xl font-bold text-foreground">
+						{currentStep === ReservationStep.SELECT_BRANCH && '支店を選択'}
+						{currentStep === ReservationStep.SELECT_DATE && '予約日を選択'}
+						{currentStep === ReservationStep.SELECT_TIME && '時間と座席を選択'}
+						{currentStep === ReservationStep.CONFIRM && '予約の確認'}
+					</h1>
+				</div>
+				{/* Progress steps */}
+				<div className="max-w-3xl mx-auto mb-8">
+					<div className="flex items-center justify-between">
+						<div className="flex flex-col items-center">
+							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_BRANCH
+									? 'bg-accent text-white'
+									: 'bg-border text-foreground/70'
+								}`}>
+								1
 							</div>
+							<span className="text-sm mt-1 text-foreground/70">支店</span>
+						</div>
 
-							<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_DATE
-									? 'bg-accent'
-									: 'bg-border'
-								}`} />
+						<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_BRANCH
+								? 'bg-accent'
+								: 'bg-border'
+							}`} />
 
-							<div className="flex flex-col items-center">
-								<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_TIME
-										? 'bg-accent text-white'
-										: 'bg-border text-foreground/70'
-									}`}>
-									2
-								</div>
-								<span className="text-sm mt-1 text-foreground/70">時間・座席</span>
+						<div className="flex flex-col items-center">
+							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_DATE
+									? 'bg-accent text-white'
+									: 'bg-border text-foreground/70'
+								}`}>
+								2
 							</div>
+							<span className="text-sm mt-1 text-foreground/70">日付</span>
+						</div>
 
-							<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_TIME
-									? 'bg-accent'
-									: 'bg-border'
-								}`} />
+						<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_DATE
+								? 'bg-accent'
+								: 'bg-border'
+							}`} />
 
-							<div className="flex flex-col items-center">
-								<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.CONFIRM
-										? 'bg-accent text-white'
-										: 'bg-border text-foreground/70'
-									}`}>
-									3
-								</div>
-								<span className="text-sm mt-1 text-foreground/70">確認</span>
+						<div className="flex flex-col items-center">
+							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_TIME
+									? 'bg-accent text-white'
+									: 'bg-border text-foreground/70'
+								}`}>
+								3
 							</div>
+							<span className="text-sm mt-1 text-foreground/70">時間・座席</span>
+						</div>
+
+						<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_TIME
+								? 'bg-accent'
+								: 'bg-border'
+							}`} />
+
+						<div className="flex flex-col items-center">
+							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.CONFIRM
+									? 'bg-accent text-white'
+									: 'bg-border text-foreground/70'
+								}`}>
+								4
+							</div>
+							<span className="text-sm mt-1 text-foreground/70">確認</span>
 						</div>
 					</div>
+				</div>
 
-					{/* Current step content */}
-					{renderStep()}
+				{/* Current step content */}
+				{renderStep()}
 
-					{/* Login prompt */}
-					{showLoginPrompt && reservationDetails && (
-						<LoginPrompt
-							onClose={() => setShowLoginPrompt(false)}
-							reservationDetails={reservationDetails}
-						/>
-					)}
-				</motion.div>
-			</div>
+				{/* Login prompt */}
+				{showLoginPrompt && reservationDetails && (
+					<LoginPrompt
+						onClose={() => setShowLoginPrompt(false)}
+						reservationDetails={reservationDetails}
+					/>
+				)}
+			</motion.div>
+		</div>
+	);
+};
+
+// ReservationProviderでラップしたコンポーネントを返す
+const ReservationPage: React.FC = () => {
+	return (
+		<ReservationProvider>
+			<ReservationPageContent />
 		</ReservationProvider>
 	);
 };
@@ -1157,10 +1885,7 @@ export default function LandingPage() {
 		<main className="landing-page bg-background text-foreground">
 			{/* LP専用ヘッダー */}
 			<LpHeader />
-
-			{/* メインコンテンツ */}
-			<div className="pt-16"> {/* ヘッダー分の余白 */}
-				{/* ヒーローセクション */}
+			<div className="pt-16">
 				<HeroSection />
 
 				{/* 利用シーンセクション */}
@@ -1518,6 +2243,7 @@ import { getFirestore, collection, addDoc, query, where, getDocs, Timestamp, ord
 import { getAuth } from 'firebase/auth';
 import { initializeApp } from 'firebase/app';
 import { firebaseConfig } from '@/lib/firebase';
+import { ReservationDocument } from '@/types/firebase';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -1591,7 +2317,7 @@ export async function GET(req: NextRequest) {
 		const reservations = querySnapshot.docs.map(doc => ({
 			id: doc.id,
 			...doc.data()
-		}));
+		})) as ReservationDocument[];
 
 		return NextResponse.json({ reservations });
 	} catch (error) {
@@ -1690,7 +2416,7 @@ export async function POST(req: NextRequest) {
 		}
 
 		// Create new reservation
-		const newReservation = {
+		const newReservation: Omit<ReservationDocument, 'id'> = {
 			userId: user.uid,
 			userEmail: user.email,
 			seatId,
@@ -1945,6 +2671,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { initAdminApp } from '@/lib/firebase-admin';
+import { VeriffSessionResponse } from '@/types/api';
 
 // Firebase Admin初期化
 initAdminApp();
@@ -1984,10 +2711,13 @@ export async function POST(request: NextRequest) {
 
 			// eKYCが既に完了している場合
 			if (userData?.eKYC?.status === 'completed') {
-				return NextResponse.json({
+				const response: VeriffSessionResponse = {
 					message: 'Verification already completed',
-					status: 'completed'
-				});
+					status: 'completed',
+					sessionId: userData.eKYC.sessionId || '',
+					sessionUrl: ''
+				};
+				return NextResponse.json(response);
 			}
 		}
 
@@ -2035,11 +2765,13 @@ export async function POST(request: NextRequest) {
 			}
 		}, { merge: true });
 
-		return NextResponse.json({
+		const sessionResponse: VeriffSessionResponse = {
 			sessionId: data.verification.id,
 			sessionUrl: data.verification.url,
 			status: 'created'
-		});
+		};
+
+		return NextResponse.json(sessionResponse);
 
 	} catch (error) {
 		console.error('Error creating Veriff session:', error);
@@ -2387,30 +3119,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getFirestore, collection, getDocs, query, where } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { firebaseConfig } from '@/lib/firebase';
-
-interface Seat {
-	id: string;
-	seatId: string;
-	name: string;
-	status: string;
-	ratePerMinute: number;
-	ipAddress?: string;
-	createdAt?: string;
-	updatedAt?: string;
-	[key: string]: any; // その他のプロパティを許可
-  }
-  
-  // 予約情報のインターフェース
-  interface Reservation {
-	id?: string;
-	userId: string;
-	seatId: string;
-	date: string;
-	startTime: string;
-	endTime: string;
-	status: 'confirmed' | 'cancelled' | 'completed';
-	[key: string]: any;
-  }
+import { SeatDocument, ReservationDocument } from '@/types/firebase';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -2437,7 +3146,7 @@ export async function GET(req: NextRequest) {
 		const seats = querySnapshot.docs.map(doc => ({
 			id: doc.id,
 			...doc.data()
-		}));
+		})) as SeatDocument[];
 
 		// Get date param for availability check
 		const date = url.searchParams.get('date');
@@ -2451,7 +3160,7 @@ export async function GET(req: NextRequest) {
 			);
 
 			const reservationsSnapshot = await getDocs(reservationsQuery);
-			const reservations = reservationsSnapshot.docs.map(doc => doc.data());
+			const reservations = reservationsSnapshot.docs.map(doc => doc.data()) as ReservationDocument[];
 
 			// Enhance seats with availability info
 			const seatsWithAvailability = seats.map(seat => {
@@ -2504,7 +3213,7 @@ export async function POST(req: NextRequest) {
 		const seats = seatsSnapshot.docs.map(doc => ({
 			id: doc.id,
 			...doc.data()
-		}));
+		})) as SeatDocument[];
 
 		// Query reservations for the specified date
 		const reservationsQuery = query(
@@ -2514,7 +3223,7 @@ export async function POST(req: NextRequest) {
 		);
 
 		const reservationsSnapshot = await getDocs(reservationsQuery);
-		const reservations = reservationsSnapshot.docs.map(doc => doc.data());
+		const reservations = reservationsSnapshot.docs.map(doc => doc.data()) as ReservationDocument[];
 
 		// Convert times to Date objects for comparison
 		const requestStart = new Date(`${date}T${startTime}`);
@@ -2790,6 +3499,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { initAdminApp } from '@/lib/firebase-admin';
 import { getOrCreateCustomer } from '@/lib/stripe';
+import { StripeCustomerResponse } from '@/types/api';
 
 // Firebase Admin初期化
 initAdminApp();
@@ -2831,9 +3541,11 @@ export async function POST(request: NextRequest) {
 			}
 		});
 
-		return NextResponse.json({
+		const response: StripeCustomerResponse = {
 			customerId: customer.id
-		});
+		};
+
+		return NextResponse.json(response);
 
 	} catch (error) {
 		console.error('Error creating Stripe customer:', error);
@@ -3534,7 +4246,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { VeriffSession, VeriffStatus } from '@/lib/veriff';
+import { VeriffSession, VeriffStatus } from '@/types';
 
 interface UseVeriffReturn {
 	status: VeriffStatus;
@@ -3670,6 +4382,76 @@ export function useVeriff(): UseVeriffReturn {
 		startVerification,
 		simulateVerification
 	};
+}-e 
+### FILE: ./src/components/ini/create-seat-documents.tsx
+
+import React, { useState } from 'react';
+import { collection, doc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase'; // 先ほど見せていただいたFirebase初期化ファイルからdbをインポート
+
+export default function SeatInitializer() {
+	const [isLoading, setIsLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	const createSeatDocuments = async () => {
+		setIsLoading(true);
+		setError(null);
+
+		try {
+			const seatNumbers = [1,2, 3, 4, 5, 6, 7, 8];
+			const seatsCollection = collection(db, 'seats');
+
+			for (const seatNumber of seatNumbers) {
+				const seatId = `TACH-${seatNumber.toString().padStart(2, '0')}`;
+				const seatDoc = {
+					seatId: seatId,
+					branchCode: 'TACH',
+					branchName: '立川店',
+					seatType: 'PC',
+					seatNumber: seatNumber,
+					name: `Gaming PC #${seatNumber}`,
+					ipAddress: `192.000.123.00${seatNumber}`,
+					ratePerHour: {
+						'weekday night': 400,
+						'weekday noon': 1300,
+						'weekend': 400
+					},
+					status: 'available',
+					availableHours: {
+						'weekday night': ['18:00-23:00'],
+						'weekday noon': ['9:00-17:00'],
+						'weekend': ['9:00-23:00']
+					},
+					maxAdvanceBookingDays: 90,
+					createdAt: new Date('2025-04-08T14:00:00').toISOString(),
+					updatedAt: new Date('2025-04-08T14:00:00').toISOString()
+				};
+
+				// 各座席ドキュメントをFirestoreに保存
+				await setDoc(doc(seatsCollection, seatId), seatDoc);
+			}
+
+			alert('座席情報をFirestoreに保存しました！');
+		} catch (err) {
+			console.error('座席情報の保存中にエラーが発生しました:', err);
+			setError('座席情報の保存に失敗しました');
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	return (
+		<div className="p-4">
+			<button
+				onClick={createSeatDocuments}
+				disabled={isLoading}
+				className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50"
+			>
+				{isLoading ? '保存中...' : '座席情報を保存 (TACH-02 to TACH-08)'}
+			</button>
+			{error && <p className="text-red-500 mt-2">{error}</p>}
+		</div>
+	);
 }-e 
 ### FILE: ./src/components/auth/email-password-form.tsx
 
@@ -4863,6 +5645,910 @@ export default function VerificationComplete({
 		</motion.div>
 	);
 }-e 
+### FILE: ./src/components/games/GameSession.tsx
+
+'use client';
+
+import React, { useRef, useEffect } from 'react';
+import StickyGameVideo from './StickyGameVideo';
+
+interface Game {
+	id: string;
+	title: string;
+	description: string;
+	playerCount: string;
+	recommendedTime: string;
+	difficulty: string;
+	videoSrc: string;
+	thumbnailSrc: string;
+	similarGames: string[];
+}
+
+interface GameSectionProps {
+	game: Game;
+	isActive: boolean;
+	onVisibilityChange: (isVisible: boolean) => void;
+}
+
+export default function GameSection({ game, isActive, onVisibilityChange }: GameSectionProps) {
+	const sectionRef = useRef<HTMLDivElement>(null);
+
+	// 可視性を監視
+	useEffect(() => {
+		if (!sectionRef.current) return;
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				const [entry] = entries;
+				if (entry.isIntersecting) {
+					onVisibilityChange(true);
+				} else {
+					onVisibilityChange(false);
+				}
+			},
+			{ threshold: 0.3 } // 30%見えたら判定
+		);
+
+		observer.observe(sectionRef.current);
+
+		return () => {
+			if (sectionRef.current) {
+				observer.unobserve(sectionRef.current);
+			}
+		};
+	}, [onVisibilityChange]);
+
+	return (
+		<div
+			ref={sectionRef}
+			className={`relative min-h-screen py-0 md:py-0 transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-50'}`}
+		>
+			<div className="container mx-auto px-4">
+				<div className="md:hidden flex flex-col">
+					<div className="sticky top-28 z-10 h-[40vh] mb-8">
+						<StickyGameVideo
+							videoSrc={game.videoSrc}
+							title={game.title}
+							thumbnailSrc={game.thumbnailSrc}
+							isActive={isActive}
+						/>
+					</div>
+					<div className="max-w-3xl mx-auto">
+						<h2 className="text-3xl font-bold mb-6">{game.title}</h2>
+						<p className="mb-8 text-lg">{game.description}</p>
+						{renderGameDetails(game)}
+					</div>
+				</div>
+				<div className="hidden md:flex">
+					<div className="w-1/2 pr-8">
+						<div className="max-w-xl ml-auto h-screen flex items-center">
+							{gameTitleDetails(game)}
+						</div>
+						<div className="max-w-xl ml-auto h-screen">
+							{renderGameDetails(game)}
+						</div>
+					</div>
+					<div className="w-1/2">
+						<div className="sticky top-1/2 -translate-y-1/2 max-w-4xl">
+							<StickyGameVideo
+								videoSrc={game.videoSrc}
+								title={game.title}
+								thumbnailSrc={game.thumbnailSrc}
+								isActive={isActive}
+							/>
+						</div>
+					</div>
+				</div>
+
+			</div>
+		</div>
+	);
+
+	function gameTitleDetails(game: Game) {
+		return (
+			<>
+				<div className="w-full">
+					<h2 className="text-3xl font-bold mb-1 ml-2">{game.title}</h2>
+					<p className="mb-4 text-lg ml-2">{game.description}</p>
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 bg-border/10 p-6 rounded-2xl">
+						<div>
+							<h4 className="text-foreground/60 font-medium mb-2">プレイ人数</h4>
+							<p className="text-lg font-bold">{game.playerCount}</p>
+						</div>
+						<div>
+							<h4 className="text-foreground/60 font-medium mb-2">推奨プレイ時間</h4>
+							<p className="text-lg font-bold">{game.recommendedTime}</p>
+						</div>
+						<div>
+							<h4 className="text-foreground/60 font-medium mb-2">難易度</h4>
+							<p className="text-lg font-bold">{game.difficulty}</p>
+						</div>
+					</div>
+				</div>
+			</>
+		);
+	}
+
+
+	function renderGameDetails(game: Game) {
+		return (
+			<>
+
+				<div className="mb-8">
+					<h3 className="text-xl font-bold mb-4">ゲーム体験</h3>
+					<p className="mb-4">
+						当店では、最高の環境でこのゲームをお楽しみいただけます。最新のハードウェアと大画面モニターで、
+						臨場感あふれるゲーム体験をご提供します。
+					</p>
+					<p className="mb-4">
+						友達との対戦や協力プレイも可能です。初心者の方にもスタッフがサポートいたします。
+					</p>
+				</div>
+
+				<div className="mb-8">
+					<h3 className="text-xl font-bold mb-4">類似ゲーム</h3>
+					<p className="mb-3">このゲームを気に入ったら、こちらもおすすめです：</p>
+					<div className="flex flex-wrap gap-2">
+						{game.similarGames.map(similarGame => (
+							<span
+								key={similarGame}
+								className="px-4 py-2 bg-border/20 rounded-full text-base"
+							>
+								{similarGame}
+							</span>
+						))}
+					</div>
+				</div>
+			</>
+		);
+	}
+}-e 
+### FILE: ./src/components/games/GameCategoryLayout.tsx
+
+'use client';
+
+import React, { useState, useRef, useEffect } from 'react';
+import CategoryHeader from './CategoryHeader';
+import GameSection from './GameSession';
+
+interface Game {
+	id: string;
+	title: string;
+	description: string;
+	playerCount: string;
+	recommendedTime: string;
+	difficulty: string;
+	videoSrc: string;
+	thumbnailSrc: string;
+	similarGames: string[];
+}
+
+interface GameCategoryLayoutProps {
+	category: string;
+	title: string;
+	description: string;
+	games: Game[];
+	onActiveIndexChange?: (index: number) => void;
+}
+
+export default function GameCategoryLayout({
+	category,
+	title,
+	description,
+	games,
+	onActiveIndexChange
+}: GameCategoryLayoutProps) {
+	const [activeGameIndex, setActiveGameIndex] = useState(0);
+	const [visibleSections, setVisibleSections] = useState<boolean[]>(Array(games.length).fill(false));
+
+	// Notify parent of active index changes
+	useEffect(() => {
+		if (onActiveIndexChange) {
+			onActiveIndexChange(activeGameIndex);
+		}
+	}, [activeGameIndex, onActiveIndexChange]);
+
+	// 可視状態が変更されたときのハンドラー
+	const handleVisibilityChange = (index: number, isVisible: boolean) => {
+		setVisibleSections(prev => {
+			const newState = [...prev];
+			newState[index] = isVisible;
+			return newState;
+		});
+	};
+
+	// 可視セクションが変わったら、activeゲームを更新
+	useEffect(() => {
+		const visibleIndex = visibleSections.findIndex(isVisible => isVisible);
+		if (visibleIndex !== -1 && visibleIndex !== activeGameIndex) {
+			setActiveGameIndex(visibleIndex);
+		}
+	}, [visibleSections, activeGameIndex]);
+
+	return (
+		<>
+			{games.map((game, index) => (
+				<GameSection
+					key={game.id}
+					game={game}
+					isActive={index === activeGameIndex}
+					onVisibilityChange={(isVisible) => handleVisibilityChange(index, isVisible)}
+				/>
+			))}
+		</>
+	);
+}
+/*
+			<CategoryHeader
+				category={category}
+				title={title}
+				description={description}
+			/>
+*/-e 
+### FILE: ./src/components/games/CategoryHeader.tsx
+
+'use client';
+
+import React from 'react';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
+
+interface CategoryHeaderProps {
+	category: string;
+	title: string;
+	description: string;
+}
+
+export default function CategoryHeader({ category, title, description }: CategoryHeaderProps) {
+	return (
+		<header className="w-full bg-background p-6 md:p-8 shadow-soft mb-6 fixed z-50">
+			<div className="max-w-7xl mx-auto">
+				<div className="flex items-center justify-between">
+					<Link
+						href="/#games"
+						className="flex items-center text-foreground hover:text-accent transition-colors"
+					>
+						<ArrowLeft className="mr-2 h-5 w-5" />
+						<span className="font-medium">ゲーム一覧に戻る</span>
+					</Link>
+
+					<div className="text-right">
+						<h1 className="text-xl md:text-2xl font-bold animate-fadeIn">{title}</h1>
+						<p className="text-accent text-sm md:text-base animate-fadeIn">{description}</p>
+					</div>
+				</div>
+			</div>
+		</header>
+	);
+}-e 
+### FILE: ./src/components/games/GameDetailExpansion.tsx
+
+'use client';
+
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronDown, ChevronUp, Users, Clock, Award, CalendarDays, Tag } from 'lucide-react';
+
+interface Game {
+	id: string;
+	title: string;
+	description: string;
+	playerCount: string;
+	recommendedTime: string;
+	difficulty: string;
+	similarGames: string[];
+}
+
+interface GameDetailExpansionProps {
+	game: Game;
+	isActive: boolean;
+}
+
+export default function GameDetailExpansion({ game, isActive }: GameDetailExpansionProps) {
+	const [isExpanded, setIsExpanded] = useState(false);
+
+	const toggleExpand = () => {
+		setIsExpanded(!isExpanded);
+	};
+
+	return (
+		<div
+			className={`rounded-xl p-4 mb-4 transition-all duration-300 ${isActive
+					? 'bg-border/20 shadow-soft border border-border/30'
+					: 'bg-background/70'
+				}`}
+		>
+			<div className="flex justify-between items-start mb-3">
+				<div>
+					<h3 className="text-xl font-bold">{game.title}</h3>
+					<p className="text-sm text-foreground/80 mt-1">{game.description}</p>
+				</div>
+
+				<button
+					onClick={toggleExpand}
+					className={`p-2 rounded-full transition-colors ${isExpanded ? 'bg-accent/10 text-accent' : 'bg-border/20 text-foreground/70'
+						}`}
+					aria-label={isExpanded ? '詳細を閉じる' : '詳細を見る'}
+				>
+					{isExpanded ? (
+						<ChevronUp className="h-5 w-5" />
+					) : (
+						<ChevronDown className="h-5 w-5" />
+					)}
+				</button>
+			</div>
+
+			<div className="flex flex-wrap gap-3 mb-3">
+				<div className="flex items-center bg-border/10 px-3 py-1.5 rounded-full text-sm">
+					<Users className="h-4 w-4 mr-1.5 text-foreground/60" />
+					<span>{game.playerCount}</span>
+				</div>
+				<div className="flex items-center bg-border/10 px-3 py-1.5 rounded-full text-sm">
+					<Clock className="h-4 w-4 mr-1.5 text-foreground/60" />
+					<span>{game.recommendedTime}</span>
+				</div>
+				<div className="flex items-center bg-border/10 px-3 py-1.5 rounded-full text-sm">
+					<Award className="h-4 w-4 mr-1.5 text-foreground/60" />
+					<span>{game.difficulty}</span>
+				</div>
+			</div>
+
+			<AnimatePresence>
+				{isExpanded && (
+					<motion.div
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: 'auto', opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						transition={{ duration: 0.3, ease: 'easeInOut' }}
+						className="overflow-hidden"
+					>
+						<div className="border-t border-border/20 pt-3 mt-2">
+							<h4 className="text-sm font-medium mb-2 flex items-center">
+								<Tag className="h-4 w-4 mr-1.5 text-foreground/60" />
+								類似ゲーム
+							</h4>
+
+							<div className="flex flex-wrap gap-2 mb-4">
+								{game.similarGames.map((similarGame) => (
+									<span
+										key={similarGame}
+										className="bg-border/15 px-3 py-1 rounded-full text-xs"
+									>
+										{similarGame}
+									</span>
+								))}
+							</div>
+
+							<div className="bg-border/10 rounded-xl p-3 mb-2">
+								<h4 className="text-sm font-medium mb-1 flex items-center">
+									<CalendarDays className="h-4 w-4 mr-1.5 text-foreground/60" />
+									利用可能時間
+								</h4>
+								<p className="text-xs text-foreground/70">平日: 10:00 〜 22:00</p>
+								<p className="text-xs text-foreground/70">土日祝: 9:00 〜 23:00</p>
+							</div>
+
+							<p className="text-xs text-foreground/60 italic">
+								* 料金は時間帯によって異なります
+							</p>
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
+
+			<button
+				className={`w-full py-2 mt-3 rounded-xl text-sm font-medium transition-colors ${isActive
+						? 'bg-accent text-background'
+						: 'bg-border/30 hover:bg-border/50 text-foreground'
+					}`}
+			>
+				このゲームで予約する
+			</button>
+		</div>
+	);
+}-e 
+### FILE: ./src/components/games/VideoPreloader.tsx
+
+'use client';
+
+import React, { useEffect, useRef } from 'react';
+
+interface VideoPreloaderProps {
+	videoSrcs: string[];
+	currentIndex: number;
+}
+
+/**
+ * ビデオプリロードコンポーネント
+ * 現在表示中の動画の前後の動画をプリロードします
+ */
+export default function VideoPreloader({ videoSrcs, currentIndex }: VideoPreloaderProps) {
+	const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+
+	useEffect(() => {
+		// 現在のインデックスの前後の動画をプリロード
+		const preloadIndices = [
+			currentIndex - 1, // 前の動画
+			currentIndex + 1, // 次の動画
+			currentIndex + 2  // 次の次の動画
+		].filter(i => i >= 0 && i < videoSrcs.length);
+
+		// プリロード処理
+		preloadIndices.forEach(index => {
+			if (!videoRefs.current[index]) return;
+
+			// video要素のpreload属性を設定
+			const video = videoRefs.current[index];
+			if (video) {
+				video.preload = 'auto';
+
+				// 読み込み済みかチェック
+				if (video.readyState === 0) {
+					// まだ読み込まれていない場合はロード開始
+					video.load();
+				}
+			}
+		});
+	}, [currentIndex, videoSrcs]);
+
+	// スタイルなしの非表示ビデオ要素を配置
+	return (
+		<div style={{ display: 'none', visibility: 'hidden', position: 'absolute' }}>
+			{videoSrcs.map((src, index) => (
+				<video
+					key={`preload-${index}`}
+					ref={el => videoRefs.current[index] = el}
+					src={src}
+					muted
+					playsInline
+				/>
+			))}
+		</div>
+	);
+}-e 
+### FILE: ./src/components/games/StickyGameVideo.tsx
+
+'use client';
+
+import React, { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
+import { Play, Pause, Volume2, VolumeX, Eye, Download } from 'lucide-react';
+
+interface StickyGameVideoProps {
+	videoSrc: string;
+	title: string;
+	isActive: boolean;
+	thumbnailSrc?: string;
+	onLoaded?: () => void;
+}
+
+export default function StickyGameVideo({
+	videoSrc,
+	title,
+	isActive,
+	thumbnailSrc,
+	onLoaded
+}: StickyGameVideoProps) {
+	const [isPlaying, setIsPlaying] = useState(false);
+	const [isMuted, setIsMuted] = useState(true);
+	const [isLoading, setIsLoading] = useState(true);
+	const [hasError, setHasError] = useState(false);
+	const [loadProgress, setLoadProgress] = useState(0);
+	const videoRef = useRef<HTMLVideoElement>(null);
+	const [videoDuration, setVideoDuration] = useState(0);
+	const [currentTime, setCurrentTime] = useState(0);
+	const [isBuffering, setIsBuffering] = useState(false);
+
+	// Load state tracking
+	useEffect(() => {
+		let interval: NodeJS.Timeout;
+
+		if (isLoading && videoRef.current) {
+			interval = setInterval(() => {
+				if (videoRef.current && videoRef.current.readyState > 2) {
+					// More than HAVE_CURRENT_DATA state
+					setLoadProgress(Math.min(95, loadProgress + 5)); // Simulate loading progress
+				}
+			}, 200);
+		}
+
+		return () => {
+			if (interval) clearInterval(interval);
+		};
+	}, [isLoading, loadProgress]);
+
+	// Handle video play/pause
+	useEffect(() => {
+		if (!videoRef.current) return;
+
+		if (isActive && isPlaying && !hasError) {
+			const playPromise = videoRef.current.play();
+			if (playPromise !== undefined) {
+				playPromise.catch(error => {
+					console.error('Video play error:', error);
+					setIsPlaying(false);
+				});
+			}
+		} else {
+			videoRef.current.pause();
+		}
+	}, [isActive, isPlaying, hasError]);
+
+	// Handle video mute/unmute
+	useEffect(() => {
+		if (!videoRef.current) return;
+		videoRef.current.muted = isMuted;
+	}, [isMuted]);
+
+	// Auto-play when component becomes active
+	useEffect(() => {
+		if (isActive && !isPlaying && !hasError && !isLoading) {
+			setIsPlaying(true);
+		}
+
+		if (!isActive && isPlaying) {
+			setIsPlaying(false);
+		}
+	}, [isActive, isPlaying, hasError, isLoading]);
+
+	// Track video time
+	useEffect(() => {
+		if (!videoRef.current || !isPlaying) return;
+
+		const updateTime = () => {
+			if (videoRef.current) {
+				setCurrentTime(videoRef.current.currentTime);
+				setVideoDuration(videoRef.current.duration || 0);
+			}
+		};
+
+		const timeInterval = setInterval(updateTime, 1000);
+		return () => clearInterval(timeInterval);
+	}, [isPlaying]);
+
+	// Handle buffering state
+	useEffect(() => {
+		if (!videoRef.current) return;
+
+		const handleWaiting = () => setIsBuffering(true);
+		const handlePlaying = () => setIsBuffering(false);
+
+		videoRef.current.addEventListener('waiting', handleWaiting);
+		videoRef.current.addEventListener('playing', handlePlaying);
+
+		return () => {
+			if (videoRef.current) {
+				videoRef.current.removeEventListener('waiting', handleWaiting);
+				videoRef.current.removeEventListener('playing', handlePlaying);
+			}
+		};
+	}, []);
+
+	const togglePlay = () => {
+		if (hasError) return;
+		setIsPlaying(!isPlaying);
+	};
+
+	const toggleMute = () => {
+		setIsMuted(!isMuted);
+	};
+
+	const handleVideoLoaded = () => {
+		setIsLoading(false);
+		setLoadProgress(100);
+		if (onLoaded) onLoaded();
+	};
+
+	const handleVideoError = () => {
+		setIsLoading(false);
+		setHasError(true);
+		setIsPlaying(false);
+		console.error('Video load error for:', videoSrc);
+	};
+
+	const formatTime = (seconds: number) => {
+		const mins = Math.floor(seconds / 60);
+		const secs = Math.floor(seconds % 60);
+		return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+	};
+
+	return (
+		<div className="relative w-full h-full bg-black/40 rounded-xl overflow-hidden">
+			{/* Loading indicator */}
+			{isLoading && (
+				<div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-background/50">
+					<div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin mb-4"></div>
+					<div className="w-48 h-2 bg-background/30 rounded-full overflow-hidden">
+						<div
+							className="h-full bg-accent animate-pulse-subtle"
+							style={{ width: `${loadProgress}%` }}
+						></div>
+					</div>
+					<p className="text-xs mt-2 text-foreground/70">読み込み中...</p>
+				</div>
+			)}
+
+			{/* Buffering indicator */}
+			{isBuffering && !isLoading && !hasError && (
+				<div className="absolute inset-0 flex items-center justify-center z-10 bg-background/30">
+					<div className="w-8 h-8 border-4 border-white/60 border-t-transparent rounded-full animate-spin"></div>
+				</div>
+			)}
+
+			{/* Error fallback */}
+			{hasError && (
+				<div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-background/80 p-4 text-center">
+					<p className="text-lg mb-2">動画をロードできませんでした</p>
+					<p className="text-sm text-foreground/70 mb-4">
+						ゲームプレイ映像は現在準備中です。後ほどお試しください。
+					</p>
+
+					{thumbnailSrc && (
+						<div className="mt-2 relative w-full max-w-md h-32 bg-border/30 rounded overflow-hidden">
+							<Image
+								src={thumbnailSrc}
+								alt={`${title} ゲームプレイ映像`}
+								fill
+								style={{ objectFit: 'cover' }}
+								className="animate-pulse-subtle"
+							/>
+						</div>
+					)}
+
+					<button
+						onClick={() => window.location.reload()}
+						className="mt-4 px-4 py-2 bg-accent/80 text-white rounded-full text-sm flex items-center hover:bg-accent transition-colors"
+					>
+						<Download className="h-4 w-4 mr-1" /> 再読み込み
+					</button>
+				</div>
+			)}
+
+			{/* Video thumbnail placeholder before video loads */}
+			{isLoading && thumbnailSrc && (
+				<div className="absolute inset-0 z-0">
+					<Image
+						src={thumbnailSrc}
+						alt={`${title} サムネイル`}
+						fill
+						style={{ objectFit: 'cover' }}
+						className="opacity-50"
+					/>
+					<div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+				</div>
+			)}
+
+			{/* Video element */}
+			<video
+				ref={videoRef}
+				className={`w-full h-full object-cover ${isLoading || hasError ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}
+				src={videoSrc}
+				playsInline
+				loop
+				muted={isMuted}
+				onCanPlay={handleVideoLoaded}
+				onError={handleVideoError}
+				preload="auto"
+			/>
+
+			{/* Video controls */}
+			<div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent flex flex-col">
+				{/* Progress bar */}
+				{!isLoading && !hasError && videoDuration > 0 && (
+					<div className="w-full h-1 bg-white/20 rounded-full mb-3 overflow-hidden">
+						<div
+							className="h-full bg-accent"
+							style={{ width: `${(currentTime / videoDuration) * 100}%` }}
+						></div>
+					</div>
+				)}
+
+				<div className="flex justify-between items-center">
+					<div className="flex-1">
+						<p className="text-white font-medium text-lg">{title}</p>
+						{isPlaying && !isLoading && !hasError && (
+							<div className="flex items-center text-white/70 text-xs">
+								<Eye className="h-3 w-3 mr-1" />
+								<span>リアルタイムゲームプレイ映像</span>
+								<span className="ml-2">{formatTime(currentTime)} / {formatTime(videoDuration)}</span>
+							</div>
+						)}
+					</div>
+
+					<div className="flex gap-2">
+						<button
+							onClick={togglePlay}
+							disabled={hasError || isLoading}
+							className={`rounded-full p-2 bg-background/30 backdrop-blur-sm hover:bg-background/50 transition-colors ${(hasError || isLoading) ? 'opacity-50 cursor-not-allowed' : ''
+								}`}
+							aria-label={isPlaying ? 'Pause video' : 'Play video'}
+						>
+							{isPlaying ? (
+								<Pause className="h-5 w-5 text-white" />
+							) : (
+								<Play className="h-5 w-5 text-white" />
+							)}
+						</button>
+
+						<button
+							onClick={toggleMute}
+							disabled={hasError || isLoading}
+							className={`rounded-full p-2 bg-background/30 backdrop-blur-sm hover:bg-background/50 transition-colors ${(hasError || isLoading) ? 'opacity-50 cursor-not-allowed' : ''
+								}`}
+							aria-label={isMuted ? 'Unmute video' : 'Mute video'}
+						>
+							{isMuted ? (
+								<VolumeX className="h-5 w-5 text-white" />
+							) : (
+								<Volume2 className="h-5 w-5 text-white" />
+							)}
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}-e 
+### FILE: ./src/components/games/QuickGameNav.tsx
+
+'use client';
+
+import React from 'react';
+import Image from 'next/image';
+import { motion } from 'framer-motion';
+
+interface Game {
+	id: string;
+	title: string;
+	thumbnailSrc: string;
+}
+
+interface QuickGameNavProps {
+	games: Game[];
+	activeGameIndex: number;
+	onGameSelect: (index: number) => void;
+	categoryColor?: string;
+}
+
+export default function QuickGameNav({
+	games,
+	activeGameIndex,
+	onGameSelect,
+	categoryColor = 'ring-accent'
+}: QuickGameNavProps) {
+	return (
+		<div className="fixed right-8 top-1/2 -translate-y-1/2 z-30 hidden md:block">
+			<div className="flex flex-col items-center space-y-4 bg-background/50 backdrop-blur-sm p-2 rounded-full shadow-soft">
+				{games.map((game, index) => (
+					<motion.button
+						key={game.id}
+						onClick={() => onGameSelect(index)}
+						className={`relative rounded-full overflow-hidden transition-all duration-300 ${activeGameIndex === index
+								? 'w-12 h-12 ring-2 ring-offset-2 ring-offset-background ' + categoryColor
+								: 'w-10 h-10 opacity-70 hover:opacity-100'
+							}`}
+						whileHover={{ scale: activeGameIndex === index ? 1 : 1.1 }}
+						whileTap={{ scale: 0.95 }}
+						title={game.title}
+					>
+						<Image
+							src={game.thumbnailSrc}
+							alt={game.title}
+							fill
+							style={{ objectFit: 'cover' }}
+						/>
+						{activeGameIndex === index && (
+							<div className="absolute inset-0 ring-1 ring-white/30"></div>
+						)}
+					</motion.button>
+				))}
+			</div>
+		</div>
+	);
+}-e 
+### FILE: ./src/components/games/ScrollSnapContainer.tsx
+
+'use client';
+
+import React, { useRef, useEffect, useState } from 'react';
+
+interface ScrollSnapContainerProps {
+	children: React.ReactNode;
+	onSectionChange?: (index: number) => void;
+	initialIndex?: number;
+	className?: string;
+}
+
+/**
+ * スクロールスナップコンテナ
+ * モバイルでのスクロール体験を向上させるためのコンポーネント
+ */
+export default function ScrollSnapContainer({
+	children,
+	onSectionChange,
+	initialIndex = 0,
+	className = ''
+}: ScrollSnapContainerProps) {
+	const containerRef = useRef<HTMLDivElement>(null);
+	const [isInitialized, setIsInitialized] = useState(false);
+
+	// 初期位置へのスクロール
+	useEffect(() => {
+		if (!containerRef.current || initialIndex === 0 || isInitialized) return;
+
+		const childElements = containerRef.current.children;
+		if (initialIndex < childElements.length) {
+			const targetElement = childElements[initialIndex];
+			targetElement.scrollIntoView({ behavior: 'auto', block: 'start' });
+			setIsInitialized(true);
+		}
+	}, [initialIndex, isInitialized]);
+
+	// スクロール位置の監視とコールバック
+	useEffect(() => {
+		if (!containerRef.current || !onSectionChange) return;
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				entries.forEach(entry => {
+					if (entry.isIntersecting) {
+						const index = Array.from(containerRef.current?.children || []).findIndex(
+							child => child === entry.target
+						);
+						if (index !== -1) {
+							onSectionChange(index);
+						}
+					}
+				});
+			},
+			{
+				root: containerRef.current,
+				threshold: 0.7, // 70%が見えた時に変更と見なす
+				rootMargin: '0px'
+			}
+		);
+
+		// 子要素を監視
+		Array.from(containerRef.current.children).forEach(child => {
+			observer.observe(child);
+		});
+
+		return () => {
+			observer.disconnect();
+		};
+	}, [onSectionChange]);
+
+	return (
+		<div
+			ref={containerRef}
+			className={`scroll-snap-container overflow-y-auto snap-y snap-mandatory ${className}`}
+			style={{
+				scrollBehavior: 'smooth',
+				WebkitOverflowScrolling: 'touch'
+			}}
+		>
+			{children}
+		</div>
+	);
+}
+
+/**
+ * スクロールスナップアイテム
+ * ScrollSnapContainerの子要素として使用するコンポーネント
+ */
+export function ScrollSnapItem({
+	children,
+	className = ''
+}: {
+	children: React.ReactNode;
+	className?: string;
+}) {
+	return (
+		<div className={`snap-start ${className}`}>
+			{children}
+		</div>
+	);
+}-e 
 ### FILE: ./src/components/ui/button.tsx
 
 import React from 'react';
@@ -4944,6 +6630,71 @@ export default function Button({
 				children
 			)}
 		</button>
+	);
+}-e 
+### FILE: ./src/components/ui/PageTransition.tsx
+
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+interface PageTransitionProps {
+	children: React.ReactNode;
+}
+
+/**
+ * ページトランジションコンポーネント
+ * ページ間の遷移にスムーズなアニメーションを提供します
+ */
+export default function PageTransition({ children }: PageTransitionProps) {
+	const [isReady, setIsReady] = useState(false);
+
+	useEffect(() => {
+		// マウント時のアニメーション開始のための微小な遅延
+		const timer = setTimeout(() => {
+			setIsReady(true);
+		}, 50);
+
+		return () => clearTimeout(timer);
+	}, []);
+
+	return (
+		<AnimatePresence mode="wait">
+			<motion.div
+				key="page-content"
+				initial={{ opacity: 0, y: 20 }}
+				animate={{
+					opacity: isReady ? 1 : 0,
+					y: isReady ? 0 : 20
+				}}
+				exit={{ opacity: 0, y: -20 }}
+				transition={{
+					duration: 0.4,
+					ease: [0.25, 0.1, 0.25, 1.0], // cubic-bezier
+				}}
+				className="min-h-screen"
+			>
+				{children}
+			</motion.div>
+		</AnimatePresence>
+	);
+}
+
+// ページコンテナ用カテゴリ別スタイル適用コンポーネント
+export function CategoryPageContainer({
+	children,
+	category
+}: {
+	children: React.ReactNode,
+	category: string
+}) {
+	return (
+		<div className={`bg-background text-foreground`}>
+			<PageTransition>
+				{children}
+			</PageTransition>
+		</div>
 	);
 }-e 
 ### FILE: ./src/components/ui/loading-spinner.tsx
@@ -6311,6 +8062,172 @@ const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }
 };
 
 export default LoginPrompt;-e 
+### FILE: ./src/components/reservation/branch-selector.tsx
+
+// src/components/reservation/branch-selector.tsx
+
+import React, { useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { MapPin, Clock, Users, Phone, Info } from 'lucide-react';
+import { useReservation } from '@/context/reservation-context';
+import { BranchDocument } from '@/types/firebase';
+import LoadingSpinner from '@/components/ui/loading-spinner';
+
+interface BranchSelectorProps {
+	onBranchSelect: (branch: BranchDocument) => void;
+}
+
+export default function BranchSelector({ onBranchSelect }: BranchSelectorProps) {
+	const { branches, fetchBranches, isLoading, error } = useReservation();
+
+	useEffect(() => {
+		fetchBranches();
+	}, [fetchBranches]);
+
+	if (isLoading) {
+		return (
+			<div className="w-full flex justify-center items-center py-12">
+				<LoadingSpinner size="large" />
+				<span className="ml-3 text-foreground/70">支店情報を読み込み中...</span>
+			</div>
+		);
+	}
+
+	if (error) {
+		return (
+			<div className="w-full bg-red-500/10 text-red-500 p-4 rounded-lg">
+				<p className="font-medium">エラーが発生しました</p>
+				<p className="mt-1">{error}</p>
+				<button
+					onClick={() => fetchBranches()}
+					className="mt-3 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+				>
+					再試行
+				</button>
+			</div>
+		);
+	}
+
+	if (branches.length === 0) {
+		return (
+			<div className="w-full bg-border/10 p-6 rounded-lg text-center">
+				<p className="text-foreground/70">支店情報が見つかりませんでした</p>
+			</div>
+		);
+	}
+
+	// 日本の曜日
+	const getDayOfWeek = (day: string) => {
+		const daysMap: Record<string, string> = {
+			'sunday': '日曜日',
+			'monday': '月曜日',
+			'tuesday': '火曜日',
+			'wednesday': '水曜日',
+			'thursday': '木曜日',
+			'friday': '金曜日',
+			'saturday': '土曜日'
+		};
+		return daysMap[day] || day;
+	};
+
+	return (
+		<div className="w-full space-y-6">
+			<div className="text-center max-w-3xl mx-auto mb-8">
+				<p className="text-foreground/70">
+					ご利用になる支店を選択してください。各支店ごとに設備や座席数が異なります。
+				</p>
+			</div>
+			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+				{branches.map((branch) => (
+					<motion.div
+						key={branch.branchId}
+						className="bg-border/5 border border-border/20 rounded-xl overflow-hidden shadow-soft hover:shadow-lg transition-all cursor-pointer"
+						whileHover={{ y: -5 }}
+						onClick={() => onBranchSelect(branch)}
+					>
+						<div className="h-48 w-full relative bg-gradient-to-br from-accent/20 to-highlight/20">
+							{branch.layoutImagePath ? (
+								<img
+									src={branch.layoutImagePath}
+									alt={`${branch.branchName}のレイアウト`}
+									className="w-full h-full object-cover"
+								/>
+							) : (
+								<div className="h-full w-full flex items-center justify-center">
+									<div className="text-4xl font-bold text-accent/40">{branch.branchCode}</div>
+								</div>
+							)}
+						</div>
+						<div className="p-4">
+							<h3 className="text-xl font-bold mb-2 flex items-center">
+								<span className="bg-accent/10 text-accent px-2 py-0.5 rounded mr-2">{branch.branchName}</span>
+							</h3>
+
+							<div className="space-y-2 mb-4">
+								<div className="flex items-start">
+									<MapPin className="w-4 h-4 text-accent mr-2 mt-1 flex-shrink-0" />
+									<span className="text-sm text-foreground/70">{branch.address}</span>
+								</div>
+
+								<div className="flex items-start">
+									<Clock className="w-4 h-4 text-accent mr-2 mt-1 flex-shrink-0" />
+									<div className="text-sm text-foreground/70">
+										<span>
+											{branch.businessHours.open === '24:00' && branch.businessHours.close === '24:00'
+												? '24時間営業'
+												: `${branch.businessHours.open} - ${branch.businessHours.close}`}
+										</span>
+									</div>
+								</div>
+
+								<div className="flex items-start">
+									<Users className="w-4 h-4 text-accent mr-2 mt-1 flex-shrink-0" />
+									<span className="text-sm text-foreground/70">{branch.totalSeats}席</span>
+								</div>
+
+								{branch.phoneNumber && (
+									<div className="flex items-start">
+										<Phone className="w-4 h-4 text-accent mr-2 mt-1 flex-shrink-0" />
+										<span className="text-sm text-foreground/70">{branch.phoneNumber}</span>
+									</div>
+								)}
+							</div>
+
+							{branch.amenities && branch.amenities.length > 0 && (
+								<div className="mt-3">
+									<div className="flex items-center mb-1">
+										<Info className="w-4 h-4 text-accent mr-1" />
+										<span className="text-xs text-foreground/70 font-medium">設備</span>
+									</div>
+									<div className="flex flex-wrap gap-1">
+										{branch.amenities.map((amenity, index) => (
+											<span
+												key={index}
+												className="bg-border/10 text-foreground/70 text-xs px-2 py-0.5 rounded"
+											>
+												{amenity}
+											</span>
+										))}
+									</div>
+								</div>
+							)}
+
+							<button
+								onClick={(e) => {
+									e.stopPropagation();
+									onBranchSelect(branch);
+								}}
+								className="w-full mt-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
+							>
+								この支店を選択
+							</button>
+						</div>
+					</motion.div>
+				))}
+			</div>
+		</div>
+	);
+}-e 
 ### FILE: ./src/components/reservation/time-grid.tsx
 
 import React, { useState, useEffect } from 'react';
@@ -6347,13 +8264,9 @@ interface RangeSelection {
 
 const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 	const { seats, reservations, selectedTimeSlots, setSelectedTimeSlots } = useReservation();
-
-	// State for multiple seat selection
 	const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
 	const [seatRanges, setSeatRanges] = useState<Record<string, RangeSelection>>({});
 	const [people, setPeople] = useState<number>(1);
-
-	// Generate time slots for the day (30-minute intervals from 10:00 to 22:00)
 	const generateTimeSlots = (): TimeSlot[] => {
 		const slots: TimeSlot[] = [];
 		const startHour = 10;
@@ -7271,22 +9184,22 @@ import { motion, useInView } from 'framer-motion';
 const usageScenes = [
 	{
 		id: 'scene-1',
-		title: 'もう少し話そうか、ってなった夜に',
-		description: 'サシ飲みの後、別れるには早い。ここで話を続けませんか？居心地の良いスペースで、二人だけの時間を。',
+		title: '夕飯・サシ飯があっさり終了',
+		description: '夜街でもうちょっと時間つぶしたい！ノンアルコールで時間を潰せる場所です。ふかふかの椅子でマイホームな時間を。',
 		image: '/images/lp/scene-pair.jpg',
 		alt: 'サシ飲み後のペア'
 	},
 	{
 		id: 'scene-2',
-		title: 'ちょっとゲームして帰る？',
-		description: '飲み会の解散後、そのまま帰るには物足りない。友達と一緒に盛り上がれるワイワイ系ゲームで、夜を締めくくろう。',
+		title: '集まったけど、、ゲームだったら楽しめる？',
+		description:'共通項がなくてもマルチプレイで盛り上がるタイトルをご用意してます。監事さん思いの場所です。',
 		image: '/images/lp/scene-group.jpg',
 		alt: '飲み会帰りのグループ'
 	},
 	{
 		id: 'scene-3',
-		title: '終電逃しても、ここがある',
-		description: '終電を逃してしまっても大丈夫。24時間営業の秘密基地で、朝まで没頭できるゲームの世界が待っています。',
+		title:'久々の自由時間',
+		description:'ゲームは好きだけどたまにしかやる時間が取れない！厳選された数多くのタイトルをご用意してます。',
 		image: '/images/lp/scene-solo.jpg',
 		alt: 'ソロゲーマー'
 	}
@@ -7337,8 +9250,7 @@ export default function FeaturesSection() {
 						<span className="text-accent">こんな時に</span>、利用されています
 					</h2>
 					<p className="text-foreground/70 max-w-2xl mx-auto">
-						予約不要で、ふらっと立ち寄れる秘密基地。
-						一人でも、友達とでも、思い立った時にすぐ利用できます。
+						予約不要、一人でも、友達とでも、思い立った時にすぐ利用できます。
 					</p>
 				</motion.div>
 
@@ -7910,8 +9822,7 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 
 export default function HeroSection() {
-	// 文字のアニメーション用に分割
-	const title = "遊び足りない時の、秘密基地。";
+	const title = "疲れたから「ゆるゲー気分」";
 	const [titleChars, setTitleChars] = useState<string[]>([]);
 
 	useEffect(() => {
@@ -7920,7 +9831,6 @@ export default function HeroSection() {
 
 	return (
 		<section className="relative min-h-screen flex items-center overflow-hidden">
-			{/* 背景画像 */}
 			<div className="absolute inset-0 z-0">
 				<Image
 					src="/images/lp/hero-bg.jpg"
@@ -7935,7 +9845,7 @@ export default function HeroSection() {
 
 			{/* コンテンツオーバーレイ */}
 			<div className="container mx-auto px-4 relative z-10">
-				<div className="max-w-2xl">
+				<div className="max-w-4xl">
 					{/* タイトル文字ごとのアニメーション */}
 					<h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6 flex flex-wrap">
 						{titleChars.map((char, index) => (
@@ -7961,7 +9871,7 @@ export default function HeroSection() {
 						animate={{ opacity: 1, scale: 1 }}
 						transition={{ duration: 0.7, delay: 0.5 }}
 					>
-						ドリンク飲み放題・24h無人運営・予約不要
+						コスパもいいし。～ふらっと寄れるゲームカフェ～
 					</motion.p>
 
 					{/* CTAボタン */}
@@ -8020,28 +9930,18 @@ export default function HeroSection() {
 
 import { useRef } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { motion, useInView } from 'framer-motion';
+import { ChevronRight } from 'lucide-react';
 
 // ゲームカテゴリとタイトル
 const gameCategories = [
 	{
-		id: 'competitive',
-		title: '競技系',
-		caption: '120FPSでぬるぬる動く、プロ仕様',
-		games: [
-			{ name: 'VALORANT', icon: '/images/lp/games/valorant.png' },
-			{ name: 'PUBG', icon: '/images/lp/games/pubg.png' },
-			{ name: 'Apex Legends', icon: '/images/lp/games/apex.png' }
-		],
-		image: '/images/lp/games/competitive.jpg',
-		alt: '競技系ゲーム'
-	},
-	{
 		id: 'party',
 		title: 'ワイワイ系',
-		caption: 'コントローラーで、2人でも盛り上がれる',
+		caption: 'コントローラーで2人でも盛り上がれる',
 		games: [
-			{ name: 'Overcooked', icon: '/images/lp/games/overcooked.png' },
+			{ name: 'Party Animals', icon: '/images/lp/games/overcooked.png' },
 			{ name: 'Fall Guys', icon: '/images/lp/games/fallguys.png' },
 			{ name: 'Pummel Party', icon: '/images/lp/games/pummel.png' }
 		],
@@ -8049,12 +9949,24 @@ const gameCategories = [
 		alt: 'ワイワイ系ゲーム'
 	},
 	{
+		id: 'competitive',
+		title: '競技系',
+		caption: '120FPSでぬるぬる動く、プロ仕様',
+		games: [
+			{ name: 'Counter-Strike 2', icon: '/images/lp/games/valorant.png' },
+			{ name: 'PUBG', icon: '/images/lp/games/pubg.png' },
+			{ name: 'Apex Legends', icon: '/images/lp/games/apex.png' }
+		],
+		image: '/images/lp/games/competitive.jpg',
+		alt: '競技系ゲーム'
+	},
+	{
 		id: 'immersive',
 		title: 'じっくり系',
-		caption: '深夜に1人、没入できるパズル・戦略',
+		caption: '1人でも仲間とでも、',
 		games: [
-			{ name: 'Slay the Spire', icon: '/images/lp/games/slaythespire.png' },
-			{ name: 'Cities Skylines', icon: '/images/lp/games/cities.png' },
+			{ name: 'Operation: Tango', icon: '/images/lp/games/slaythespire.png' },
+			{ name: 'Portal 2', icon: '/images/lp/games/cities.png' },
 			{ name: 'The Witness', icon: '/images/lp/games/witness.png' }
 		],
 		image: '/images/lp/games/immersive.jpg',
@@ -8083,8 +9995,8 @@ export default function GamesSection() {
 					<h2 className="text-3xl md:text-4xl font-bold mb-4">
 						気分に合わせて<span className="text-accent">遊べるゲーム</span>
 					</h2>
-					<p className="text-foreground/70 max-w-2xl mx-auto">
-						RTX 4070搭載のハイスペックPCで、あらゆるゲームを快適に。
+					<p className="text-foreground/70 max-w-4xl mx-auto">
+						RTX 4070搭載のPCで、あらゆるゲームを快適に。
 						一人でじっくり、友達とワイワイ、あなた好みのプレイスタイルで。
 					</p>
 				</motion.div>
@@ -8099,24 +10011,33 @@ export default function GamesSection() {
 							animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 50 }}
 							transition={{ duration: 0.6, delay: index * 0.2 }}
 						>
-							{/* ゲームカテゴリ画像 */}
+							{/* ゲームカテゴリ画像 - 全体をクリック可能に */}
 							<div className="md:w-1/2">
-								<div className="relative h-64 md:h-80 rounded-2xl overflow-hidden shadow-soft">
-									<Image
-										src={category.image}
-										alt={category.alt}
-										fill
-										style={{ objectFit: 'cover' }}
-										className="transition-transform duration-700 hover:scale-105"
-									/>
-								</div>
+								<Link href={`/games/${category.id}`} className="block">
+									<div className="relative h-64 md:h-80 rounded-2xl overflow-hidden shadow-soft group cursor-pointer">
+										<Image
+											src={category.image}
+											alt={category.alt}
+											fill
+											style={{ objectFit: 'cover' }}
+											className="transition-transform duration-700 group-hover:scale-105"
+										/>
+										<div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center p-6">
+											<span className="inline-flex items-center text-white font-medium px-4 py-2 rounded-full bg-accent/80 backdrop-blur-sm">
+												詳しく見る <ChevronRight className="ml-1 h-4 w-4" />
+											</span>
+										</div>
+									</div>
+								</Link>
 							</div>
 
 							{/* ゲーム情報 */}
 							<div className="md:w-1/2">
-								<h3 className="text-2xl font-bold mb-3">
-									{category.title}
-								</h3>
+								<Link href={`/games/${category.id}`} className="block">
+									<h3 className="text-2xl font-bold mb-3 hover:text-accent transition-colors">
+										{category.title}
+									</h3>
+								</Link>
 								<p className="text-accent text-lg mb-6">
 									{category.caption}
 								</p>
@@ -8126,7 +10047,7 @@ export default function GamesSection() {
 									{category.games.map((game, gameIndex) => (
 										<motion.li
 											key={game.name}
-											className="flex items-center gap-3 bg-border/10 p-3 rounded-xl"
+											className="flex items-center gap-3 bg-border/10 p-3 rounded-xl hover:bg-border/20 transition-colors"
 											initial={{ opacity: 0, x: -20 }}
 											animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
 											transition={{ duration: 0.4, delay: index * 0.2 + gameIndex * 0.1 }}
@@ -8144,6 +10065,14 @@ export default function GamesSection() {
 										</motion.li>
 									))}
 								</ul>
+
+								{/* 詳細へのリンク */}
+								<Link
+									href={`/games/${category.id}`}
+									className="mt-6 inline-flex items-center text-accent hover:text-accent/80 font-medium transition-colors"
+								>
+									すべてのゲームを見る <ChevronRight className="ml-1 h-4 w-4" />
+								</Link>
 							</div>
 						</motion.div>
 					))}
@@ -9318,17 +11247,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from './auth-context';
-
-// eKYCの状態の型
-export type EkycStatus = 'pending' | 'in-progress' | 'completed' | 'failed' | 'expired';
-
-// eKYCのデータ型
-interface EkycData {
-	status: EkycStatus;
-	sessionId?: string;
-	verifiedAt?: string;
-	lastUpdated?: string;
-}
+import { EkycData, EkycStatus } from '@/types';
 
 // コンテキストの型
 interface EkycContextType {
@@ -9372,7 +11291,7 @@ export function EkycProvider({ children }: { children: ReactNode }) {
 				if (snapshot.exists()) {
 					const userData = snapshot.data();
 					if (userData.eKYC) {
-						setEkycData(userData.eKYC);
+						setEkycData(userData.eKYC as EkycData);
 					} else {
 						setEkycData(defaultEkycData);
 					}
@@ -9425,33 +11344,14 @@ export function EkycProvider({ children }: { children: ReactNode }) {
 export const useEkyc = () => useContext(EkycContext);-e 
 ### FILE: ./src/context/reservation-context.tsx
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+// src/context/reservation-context.tsx
+
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './auth-context';
-
-// Define types for our context
-interface Seat {
-	id: string;
-	name: string;
-	ipAddress: string;
-	ratePerMinute: number;
-	status: 'available' | 'in-use' | 'maintenance';
-	createdAt: string;
-	updatedAt: string;
-}
-
-interface Reservation {
-	id: string;
-	userId: string;
-	seatId: string;
-	date: string;
-	startTime: string;
-	endTime: string;
-	duration: number;
-	status: 'confirmed' | 'cancelled' | 'completed';
-	createdAt: string;
-	updatedAt: string;
-}
-
+import { SeatDocument, ReservationDocument, BranchDocument } from '@/types/firebase';
+import { collection, getDocs, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+// 予約コンテキスト用の追加型
 interface SelectedTimeSlots {
 	seatId: string;
 	startTime: string;
@@ -9463,16 +11363,20 @@ interface DateAvailability {
 }
 
 interface ReservationContextType {
-	seats: Seat[];
-	reservations: Reservation[];
+	branches: BranchDocument[];
+	selectedBranch: BranchDocument | null;
+	setSelectedBranch: (branch: BranchDocument | null) => void;
+	fetchBranches: () => Promise<void>;
+	seats: SeatDocument[];
+	reservations: ReservationDocument[];
 	selectedDate: Date | null;
 	setSelectedDate: (date: Date | null) => void;
 	selectedTimeSlots: SelectedTimeSlots;
 	setSelectedTimeSlots: (slots: SelectedTimeSlots) => void;
 	dateAvailability: DateAvailability;
-	fetchSeats: () => Promise<void>;
-	fetchReservations: (date?: Date) => Promise<void>;
-	createReservation: (reservation: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+	fetchSeats: (branchId?: string) => Promise<void>;
+	fetchReservations: (date?: Date, branchId?: string) => Promise<void>;
+	createReservation: (reservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
 	cancelReservation: (reservationId: string) => Promise<void>;
 	isLoading: boolean;
 	error: string | null;
@@ -9485,8 +11389,10 @@ const ReservationContext = createContext<ReservationContextType | undefined>(und
 export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 	const { user } = useAuth();
 
-	const [seats, setSeats] = useState<Seat[]>([]);
-	const [reservations, setReservations] = useState<Reservation[]>([]);
+	const [branches, setBranches] = useState<BranchDocument[]>([]);
+	const [selectedBranch, setSelectedBranch] = useState<BranchDocument | null>(null);
+	const [seats, setSeats] = useState<SeatDocument[]>([]);
+	const [reservations, setReservations] = useState<ReservationDocument[]>([]);
 	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 	const [selectedTimeSlots, setSelectedTimeSlots] = useState<SelectedTimeSlots>({
 		seatId: '',
@@ -9496,89 +11402,80 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 	const [dateAvailability, setDateAvailability] = useState<DateAvailability>({});
 	const [isLoading, setIsLoading] = useState<boolean>(false);
 	const [error, setError] = useState<string | null>(null);
+	const [fetchCount, setFetchCount] = useState<number>(0); // APIコール回数を追跡
 
-	// Fetch seats (mock implementation for now)
-	const fetchSeats = async (): Promise<void> => {
+	// 支店一覧を取得 - useCallbackでメモ化して無限ループを防止
+	const fetchBranches = useCallback(async (): Promise<void> => {
+		setIsLoading(true);
+		setError(null);
+
+		// すでにbranchesがあり、fetchCountが1以上なら再取得しない（無限ループ対策）
+		if (branches.length > 0 && fetchCount > 0) {
+			setIsLoading(false);
+			return;
+		}
+
+		try {
+			// Firestoreからbranchコレクションのデータを取得
+			const branchesCollection = collection(db, 'branch');
+			const branchesSnapshot = await getDocs(branchesCollection);
+
+			const branchesData: BranchDocument[] = [];
+			branchesSnapshot.forEach((doc) => {
+				// ドキュメントのデータとIDを組み合わせて配列に追加
+				branchesData.push({
+					branchId: doc.id,
+					...doc.data()
+				} as BranchDocument);
+			});
+
+			setBranches(branchesData);
+			setFetchCount(prev => prev + 1); // APIコール回数をインクリメント
+		} catch (err) {
+			console.error('Error fetching branches:', err);
+			setError('支店情報の取得に失敗しました。もう一度お試しください。');
+		} finally {
+			setIsLoading(false);
+		}
+	}, [branches.length, fetchCount]);
+
+	// 座席情報を取得 - useCallbackでメモ化
+	const fetchSeats = useCallback(async (branchId?: string): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 
 		try {
-			// This will be replaced by an actual API call later
-			// For now, we'll use mock data
-			const mockSeats: Seat[] = [
-				{
-					id: 'pc01',
-					name: 'Gaming PC #1',
-					ipAddress: '192.168.1.101',
-					ratePerMinute: 10,
+			// ターゲットの支店を決定
+			const targetBranchId = branchId || selectedBranch?.branchId;
+			if (!targetBranchId) {
+				throw new Error('支店が選択されていません');
+			}
+
+			// 支店別の座席情報を模擬的に生成
+			const mockSeats: SeatDocument[] = [];
+			const branchCode = branches.find(b => b.branchId === targetBranchId)?.branchCode || 'UNKNOWN';
+
+			// 支店によって座席数を変える
+			const seatCount = targetBranchId === 'tachikawa' ? 12 :
+				targetBranchId === 'shinjuku' ? 20 :
+					targetBranchId === 'akihabara' ? 16 : 10;
+
+			for (let i = 1; i <= seatCount; i++) {
+				const isHighSpec = i <= Math.ceil(seatCount / 2); // 半分は高スペックPCとする
+				mockSeats.push({
+					seatId: `${branchCode}-PC-${i.toString().padStart(2, '0')}`,
+					name: `Gaming PC #${i}${isHighSpec ? ' (High-Spec)' : ''}`,
+					ipAddress: `192.168.${targetBranchId === 'tachikawa' ? '1' : targetBranchId === 'shinjuku' ? '2' : '3'}.${i.toString().padStart(3, '0')}`,
+					ratePerMinute: isHighSpec ? 12 : 8, // 高スペックPCは料金が高い
 					status: 'available',
+					branchCode: branchCode,
+					branchName: branches.find(b => b.branchId === targetBranchId)?.branchName || 'Unknown',
+					seatType: 'PC',
+					seatNumber: i,
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString()
-				},
-				{
-					id: 'pc02',
-					name: 'Gaming PC #2',
-					ipAddress: '192.168.1.102',
-					ratePerMinute: 10,
-					status: 'available',
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				},
-				{
-					id: 'pc03',
-					name: 'Gaming PC #3',
-					ipAddress: '192.168.1.103',
-					ratePerMinute: 5,
-					status: 'available',
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				},
-				{
-					id: 'pc04',
-					name: 'Gaming PC #4',
-					ipAddress: '192.168.1.104',
-					ratePerMinute: 10,
-					status: 'available',
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				},
-				{
-					id: 'pc05',
-					name: 'Gaming PC #5',
-					ipAddress: '192.168.1.105',
-					ratePerMinute: 10,
-					status: 'available',
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				},
-				{
-					id: 'pc06',
-					name: 'Gaming PC #6',
-					ipAddress: '192.168.1.106',
-					ratePerMinute: 5,
-					status: 'available',
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				},
-				{
-					id: 'pc07',
-					name: 'Gaming PC #7',
-					ipAddress: '192.168.1.107',
-					ratePerMinute: 5,
-					status: 'available',
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				},
-				{
-					id: 'pc08',
-					name: 'Gaming PC #8',
-					ipAddress: '192.168.1.108',
-					ratePerMinute: 5,
-					status: 'available',
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				},
-			];
+				});
+			}
 
 			setSeats(mockSeats);
 		} catch (err) {
@@ -9587,26 +11484,32 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, [branches, selectedBranch]);
 
-	// Fetch reservations for a specific date (mock implementation for now)
-	const fetchReservations = async (date?: Date): Promise<void> => {
+	// 予約情報を取得 - useCallbackでメモ化
+	const fetchReservations = useCallback(async (date?: Date, branchId?: string): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 
 		try {
 			const targetDate = date || selectedDate;
-			if (!targetDate) return;
+			const targetBranchId = branchId || selectedBranch?.branchId;
+
+			if (!targetDate || !targetBranchId) {
+				return;
+			}
 
 			const dateStr = targetDate.toISOString().split('T')[0];
+			const branchCode = branches.find(b => b.branchId === targetBranchId)?.branchCode || 'UNKNOWN';
 
 			// This will be replaced by an actual API call later
 			// For now, we'll use mock data
-			const mockReservations: Reservation[] = [
+			const mockReservations: ReservationDocument[] = [
 				{
-					id: 'res001',
+					id: `res-${branchCode}-001`,
 					userId: 'user1',
-					seatId: 'pc01',
+					seatId: `${branchCode}-PC-01`,
+					seatName: `Gaming PC #1 (High-Spec)`,
 					date: dateStr,
 					startTime: '14:00',
 					endTime: '16:00',
@@ -9616,9 +11519,10 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 					updatedAt: new Date().toISOString()
 				},
 				{
-					id: 'res002',
+					id: `res-${branchCode}-002`,
 					userId: 'user2',
-					seatId: 'pc02',
+					seatId: `${branchCode}-PC-02`,
+					seatName: `Gaming PC #2 (High-Spec)`,
 					date: dateStr,
 					startTime: '18:00',
 					endTime: '20:00',
@@ -9630,20 +11534,26 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 			];
 
 			setReservations(mockReservations);
-
-			// Update date availability (this would come from an API)
-			updateDateAvailability();
+			updateDateAvailability(targetBranchId);
 		} catch (err) {
 			console.error('Error fetching reservations:', err);
 			setError('予約情報の取得に失敗しました。もう一度お試しください。');
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, [branches, selectedBranch, selectedDate]);
 
-	// Update the availability status for dates (mock implementation)
-	const updateDateAvailability = () => {
+	// 日付ごとの空き状況を更新 - useCallbackでメモ化
+	const updateDateAvailability = useCallback((branchId?: string) => {
 		const availability: DateAvailability = {};
+		const targetBranchId = branchId || selectedBranch?.branchId;
+
+		if (!targetBranchId) return;
+
+		// 支店によって空き状況のパターンを変える
+		const availabilityPattern = targetBranchId === 'tachikawa' ? 0.3 :
+			targetBranchId === 'shinjuku' ? 0.2 :
+				targetBranchId === 'akihabara' ? 0.4 : 0.3;
 
 		// Get the current date
 		const now = new Date();
@@ -9654,12 +11564,11 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 			date.setDate(now.getDate() + i);
 			const dateStr = date.toISOString().split('T')[0];
 
-			// Randomly assign availability status for demo purposes
-			// In real implementation, this would be calculated based on actual reservation data
+			// 支店ごとに異なる空き状況のパターンを生成
 			const rand = Math.random();
-			if (rand < 0.2) {
+			if (rand < availabilityPattern) {
 				availability[dateStr] = 'booked';
-			} else if (rand < 0.5) {
+			} else if (rand < availabilityPattern * 2) {
 				availability[dateStr] = 'limited';
 			} else {
 				availability[dateStr] = 'available';
@@ -9667,10 +11576,10 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		}
 
 		setDateAvailability(availability);
-	};
+	}, [selectedBranch]);
 
-	// Create a new reservation (mock implementation for now)
-	const createReservation = async (reservation: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
+	// 予約を作成 - useCallbackでメモ化
+	const createReservation = useCallback(async (reservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 
@@ -9679,24 +11588,26 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				throw new Error('予約するにはログインが必要です');
 			}
 
-			// This will be replaced by an actual API call later
+			if (!selectedBranch) {
+				throw new Error('支店が選択されていません');
+			}
+
+			// API呼び出しをシミュレート
 			console.log('Creating reservation:', {
 				...reservation,
-				userId: user.uid
+				userId: user.uid,
+				branchId: selectedBranch.branchId,
+				branchName: selectedBranch.branchName
 			});
 
-			// Simulate API call success
+			// 成功をシミュレート
 			setTimeout(() => {
 				setIsLoading(false);
-
-				// Reset selection
 				setSelectedTimeSlots({
 					seatId: '',
 					startTime: '',
 					endTime: ''
 				});
-
-				// Refresh reservations
 				fetchReservations();
 			}, 1000);
 		} catch (err) {
@@ -9704,10 +11615,10 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 			setError('予約の作成に失敗しました。もう一度お試しください。');
 			setIsLoading(false);
 		}
-	};
+	}, [fetchReservations, selectedBranch, user]);
 
-	// Cancel a reservation (mock implementation for now)
-	const cancelReservation = async (reservationId: string): Promise<void> => {
+	// 予約をキャンセル - useCallbackでメモ化
+	const cancelReservation = useCallback(async (reservationId: string): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 
@@ -9716,14 +11627,12 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				throw new Error('予約をキャンセルするにはログインが必要です');
 			}
 
-			// This will be replaced by an actual API call later
+			// API呼び出しをシミュレート
 			console.log('Cancelling reservation:', reservationId);
 
-			// Simulate API call success
+			// 成功をシミュレート
 			setTimeout(() => {
 				setIsLoading(false);
-
-				// Refresh reservations
 				fetchReservations();
 			}, 1000);
 		} catch (err) {
@@ -9731,23 +11640,33 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 			setError('予約のキャンセルに失敗しました。もう一度お試しください。');
 			setIsLoading(false);
 		}
-	};
+	}, [fetchReservations, user]);
 
-	// Initialize seats data when the component mounts
+	// 初期化時に支店一覧を取得 - 依存配列を修正
 	useEffect(() => {
-		fetchSeats();
-		// Update availability for demo
-		updateDateAvailability();
-	}, []);
+		fetchBranches();
+	}, [fetchBranches]); // useCallbackでメモ化したので依存配列にfetchBranchesを含めても問題ない
 
-	// Fetch reservations when selected date changes
+	// 支店が選択されたら座席一覧を取得
 	useEffect(() => {
-		if (selectedDate) {
-			fetchReservations(selectedDate);
+		if (selectedBranch) {
+			fetchSeats(selectedBranch.branchId);
+			updateDateAvailability(selectedBranch.branchId);
 		}
-	}, [selectedDate]);
+	}, [selectedBranch, fetchSeats, updateDateAvailability]);
+
+	// 日付が選択された時に予約情報を取得
+	useEffect(() => {
+		if (selectedDate && selectedBranch) {
+			fetchReservations(selectedDate, selectedBranch.branchId);
+		}
+	}, [selectedDate, selectedBranch, fetchReservations]);
 
 	const value = {
+		branches,
+		selectedBranch,
+		setSelectedBranch,
+		fetchBranches,
 		seats,
 		reservations,
 		selectedDate,
@@ -9995,170 +11914,147 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export const useAuth = () => useContext(AuthContext);-e 
 ### FILE: ./src/context/registration-context.tsx
 
-'use client';
-
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/context/auth-context';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuth } from './auth-context';
+import { VeriffSession, VeriffStatus } from '@/types';
 
-// Veriff情報の型定義
-interface VeriffInfo {
-	sessionId?: string;
-	status: 'pending' | 'completed' | 'failed';
-	verifiedAt?: string;
-}
-
-// 登録コンテキストの型定義
-interface RegistrationContextType {
-	currentStep: number;
-	setCurrentStep: (step: number) => void;
-	veriffInfo: VeriffInfo;
-	setVeriffInfo: (info: Partial<VeriffInfo>) => void;
-	loading: boolean;
-	saveVeriffInfo: () => Promise<void>;
-	completeRegistration: () => Promise<void>;
+interface UseVeriffReturn {
+	status: VeriffStatus;
+	sessionId: string | null;
+	isLoading: boolean;
 	error: string | null;
+	startVerification: () => Promise<void>;
+	simulateVerification: () => Promise<void>; // 開発用
 }
 
-const defaultVeriffInfo: VeriffInfo = {
-	status: 'pending',
-};
-
-// コンテキスト作成
-const RegistrationContext = createContext<RegistrationContextType>({
-	currentStep: 0,
-	setCurrentStep: () => { },
-	veriffInfo: defaultVeriffInfo,
-	setVeriffInfo: () => { },
-	loading: true,
-	saveVeriffInfo: async () => { },
-	completeRegistration: async () => { },
-	error: null,
-});
-
-// コンテキストプロバイダーコンポーネント
-export function RegistrationProvider({ children }: { children: ReactNode }) {
-	const { user, userData, loading: authLoading } = useAuth();
-	const router = useRouter();
-	const [currentStep, setCurrentStep] = useState(0);
-	const [veriffInfo, setVeriffInfoState] = useState<VeriffInfo>(defaultVeriffInfo);
-	const [loading, setLoading] = useState(true);
+/**
+ * Veriff統合のためのカスタムフック
+ */
+export function useVeriff(): UseVeriffReturn {
+	const { user } = useAuth();
+	const [status, setStatus] = useState<VeriffStatus>('pending');
+	const [sessionId, setSessionId] = useState<string | null>(null);
+	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	// ユーザーデータの初期ロード
+	// ユーザーのVeriff状態を読み込む
 	useEffect(() => {
-		async function loadUserData() {
-			if (user && userData) {
-				try {
-					setLoading(true);
+		const loadVeriffStatus = async () => {
+			if (!user) return;
 
-					// 現在のステップを設定
-					if (userData.registrationStep !== undefined) {
-						setCurrentStep(userData.registrationStep);
+			try {
+				const userDoc = await getDoc(doc(db, 'users', user.uid));
+				if (userDoc.exists() && userDoc.data().eKYC) {
+					const eKYC = userDoc.data().eKYC;
+					setStatus(eKYC.status || 'pending');
+					if (eKYC.sessionId) {
+						setSessionId(eKYC.sessionId);
 					}
-
-					// eKYC情報があれば読み込む
-					if (userData.eKYC) {
-						setVeriffInfoState({
-							status: userData.eKYC.status || 'pending',
-							sessionId: userData.eKYC.sessionId,
-							verifiedAt: userData.eKYC.verifiedAt,
-						});
-					}
-
-					setLoading(false);
-				} catch (err) {
-					console.error('Error loading user registration data:', err);
-					setError('登録データの読み込み中にエラーが発生しました。');
-					setLoading(false);
 				}
-			} else if (!authLoading) {
-				setLoading(false);
+			} catch (err) {
+				console.error('Error loading verification status:', err);
+				setError('検証状態の取得中にエラーが発生しました。');
 			}
+		};
+
+		loadVeriffStatus();
+	}, [user]);
+
+	// Veriffセッションを開始する
+	const startVerification = async () => {
+		if (!user || !user.uid) {
+			setError('ユーザー情報が取得できません。ログインし直してください。');
+			return;
 		}
 
-		loadUserData();
-	}, [user, userData, authLoading]);
-
-	// Veriff情報の更新
-	const setVeriffInfo = (info: Partial<VeriffInfo>) => {
-		setVeriffInfoState(prev => ({ ...prev, ...info }));
-	};
-
-	// Veriff情報をFirestoreに保存
-	const saveVeriffInfo = async () => {
-		if (!user) return;
+		setIsLoading(true);
+		setError(null);
 
 		try {
-			setLoading(true);
-			setError(null);
+			// Firebase IDトークンを取得
+			const idToken = await user.getIdToken();
 
-			const userDocRef = doc(db, 'users', user.uid);
-			await setDoc(userDocRef, {
-				eKYC: {
-					status: veriffInfo.status,
-					sessionId: veriffInfo.sessionId,
-					verifiedAt: veriffInfo.verifiedAt || new Date().toISOString(),
-				},
-				registrationStep: 0, // 本人確認ステップ完了（最初のステップなので0）
-			}, { merge: true });
+			// APIを呼び出してセッションを作成
+			const response = await fetch('/api/veriff/create-session', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${idToken}`
+				}
+			});
 
-			setCurrentStep(0); // ステップを更新
-			setLoading(false);
+			if (!response.ok) {
+				throw new Error('セッション作成に失敗しました');
+			}
 
-			// 次のステップへ移動
-			router.push('/register/payment');
+			const data = await response.json();
+
+			// すでに検証が完了している場合
+			if (data.status === 'completed') {
+				setStatus('completed');
+				setIsLoading(false);
+				return;
+			}
+
+			// セッションIDを保存
+			setSessionId(data.sessionId);
+
+			// Veriffのページにリダイレクト
+			window.location.href = data.sessionUrl;
+
 		} catch (err) {
-			console.error('Error saving verification info:', err);
-			setError('本人確認情報の保存中にエラーが発生しました。');
-			setLoading(false);
+			console.error('Error starting verification:', err);
+			setError('検証の開始中にエラーが発生しました。後でもう一度お試しください。');
+			setIsLoading(false);
 		}
 	};
 
-	// 登録完了処理
-	const completeRegistration = async () => {
+	// 開発用: 検証完了をシミュレート
+	const simulateVerification = async () => {
 		if (!user) return;
 
+		setIsLoading(true);
+		setError(null);
+
 		try {
-			setLoading(true);
-			setError(null);
+			// モックセッションID
+			const mockSessionId = `mock-session-${Date.now()}`;
+			setSessionId(mockSessionId);
 
-			const userDocRef = doc(db, 'users', user.uid);
-			await setDoc(userDocRef, {
-				registrationCompleted: true,
-				registrationStep: 1, // 全ステップ完了（最後のステップなので1）
-			}, { merge: true });
+			// 検証完了をシミュレート
+			setTimeout(async () => {
+				setStatus('completed');
 
-			setCurrentStep(1); // ステップを更新
-			setLoading(false);
+				// Firestoreを更新
+				await setDoc(doc(db, 'users', user.uid), {
+					eKYC: {
+						sessionId: mockSessionId,
+						status: 'completed',
+						verifiedAt: new Date().toISOString()
+					},
+					registrationStep: 0  // eKYCステップ完了
+				}, { merge: true });
 
-			// ダッシュボードへ移動
-			router.push('/dashboard');
+				setIsLoading(false);
+			}, 2000);
 		} catch (err) {
-			console.error('Error completing registration:', err);
-			setError('会員登録の完了処理中にエラーが発生しました。');
-			setLoading(false);
+			console.error('Error in mock verification:', err);
+			setError('検証のシミュレーション中にエラーが発生しました。');
+			setIsLoading(false);
 		}
 	};
 
-	const value = {
-		currentStep,
-		setCurrentStep,
-		veriffInfo,
-		setVeriffInfo,
-		loading,
-		saveVeriffInfo,
-		completeRegistration,
+	return {
+		status,
+		sessionId,
+		isLoading,
 		error,
+		startVerification,
+		simulateVerification
 	};
-
-	return <RegistrationContext.Provider value={value}>{children}</RegistrationContext.Provider>;
-}
-
-// カスタムフック
-export const useRegistration = () => useContext(RegistrationContext);-e 
+}-e 
 ### FILE: ./tailwind.config.js
 
 //tailwind.config.js

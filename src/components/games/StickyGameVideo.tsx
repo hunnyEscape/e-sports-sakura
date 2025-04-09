@@ -10,6 +10,8 @@ interface StickyGameVideoProps {
 	isActive: boolean;
 	thumbnailSrc?: string;
 	onLoaded?: () => void;
+	globalAudioEnabled?: boolean;
+	onAudioStateChange?: (isAudioOn: boolean) => void;
 }
 
 export default function StickyGameVideo({
@@ -17,10 +19,12 @@ export default function StickyGameVideo({
 	title,
 	isActive,
 	thumbnailSrc,
-	onLoaded
+	onLoaded,
+	globalAudioEnabled = false,
+	onAudioStateChange
 }: StickyGameVideoProps) {
 	const [isPlaying, setIsPlaying] = useState(false);
-	const [isMuted, setIsMuted] = useState(true);
+	const [isMuted, setIsMuted] = useState(!globalAudioEnabled);
 	const [isLoading, setIsLoading] = useState(true);
 	const [hasError, setHasError] = useState(false);
 	const [loadProgress, setLoadProgress] = useState(0);
@@ -28,6 +32,7 @@ export default function StickyGameVideo({
 	const [videoDuration, setVideoDuration] = useState(0);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [isBuffering, setIsBuffering] = useState(false);
+	const [hasUserInteracted, setHasUserInteracted] = useState(false);
 
 	// Load state tracking
 	useEffect(() => {
@@ -64,11 +69,27 @@ export default function StickyGameVideo({
 		}
 	}, [isActive, isPlaying, hasError]);
 
+	// グローバル音声設定が変更されたときの処理
+	useEffect(() => {
+		if (!videoRef.current) return;
+
+		if (isActive && globalAudioEnabled && !hasUserInteracted) {
+			// ユーザーがまだ手動で変更していない場合のみグローバル設定を適用
+			videoRef.current.muted = !globalAudioEnabled;
+			setIsMuted(!globalAudioEnabled);
+		}
+	}, [globalAudioEnabled, isActive, hasUserInteracted]);
+
 	// Handle video mute/unmute
 	useEffect(() => {
 		if (!videoRef.current) return;
 		videoRef.current.muted = isMuted;
-	}, [isMuted]);
+
+		// 音声状態が変更されたら親コンポーネントに通知
+		if (onAudioStateChange && isActive) {
+			onAudioStateChange(!isMuted);
+		}
+	}, [isMuted, isActive, onAudioStateChange]);
 
 	// Auto-play when component becomes active
 	useEffect(() => {
@@ -120,6 +141,7 @@ export default function StickyGameVideo({
 	};
 
 	const toggleMute = () => {
+		setHasUserInteracted(true); // ユーザーが手動で変更したことを記録
 		setIsMuted(!isMuted);
 	};
 

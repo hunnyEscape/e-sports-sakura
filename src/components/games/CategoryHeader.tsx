@@ -12,7 +12,7 @@ interface CategoryHeaderProps {
 
 export default function CategoryHeader({ category, title, description }: CategoryHeaderProps) {
 	return (
-		<header className="bg-border/10 rounded-2xl p-6 md:p-8 shadow-soft mb-6 fixed">
+		<header className="w-full bg-background p-6 md:p-8 shadow-soft mb-6 fixed z-50">
 			<div className="max-w-7xl mx-auto">
 				<div className="flex items-center justify-between">
 					<Link
@@ -24,8 +24,8 @@ export default function CategoryHeader({ category, title, description }: Categor
 					</Link>
 
 					<div className="text-right">
-						<h1 className="text-2xl md:text-3xl font-bold animate-fadeIn">{title}</h1>
-						<p className="text-accent animate-fadeIn">{description}</p>
+						<h1 className="text-xl md:text-2xl font-bold animate-fadeIn">{title}</h1>
+						<p className="text-accent text-sm md:text-base animate-fadeIn">{description}</p>
 					</div>
 				</div>
 			</div>

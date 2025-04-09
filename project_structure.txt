@@ -8,6 +8,12 @@
 ├── project_files.md
 ├── project_structure.txt
 ├── public
+│   ├── images
+│   │   └── lp
+│   │       ├── hero-bg.jpg
+│   │       ├── scene-group.jpg
+│   │       ├── scene-pair.jpg
+│   │       └── scene-solo.jpg
 │   ├── next.svg
 │   └── vercel.svg
 ├── src
@@ -45,6 +51,9 @@
 │   │   ├── dashboard
 │   │   │   └── page.tsx
 │   │   ├── favicon.ico
+│   │   ├── games
+│   │   │   └── [category]
+│   │   │       └── page.tsx
 │   │   ├── globals.css
 │   │   ├── layout.tsx
 │   │   ├── login
@@ -75,8 +84,19 @@
 │   │   │   ├── qr-code.tsx
 │   │   │   ├── reservation-history.tsx
 │   │   │   └── usage-history.tsx
+│   │   ├── games
+│   │   │   ├── CategoryHeader.tsx
+│   │   │   ├── GameCategoryLayout.tsx
+│   │   │   ├── GameDetailExpansion.tsx
+│   │   │   ├── GameSession.tsx
+│   │   │   ├── QuickGameNav.tsx
+│   │   │   ├── ScrollSnapContainer.tsx
+│   │   │   ├── StickyGameVideo.tsx
+│   │   │   └── VideoPreloader.tsx
 │   │   ├── icons
 │   │   │   └── verification-icons.tsx
+│   │   ├── ini
+│   │   │   └── create-seat-documents.tsx
 │   │   ├── lp
 │   │   │   ├── access-section.tsx
 │   │   │   ├── availability-calendar.tsx
@@ -97,11 +117,13 @@
 │   │   ├── registration
 │   │   │   └── progress-tracker.tsx
 │   │   ├── reservation
+│   │   │   ├── branch-selector.tsx
 │   │   │   ├── calendar-view.tsx
 │   │   │   ├── login-prompt.tsx
 │   │   │   ├── reservation-form.tsx
 │   │   │   └── time-grid.tsx
 │   │   ├── ui
+│   │   │   ├── PageTransition.tsx
 │   │   │   ├── button.tsx
 │   │   │   └── loading-spinner.tsx
 │   │   └── verification
@@ -116,14 +138,19 @@
 │   │   └── reservation-context.tsx
 │   ├── hooks
 │   │   └── use-veriff.ts
-│   └── lib
-│       ├── firebase-admin.ts
+│   ├── lib
+│   │   ├── firebase-admin.ts
+│   │   ├── firebase.ts
+│   │   ├── stripe-payment-methods.ts
+│   │   ├── stripe-service.ts
+│   │   ├── stripe.ts
+│   │   └── veriff.ts
+│   └── types
+│       ├── api.ts
+│       ├── auth-context.tsx
 │       ├── firebase.ts
-│       ├── stripe-payment-methods.ts
-│       ├── stripe-service.ts
-│       ├── stripe.ts
-│       └── veriff.ts
+│       └── index.ts
 ├── tailwind.config.js
 └── tsconfig.json
 
-43 directories, 83 files
+50 directories, 103 files
