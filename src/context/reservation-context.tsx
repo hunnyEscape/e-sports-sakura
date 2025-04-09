@@ -1,21 +1,15 @@
 // src/context/reservation-context.tsx
-
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './auth-context';
 import { SeatDocument, ReservationDocument, BranchDocument } from '@/types/firebase';
-import { collection, getDocs, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-// 予約コンテキスト用の追加型
 interface SelectedTimeSlots {
 	seatId: string;
 	startTime: string;
 	endTime: string;
 }
-
-interface DateAvailability {
-	[date: string]: 'available' | 'limited' | 'booked' | 'unknown';
-}
-
+interface DateAvailability {[date: string]: 'available' | 'limited' | 'booked' | 'unknown';}
 interface ReservationContextType {
 	branches: BranchDocument[];
 	selectedBranch: BranchDocument | null;
@@ -57,23 +51,19 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 	const [isLoading, setIsLoading] = useState<boolean>(false);
 	const [error, setError] = useState<string | null>(null);
 	const [fetchCount, setFetchCount] = useState<number>(0); // APIコール回数を追跡
-
 	// 支店一覧を取得 - useCallbackでメモ化して無限ループを防止
 	const fetchBranches = useCallback(async (): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
-
 		// すでにbranchesがあり、fetchCountが1以上なら再取得しない（無限ループ対策）
 		if (branches.length > 0 && fetchCount > 0) {
 			setIsLoading(false);
 			return;
 		}
-
 		try {
 			// Firestoreからbranchコレクションのデータを取得
 			const branchesCollection = collection(db, 'branch');
 			const branchesSnapshot = await getDocs(branchesCollection);
-
 			const branchesData: BranchDocument[] = [];
 			branchesSnapshot.forEach((doc) => {
 				// ドキュメントのデータとIDを組み合わせて配列に追加
@@ -120,7 +110,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 					seatId: `${branchCode}-PC-${i.toString().padStart(2, '0')}`,
 					name: `Gaming PC #${i}${isHighSpec ? ' (High-Spec)' : ''}`,
 					ipAddress: `192.168.${targetBranchId === 'tachikawa' ? '1' : targetBranchId === 'shinjuku' ? '2' : '3'}.${i.toString().padStart(3, '0')}`,
-					ratePerMinute: isHighSpec ? 12 : 8, // 高スペックPCは料金が高い
+					ratePerHour: 400, // 高スペックPCは料金が高い
 					status: 'available',
 					branchCode: branchCode,
 					branchName: branches.find(b => b.branchId === targetBranchId)?.branchName || 'Unknown',

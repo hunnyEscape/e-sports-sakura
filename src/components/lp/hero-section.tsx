@@ -17,7 +17,7 @@ export default function HeroSection() {
 		<section className="relative min-h-screen flex items-center overflow-hidden">
 			<div className="absolute inset-0 z-0">
 				<Image
-					src="/images/lp/hero-bg.jpg"
+					src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/hero-bg.webp`}
 					alt="深夜のゲーミングスペース"
 					fill
 					priority

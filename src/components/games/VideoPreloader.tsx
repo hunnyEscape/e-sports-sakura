@@ -46,7 +46,10 @@ export default function VideoPreloader({ videoSrcs, currentIndex }: VideoPreload
 			{videoSrcs.map((src, index) => (
 				<video
 					key={`preload-${index}`}
-					ref={el => videoRefs.current[index] = el}
+					ref={(el) => {
+						videoRefs.current[index] = el;
+					}}
+
 					src={src}
 					muted
 					playsInline

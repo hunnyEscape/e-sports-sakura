@@ -41,7 +41,7 @@ const renderMarkdownText = (text: string, baseMuted = true) => {
 		// Color emphasis with ^color^
 		if (/^\^.*\^$/.test(part)) {
 			const [, color, text] = part.match(/\^(.*?):(.+)\^/) || [];
-			const colorClass = COLOR_MAP[color] || COLOR_MAP.strong;
+			const colorClass = COLOR_MAP[color as keyof typeof COLOR_MAP] || COLOR_MAP.strong;
 			return <span key={index} className={colorClass}>{text}</span>;
 		}
 

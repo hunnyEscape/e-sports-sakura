@@ -1013,7 +1013,6 @@ export async function getCustomerPaymentMethods(
 // Define the game categories and their IDs that match the route parameters
 export const VALID_CATEGORIES = ['party', 'competitive', 'immersive'];
 
-// Interface for game data
 export interface Game {
 	id: string;
 	title: string;
@@ -1023,7 +1022,8 @@ export interface Game {
 	difficulty: string;
 	videoSrc: string;
 	thumbnailSrc: string;
-	similarGames: string[];
+	rule: string;
+	genre:string;
 }
 
 export interface CategoryData {
@@ -1031,9 +1031,11 @@ export interface CategoryData {
 	description: string;
 	games: Game[];
 }
+const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL;
 
 // Game data - in a real application, this would come from a database or API
 export const GAME_DATA: Record<string, CategoryData> = {
+
 	party: {
 		title: 'ワイワイ系ゲーム',
 		description: 'コントローラーで2人でも盛り上がれる',
@@ -1041,114 +1043,190 @@ export const GAME_DATA: Record<string, CategoryData> = {
 			{
 				id: 'party-animals',
 				title: 'Party Animals',
-				description: '可愛い動物たちが戦うカオスなパーティーゲーム。ふわふわしたキャラクターで物理演算を利用した格闘ゲームを楽しめます。友達と一緒に遊ぶと最高に盛り上がります。',
+				description: `
+					可愛い動物たちが戦うカオスな**格闘ゲーム**です。
+					ふわふわしたキャラクターで物理演算を利用した操作を楽しめ、予測不能な展開で最高に盛り上がります。
+					戦略やタイミングを極めることで勝率を上げられる奥深さもあり、初心者から上級者まで幅広く楽しめるバランスが絶妙に設計されています。
+					`,
 				playerCount: '2-8人',
-				recommendedTime: '30分-1時間',
+				recommendedTime: '30分-2時間',
 				difficulty: '初心者向け',
 				videoSrc: '/PartyAnimals.mp4',
-				thumbnailSrc: '/images/lp/games/overcooked.png',
-				similarGames: ['Fall Guys', 'Gang Beasts']
+				thumbnailSrc: `${cloudFrontUrl}/PartyAnimals.webp`,
+				rule: `
+					ライバルをフィールドから**落とせば勝利**です。
+					基本の「パンチ」は、相手を一時的に気絶させるための主要な攻撃手段です。特に顔に当たるように狙うと、より効果的に相手の動きを止めることができます。むやみに連打するのではなく、タイミングよくパンチを当てて、次の動作に繋げることが重要です。
+					ジャンプ中に攻撃することで空中キックのような動きになります。これは崖際や接近戦で有効で、相手を弾き飛ばすように使うと、そのままステージ外に落とすことも可能です。
+					「掴み」は、『Party Animals』を象徴する動作のひとつです。相手に近づいて掴むと、そのまま持ち上げたり、引きずったりすることができます。特に強力なのが、掴んだ相手をジャンプと同時に投げるようにして場外に放り出すテクニックです。背後から掴めば反撃を受けにくく、飛距離が伸びるので、**安全に投げ落とすことができます**。
+					「武器」はマップ上にランダムで出現し、手にしたプレイヤーに大きなアドバンテージをもたらします。バットや棒などの武器は、攻撃範囲と威力が高まり、相手を遠くまでふっ飛ばすことが可能です。クロスボウのような遠距離武器も存在し、状況によって使い分けることで戦況を有利に運ぶことができます。ただし、武器を持っているからといって無敵ではなく、パンチで手から落とされたり、掴まれて無力化されたりする危険もあるため、過信は禁物です。
+				`,
+				genre:`ワイワイ系`,
 			},
 			{
-				id: 'fall-guys',
-				title: 'Fall Guys',
-				description: '障害物競走のバトルロイヤル！最後まで生き残れ。カラフルなゼリービーンズのようなキャラクターを操作して、様々な障害物コースを突破しながら他のプレイヤーと競争します。',
+				id: 'Witch It',
+				title: 'Witch It',
+				description: `
+					魔法の世界を舞台にしたチーム対戦型の**かくれんぼゲーム**です。プレイヤーは「魔女」チームと「ハンター」チームに分かれて勝利を目指します。
+					魔女チームは、マップ内の様々なオブジェクト（リンゴ、椅子、木箱、壺など）に変身して隠れることができます。
+					ハンターチームは、魔女が化けているであろうオブジェクトを見つけて攻撃し、捕まえます。
+					ステージには多種多様なマップがあり、それぞれに特徴的な地形やオブジェクトが配置されているため、毎試合ごとに異なる戦略が必要になります。
+					ゲームの**テンポが良く**、1プレイが短時間で終わるため、何度も繰り返し遊びたくなる中毒性があります。
+					見た目は可愛らしく、ファンタジックで親しみやすいデザインですが、ゲームとしての深みや**駆け引き**の面白さは非常に高く、友人同士の対戦や配信・実況などにもぴったりのタイトルです。
+					魔女として隠れる楽しさと、ハンターとして暴くスリル――この両方を体験できる、独特の魅力を持った作品と言えるでしょう。
+				`,
+				playerCount: '2人チーム制　4〜8人程度でも十分楽しめるが多人数ほど盛り上がる。最大16人',
+				recommendedTime: '1試合：約5〜10分前後、30分-1時間',
+				difficulty: '初心者向け',
+				videoSrc: '/WitchIt.mp4',
+				thumbnailSrc: `${cloudFrontUrl}/WitchIt.webp`,
+				rule: `
+					魔女にはいくつかのスキルがあり、煙幕で視界を妨害したり、偽物のオブジェクトを出してハンターを混乱させたり、瞬間移動で逃げることができます。制限時間まで1人でも生き残っていれば、魔女チームの勝利です。
+					ハンターは、マップ中のオブジェクトに向かって攻撃することで、魔女が変身していないかどうかを確かめていきます。魔女に直接攻撃が当たると、一定時間で捕獲され、退場させることができます。
+					攻撃にはクールダウンがあるため、手当たり次第に攻撃することはできません。また、魔女は素早く移動したり、狭い隙間に隠れたり、変身を繰り返したりするため、ハンターには注意力と推理力が求められます。
+					ゲームの時間内にすべての魔女を見つけ出すことができれば、ハンター側の勝利です。
+				`,
+				genre:`ワイワイ系`,
+			},
+			{
+				id: 'Golf It',
+				title: 'Golf It',
+				description: `
+					マルチプレイヤー向け物理演算ベースの**パターゴルフゲーム**です。
+					予測不可能なコースやギミック、そしてプレイヤー同士の妨害や偶然によって、単なるゴルフゲーム以上のドタバタとした楽しさを味わえる作品となっています。
+					バリエーション豊富で想像力に富んだミニゴルフコースが用意されています。
+					普通の傾斜や坂道はもちろん、ループ、トランポリン、動く足場、回転する障害物、壁のワープ装置など、常識を超えたステージが満載です。
+					しかも、ユーザーが自作したコースを公開・プレイすることができるため、コンテンツは常に増え続けており、飽きが来にくいという点も魅力のひとつです。
+				`,
 				playerCount: '1-4人',
 				recommendedTime: '20-40分',
 				difficulty: '初心者向け',
 				videoSrc: '/GolfIt.mp4',
-				thumbnailSrc: '/images/lp/games/fallguys.png',
-				similarGames: ['Party Animals', 'Pummel Party']
+				thumbnailSrc: `${cloudFrontUrl}/GolfIt.webp`,
+				rule: `
+					ルールはとてもシンプルで、各プレイヤーが順番にボールを打ち、できるだけ少ない打数でホール（カップ）にボールを入れることを目指します。
+					ボールを打つときは、マウスを使って物理的に引っ張って打つ動作を再現するため、強く打ちすぎて大きく飛ばしてしまったり、逆に弱すぎて進まなかったりと、プレイヤーの感覚が試されるのもこのゲームの面白さです。
+					**勝ちを狙うと意外なほど奥深いゲーム**です。
+					『Golf It!』の打撃は、マウスを後ろに引いてから前に押し出すことで力を調整します。強すぎるとコースアウト、弱すぎると進まない――この微妙な力加減を体に覚えさせることが、まず勝利の第一歩です。
+					最初は「少し弱め」を意識すると安定します。打つ前に、マウスを引いたときのパワーメーター（ゲージ）を見る習慣をつけましょう。
+					とにかく焦って打つと、ギミックに跳ね返されたり、罠にハマったりします。初見のコースでは、一打目を打つ前に必ずカメラ（右クリック＋ドラッグ）で全体を見て、どのルートが最適かを判断しましょう。
+					コースによっては、高いジャンプや強打を使ってショートカットするルートが用意されています。
+					難易度は高めですが、成功すれば2〜3打も差がつくため、慣れてきたらチャレンジする価値は大いにあります。
+					特にフレンド対戦では、早くゴールした者勝ちの**空気感**があるので、差をつけやすいです。
+				`,
+				genre:`ワイワイ系`,
 			},
 			{
-				id: 'pummel-party',
-				title: 'Pummel Party',
-				description: '友情を破壊するミニゲームコレクション。ボードゲーム形式で進行し、各ターンごとに様々なミニゲームが発生します。友達との競争心を刺激する作品です。',
-				playerCount: '4-8人',
-				recommendedTime: '1-2時間',
-				difficulty: '中級者向け',
-				videoSrc: '/Crossout.mp4',
-				thumbnailSrc: '/images/lp/games/pummel.png',
-				similarGames: ['Mario Party', 'Fall Guys']
-			}
-		]
-	},
-	competitive: {
-		title: '競技系ゲーム',
-		description: '120FPSでぬるぬる動く、プロ仕様',
-		games: [
-			{
-				id: 'counter-strike-2',
-				title: 'Counter-Strike 2',
-				description: 'タクティカルFPSの金字塔、最新バージョン。テロリストと対テロ部隊に分かれて戦う5対5の対戦型シューティングゲーム。戦略性と正確なエイムが求められます。',
-				playerCount: '5v5',
-				recommendedTime: '30-90分',
-				difficulty: '上級者向け',
-				videoSrc: '/CS2.mp4',
-				thumbnailSrc: '/images/lp/games/valorant.png',
-				similarGames: ['Valorant', 'Rainbow Six Siege']
-			},
-			{
-				id: 'pubg',
-				title: 'PUBG',
-				description: 'バトルロイヤルの先駆者、100人での生存競争。広大なマップで最後の1人（または1チーム）になるまで戦い続けるサバイバルシューティング。',
-				playerCount: '1-4人',
-				recommendedTime: '20-30分',
-				difficulty: '中級者向け',
-				videoSrc: '/Tango.mp4',
-				thumbnailSrc: '/images/lp/games/pubg.png',
-				similarGames: ['Apex Legends', 'Fortnite']
-			},
-			{
-				id: 'apex-legends',
-				title: 'Apex Legends',
-				description: '高速移動とチームプレイが特徴のヒーローシューター。独自の能力を持つキャラクターを選び、3人チームで戦うバトルロイヤルゲーム。スムーズな動きと連携が勝利のカギです。',
-				playerCount: '3人チーム',
-				recommendedTime: '15-25分',
-				difficulty: '中級者向け',
-				videoSrc: '/WitchIt.mp4',
-				thumbnailSrc: '/images/lp/games/apex.png',
-				similarGames: ['PUBG', 'Valorant']
-			}
-		]
-	},
-	immersive: {
-		title: 'じっくり系ゲーム',
-		description: '1人でも仲間とでも、じっくり楽しめる',
-		games: [
-			{
-				id: 'operation-tango',
-				title: 'Operation: Tango',
-				description: '2人協力のスパイアドベンチャー、コミュニケーションが鍵。一方がハッカー役、もう一方がエージェント役となり、お互いに見えている情報を伝え合いながらミッションを遂行します。',
+				id: 'We Were Here Forever',
+				title: 'We Were Here Forever',
+				description: `
+					二人一組でプレイする**協力型の脱出パズルアドベンチャーゲーム**です。
+					プレイヤーは極寒の未知の地に囚われた2人のキャラクターとなり、互いの声だけを頼りに謎を解きながら脱出を目指すという物語が展開されます。
+					このゲームは「We Were Here」シリーズの第4作目であり、シリーズ中でも最もスケールが大きく、謎解きのバリエーションやストーリーテリングが進化しています。
+					暗号、幾何学的な図形、音楽、視覚的な錯覚、時間制限付きの仕掛けなど、ジャンルの異なる謎解きが連続して登場します。
+					しかも、ほとんどのパズルは「片方だけでは絶対に解けない」ように設計されており、**会話力とチームワークが問われるゲームデザインが徹底されています**。
+					ストーリーは断片的に語られる形式で、探索を進めながら徐々に真実が明らかになります。
+					この世界には「王」「操り人形」「裏切り」「救済」などの重厚なテーマが織り込まれており、ただの脱出ゲームではない物語体験としての魅力も高く評価されています。
+					「一緒に乗り越える体験」に特化した、稀有な協力型ゲームです。
+					単なる謎解き以上に、相手との意思疎通・信頼・ひらめきが求められるため、**プレイ後には深い絆と達成感が残る作品**となっています。
+					「2人でしか体験できない特別なゲーム」を探している方に、心からおすすめできる一本です。
+				`,
 				playerCount: '2人',
 				recommendedTime: '1-2時間',
 				difficulty: '中級者向け',
 				videoSrc: '/WeWereHereForever.mp4',
-				thumbnailSrc: '/images/lp/games/slaythespire.png',
-				similarGames: ['Keep Talking and Nobody Explodes', 'We Were Here']
+				thumbnailSrc: `${cloudFrontUrl}/WeWereHereForever.webp`,
+				rule: `
+				無線のようなボイスチャットを使ってコミュニケーションを取りながら、片方が見ているシンボルや仕掛けのヒントをもう一方に伝え、それぞれの部屋で謎を解いていきます。
+				このゲームで一番重要なのは、「自分が見ている情報をどう伝えるか」です。謎解きの答えは、たいてい「相手の視点」にあるため、適切に説明しなければ解けません。
+				伝えられた情報をただ受け取るのではなく、相手の状況や視点を想像して補完する力も大切です。
+				パズルに行き詰まったと感じたら、無理に1人で考え込まず、「今こうなってる」「今ここに何がある」ととにかく状況を話すことが重要です。
+				相手がヒントに気づいてくれることもあります。**情報を「全部伝えてから考える」**が、We Were Hereシリーズの鉄則です。
+				`,
+				genre:`じっくり系`,
 			},
 			{
 				id: 'portal-2',
 				title: 'Portal 2',
-				description: '物理パズルの傑作、協力プレイも可能。ポータルガンを使って空間を自由に行き来しながら、様々なパズルを解いていきます。独特のユーモアと高いゲーム性が魅力です。',
+				description: `
+				**一人称視点（FPS）の物理パズルゲーム**で2007年に大ヒットした『Portal』の続編です。
+				前作の革新的なゲーム性を引き継ぎつつ、より複雑なパズル、魅力的なキャラクター、ユーモアと不気味さが同居するディストピア的な世界観と豊かなストーリー性が特徴です。
+				空間を操る感覚を見事に表現し、物語・演出・難易度設計のすべてにおいて**高い評価**を受けています。
+				プレイヤーは、「ポータルガン」という特殊な装置を使って空間に二つのポータルを開き、それを活用してステージを突破していくという、独自のゲームプレイを体験します。
+				`,
 				playerCount: '1-2人',
 				recommendedTime: '1-2時間',
 				difficulty: '中級者向け',
 				videoSrc: '/portal.mp4',
-				thumbnailSrc: '/images/lp/games/cities.png',
-				similarGames: ['The Witness', 'The Talos Principle']
+				thumbnailSrc: `${cloudFrontUrl}/portal.webp`,
+				rule: `
+				プレイヤーは「ポータルガン」と呼ばれる特殊な装置を使って、壁や床などに**入口と出口の2つの穴（ポータル）**を自由に開くことができます。
+				ポータルは2つの空間を瞬時につなぐワープホールのようなものです。
+				何度でもやり直せるので、まずは試す → 結果を見る →考え直すというプロセスをポジティブに楽しみましょう。
+				ポータルの面白さは、ただ移動できるだけでなく、**物理的なエネルギー**（落下速度やジャンプ）を引き継げることです。
+				これを利用して、高く跳ぶ、遠くへ飛ばす、タイミングよく飛び込む…など、動きの工夫が求められるステージが多く登場します。
+				「高所から落ちた勢いをポータルで前方に転換」など、**慣性利用の基本**は必ず覚えましょう。
+				相手に「勢いをつける役」と「ゴールに届く役」を分けて役割分担するのも有効です。
+				`,
+				genre:`じっくり系`,
 			},
 			{
-				id: 'the-witness',
-				title: 'The Witness',
-				description: '美しい島を舞台にした一人称パズルゲーム。線を描くという単純な操作から始まり、徐々に複雑になっていくパズルを解きながら島の謎に迫ります。思考力が試されるゲームです。',
-				playerCount: '1人',
-				recommendedTime: '2-3時間',
+				id: 'Operation:Tango',
+				title: 'Operation:Tango',
+				description: `
+				2人専用の**協力型スパイアクション・パズルゲーム**です。
+				プレイヤーは「エージェント」と「ハッカー」のいずれかを担当し、ペアで連携を取りながら、世界を脅かすサイバー犯罪に立ち向かう――というスリリングなミッションを遂行していきます。
+				エージェントは現場潜入担当で、ハッカーがバックエンドサポートを担います。
+				**プレイヤー同士の視界や情報が完全に異なる**ため、自分の状況をどう説明するか、相手の言葉をどう解釈するかがカギになります。
+				銀行への潜入、空港でのハッキング、仮想空間への侵入など、スパイ映画のようなミッションが続々と登場します。
+				`,
+				playerCount: '2人',
+				recommendedTime: '4-6時間(役割交代すればもう一周楽しめる)',
+				difficulty: '中級者向け',
+				videoSrc: '/Tango.mp4',
+				thumbnailSrc: `${cloudFrontUrl}/Tango.webp`,
+				rule: `
+				まず**「自分が今、何を見ているのか」「何をしているのか」を、なるべく具体的に口に出すことがコツ**です。「左下に白いパネルがあって、今赤く点滅している」「数字が3つ表示されていて、上から緑・青・赤の順になっている」といったように、色・位置・順番などを意識して説明することで、相手も的確に反応できるようになります。
+				わからない部分はすぐに質問する姿勢も大切です。ゲーム中は複雑な暗号入力や、時間制限のあるミッションも多いため、「焦らず、確認する」「すれ違いがあればすぐ修正する」という冷静さが成功への近道となります。
+				さらに、謎解きに詰まったときは、つい自分の目の前の情報だけで解決しようとしてしまいがちですが、『Operation: Tango』では、たいていの場合、**答えのヒントは自分ではなく、相手の画面に存在しています**。「そっちで何か見えてない？」という問いかけをすることが、ミッションを前に進めるうえで重要です。
+				このゲームは、繰り返し挑戦することで自然と**「伝え方」「聞き方」「動き方」が上達していく**構造になっています。最初は失敗しても気にせず、会話を楽しみながら、少しずつスムーズに連携できるようになる喜びを味わうのが、この作品の大きな醍醐味です。
+				`,
+				genre:`じっくり系`,
+			},
+			{
+				id: 'counter-strike-2',
+				title: 'Counter-Strike 2',
+				description: `
+				競技性の高いオンライン対戦型の**一人称視点(FPS)シューティングゲーム**です。これは、2000年代初頭に登場し、世界中で**eスポーツの先駆け的存在**となった『Counter-Strike』シリーズの最新作です。
+				テロリストと対テロ部隊という二つの勢力に分かれ対戦します。
+				前作と比べてネットワークの応答性が向上したことで、**対戦の公正さや一瞬の撃ち合いの精度**が格段に上がっています。**勝敗を分けるような一瞬の撃ち合い**が忠実に反映されるようになりました。
+				敷居が高いと思われがちですが、実際には初心者が少しずつ**上達を実感しやすいゲーム**でもあります。
+				このゲームの最大の魅力は、シンプルなルールの中に、プレイヤーの**個性と判断力が強く反映される**ところにあります。走るのか待つのか、正面から撃ち合うのか裏を取るのか、単独行動を選ぶのか仲間と連携するのか。すべての行動が自由で、しかしすべてに意味があり、その積み重ねがチームの勝利へとつながっていきます。
+				『Counter-Strike 2』は、世界中のプレイヤーたちにとって、長年の経験がそのまま蓄積される「知のFPS」でありながら、今この瞬間から誰でも始められる、極めてフェアな設計のゲームです。もしあなたが、頭を使いながらチームと連携し、一発一発に意味のある対戦ゲームを探しているなら、このゲームはまさにうってつけだと言えるでしょう。試しに1ラウンドでもプレイしてみれば、きっとその緊張感と達成感に引き込まれるはずです。			
+				`,
+				playerCount: '5v5',
+				recommendedTime: '∞',
 				difficulty: '上級者向け',
-				videoSrc: '/WitchIt.mp4',
-				thumbnailSrc: '/images/lp/games/witness.png',
-				similarGames: ['Portal 2', 'Braid']
-			}
+				videoSrc: '/CS2.mp4',
+				thumbnailSrc: `${cloudFrontUrl}/CS2.webp`,
+				rule: `
+				テロリスト側は爆弾を持ち、特定のエリアに設置して時間内に爆発させることで勝利を目指します。一方、対テロ部隊側は、その爆弾の設置を防ぐか、設置後に制限時間内で解除することが任務です。
+				この攻防は「ラウンド制」で進行し、各ラウンドの開始時にプレイヤーは**限られた資金を元に装備を整える必要**があります。
+				つまり、プレイヤーたちは毎ラウンドごとに自分の手持ち資金と相談しながら、どの武器を買うか、グレネードを持つか、防具を優先するかなどを考えなければならず、「戦う準備の時点ですでにゲームは始まっている」と言えます。
+				プレイヤーが得られるお金は、単に敵を倒すだけではなく、ラウンドに勝利する、爆弾を設置する、あるいは解除するといった**“チームに貢献する行動すべて”**によって変動します。
+				つまり、キル数が多いプレイヤーだけが強くなるのではなく、冷静に爆弾を設置し、仲間をカバーし、チームとして勝利することで、次のラウンドに有利な装備が整っていくという設計です。
+				ここに、短期的な撃ち合いの強さと、長期的な資金計画とのバランスが求められる理由があります。
+
+
+				また射撃はただ単に**「敵に向けて撃てば当たる」というようなものではありません**。
+				各武器には独自のリコイル（反動）パターンが設定されており、フルオートで撃ち続けると照準が上や左右に大きくブレます。
+				これを抑えるためには、リコイルを“覚える”だけでなく、自分のマウス操作で**その反動に逆らうように制御するテクニック**が不可欠です。さらには、撃ち方にも工夫が求められます。
+				たとえば、1発1発をタップして正確に当てる、3発ごとに止めながら撃つバーストショットを使う、しゃがんで撃つことで安定させるなど、状況に応じて撃ち方を変える判断力が上達への鍵になります。
+				ルールは非常にシンプルである一方で、その中にはプレイヤーの操作スキル、金銭管理、マップ理解、連携力、そして心理戦という多層的なゲーム性が詰まっています。
+				「どこで、どう動き、どう伝え、どう勝つか」を常に考え続けることが求められ、そしてそれこそがこのゲームの最大の魅力でもあるのです。
+				初心者であっても、1つのラウンドで爆弾を設置できたり、仲間をサポートできたりしたときの充実感は大きく、少しずつ「自分が戦力になっている」という感覚を得られるようになるでしょう。
+				`,
+				genre:`本格`,
+			},
 		]
 	}
 };-e 
@@ -1292,81 +1370,6 @@ export default function LoginPage() {
 				</div>
 			</div>
 		</div>
-	);
-}-e 
-### FILE: ./src/app/games/[category]/page.tsx
-
-'use client';
-
-import React, { useEffect, useState } from 'react';
-import { notFound } from 'next/navigation';
-import GameCategoryLayout from '@/components/games/GameCategoryLayout';
-import VideoPreloader from '@/components/games/VideoPreloader';
-import { CategoryPageContainer } from '@/components/ui/PageTransition';
-import { VALID_CATEGORIES, GAME_DATA } from '@/lib/gameData';
-
-type Params = {
-	params: {
-		category: string;
-	};
-};
-
-export default function GameCategoryPage({ params }: Params) {
-	const { category } = params;
-	const [isLoading, setIsLoading] = useState(true);
-	const [activeIndex, setActiveIndex] = useState(0);
-	const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL || 'https://d1abhb48aypmuo.cloudfront.net/e-sports-sakura';
-
-	useEffect(() => {
-		// Simulate loading data
-		const timer = setTimeout(() => {
-			setIsLoading(false);
-		}, 500);
-
-		return () => clearTimeout(timer);
-	}, []);
-
-	// Validate that the category exists
-	if (!VALID_CATEGORIES.includes(category)) {
-		notFound();
-	}
-
-	// Get the category data
-	const categoryData = GAME_DATA[category as keyof typeof GAME_DATA];
-
-	if (!categoryData) {
-		notFound();
-	}
-
-	// Get all video sources for preloading
-	const videoSources = categoryData.games.map(game => 
-		game.videoSrc.startsWith('http') ? game.videoSrc : `${cloudFrontUrl}${game.videoSrc}`
-	);
-
-	return (
-		<CategoryPageContainer category={category}>
-			{isLoading ? (
-				<div className="flex items-center justify-center min-h-screen">
-					<div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
-				</div>
-			) : (
-				<div className="min-h-screen">
-					<GameCategoryLayout
-						category={category}
-						title={categoryData.title}
-						description={categoryData.description}
-						games={categoryData.games}
-						onActiveIndexChange={setActiveIndex}
-					/>
-
-					{/* プリロード用の非表示コンポーネント */}
-					<VideoPreloader
-						videoSrcs={videoSources}
-						currentIndex={activeIndex}
-					/>
-				</div>
-			)}
-		</CategoryPageContainer>
 	);
 }-e 
 ### FILE: ./src/app/dashboard/page.tsx
@@ -1907,18 +1910,19 @@ import LpFooter from '@/components/lp/lp-footer';
 export default function LandingPage() {
 	return (
 		<main className="landing-page bg-background text-foreground">
-			{/* LP専用ヘッダー */}
 			<LpHeader />
 			<div className="pt-16">
 				<HeroSection />
-
-				{/* 利用シーンセクション */}
 				<FeaturesSection />
-
-				{/* ゲーム紹介セクション */}
+				<div className="h-[50vh] flex items-center justify-center mb-12">
+					<div className="text-center">
+						<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">ラインナップ</h2>
+						<p className="text-lg text-muted-foreground mx-auto w-full">
+							様々なジャンルから選べる人気タイトルをご用意しています
+						</p>
+					</div>
+				</div>
 				<GamesSection />
-
-				{/* 利用ステップセクション */}
 				<StepsSection />
 
 				{/* スペック紹介セクション */}
@@ -2134,6 +2138,7 @@ export default function PaymentPage() {
 
 import { AuthProvider } from '@/context/auth-context';
 import { EkycProvider } from '@/context/ekyc-context';
+import { AudioProvider } from '@/context/AudioContext';
 import './globals.css';
 import type { Metadata } from 'next';
 
@@ -2150,11 +2155,13 @@ export default function RootLayout({
 	return (
 		<html lang="ja">
 			<body>
-				<AuthProvider>
-					<EkycProvider>
-						{children}
-					</EkycProvider>
-				</AuthProvider>
+				<AudioProvider>
+					<AuthProvider>
+						<EkycProvider>
+							{children}
+						</EkycProvider>
+					</AuthProvider>
+				</AudioProvider>
 			</body>
 		</html>
 	);
@@ -5673,122 +5680,160 @@ export default function VerificationComplete({
 
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
+import { useAudio } from '@/context/AudioContext';
 
-interface AudioPermissionModalProps {
-	onAccept: () => void;
-	onDecline: () => void;
-	isOpen: boolean;
-}
+export default function AudioPermissionModal() {
+	const { hasUserInteracted, enableAudio, disableAudio } = useAudio();
+	const [isVisible, setIsVisible] = useState(false);
 
-export default function AudioPermissionModal({
-	onAccept,
-	onDecline,
-	isOpen
-}: AudioPermissionModalProps) {
-	if (!isOpen) return null;
+	// ユーザーが初めて訪問したときだけモーダルを表示
+	useEffect(() => {
+		if (!hasUserInteracted) {
+			// ページ読み込み後少し遅延させて表示する
+			const timer = setTimeout(() => {
+				setIsVisible(true);
+			}, 1000);
+
+			return () => clearTimeout(timer);
+		}
+	}, [hasUserInteracted]);
+
+	// モーダル非表示
+	const handleClose = (audioEnabled: boolean) => {
+		if (audioEnabled) {
+			enableAudio();
+		} else {
+			disableAudio();
+		}
+		setIsVisible(false);
+	};
+
+	if (!isVisible) return null;
 
 	return (
-		<div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
-			<div className="bg-background rounded-2xl max-w-md w-full p-6 border border-border/30 shadow-xl">
-				<h2 className="text-2xl font-bold mb-4">音声を再生しますか？</h2>
-				<p className="text-foreground/80 mb-6">
-					動画の音声をONにすると、ゲームの雰囲気をよりお楽しみいただけます。
-					音声をONにしますか？
+		<div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50">
+			<div className="bg-background rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+				<h3 className="text-xl font-bold mb-4">ゲーム映像のオーディオ設定</h3>
+
+				<p className="mb-4">
+					より良いゲーム体験のために、音声付きでゲームプレイ映像をご覧いただけます。
+					このページでは一度許可すると、すべての動画で音声を楽しめます。
 				</p>
-				<div className="flex space-x-3">
+
+				<div className="grid grid-cols-2 gap-4 mb-6">
 					<button
-						onClick={onDecline}
-						className="flex-1 px-4 py-2 rounded-lg border border-border/30 hover:bg-border/10 transition-colors"
+						onClick={() => handleClose(false)}
+						className="flex flex-col items-center justify-center p-4 border border-border rounded-lg hover:bg-border/10 transition-colors"
 					>
-						今はしない
+						<VolumeX className="h-8 w-8 mb-2 text-foreground/70" />
+						<span className="font-medium">音声なし</span>
 					</button>
+
 					<button
-						onClick={onAccept}
-						className="flex-1 px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent/90 transition-colors"
+						onClick={() => handleClose(true)}
+						className="flex flex-col items-center justify-center p-4 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
 					>
-						音声をONにする
+						<Volume2 className="h-8 w-8 mb-2" />
+						<span className="font-medium">音声あり</span>
 					</button>
 				</div>
+
+				<p className="text-xs text-foreground/60 text-center">
+					※ この設定はいつでも各動画のコントロールから変更できます
+				</p>
 			</div>
 		</div>
 	);
-}-e 
-### FILE: ./src/components/games/AudioPermissionBanner.tsx
-
-'use client';
-
-import React from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
-
-interface AudioPermissionBannerProps {
-  onEnable: () => void;
-  onDisable: () => void;
-}
-
-export default function AudioPermissionBanner({ onEnable, onDisable }: AudioPermissionBannerProps) {
-  return (
-    <div className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur-sm border-b border-border/20 shadow-md">
-      <div className="container mx-auto px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Volume2 className="h-5 w-5 text-accent" />
-            <p className="text-sm md:text-base">
-              動画の音声を再生しますか？スクロールするとアクティブなゲームの音声が自動的に再生されます。
-            </p>
-          </div>
-          
-          <div className="flex space-x-2">
-            <button
-              onClick={onDisable}
-              className="px-3 py-1.5 text-sm rounded-md border border-border/30 hover:bg-border/10 transition-colors flex items-center"
-            >
-              <VolumeX className="h-4 w-4 mr-1" />
-              <span className="hidden md:inline">音声オフ</span>
-              <span className="md:hidden">オフ</span>
-            </button>
-            
-            <button
-              onClick={onEnable}
-              className="px-3 py-1.5 text-sm bg-accent text-accent-foreground rounded-md hover:bg-accent/90 transition-colors flex items-center"
-            >
-              <Volume2 className="h-4 w-4 mr-1" />
-              <span className="hidden md:inline">音声オン</span>
-              <span className="md:hidden">オン</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }-e 
 ### FILE: ./src/components/games/GameSession.tsx
 
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import StickyGameVideo from './StickyGameVideo';
-
-interface Game {
-	id: string;
-	title: string;
-	description: string;
-	playerCount: string;
-	recommendedTime: string;
-	difficulty: string;
-	videoSrc: string;
-	thumbnailSrc: string;
-	similarGames: string[];
-}
-
+import { Game } from '../../lib/gameData';
 interface GameSectionProps {
 	game: Game;
 	isActive: boolean;
 	onVisibilityChange: (isVisible: boolean) => void;
+	globalAudioEnabled?: boolean; // 新しいプロップ
 }
 
-export default function GameSection({ game, isActive, onVisibilityChange }: GameSectionProps) {
+const COLOR_MAP = {
+	primary: 'text-primary-600 dark:text-primary-300',
+	secondary: 'text-secondary-600 dark:text-secondary-300',
+	accent: 'text-accent-600 dark:text-accent-300',
+	foreground: 'text-foreground',
+	muted: 'text-foreground/60', // More muted base text
+	strong: 'text-foreground/70',
+	danger: 'text-red-600 dark:text-red-400',
+	warning: 'text-orange-600 dark:text-orange-400',
+	success: 'text-green-600 dark:text-green-400',
+};
+
+// Custom Markdown-like text renderer
+const renderMarkdownText = (text: string, baseMuted = true) => {
+	// Split the text into parts
+	const parts = text.split(/(\*\*.*?\*\*|__.*?__|<.*?>|\^.*?\^)/g);
+
+	return parts.map((part, index) => {
+		// Bold with **
+		if (/^\*\*.*\*\*$/.test(part)) {
+			return <strong key={index}>{part.slice(2, -2)}</strong>;
+		}
+
+		// Bold with __
+		if (/^__.*__$/.test(part)) {
+			return <strong key={index}>{part.slice(2, -2)}</strong>;
+		}
+
+		// Color emphasis with ^color^
+		if (/^\^.*\^$/.test(part)) {
+			const [, color, text] = part.match(/\^(.*?):(.+)\^/) || [];
+			const colorClass = COLOR_MAP[color as keyof typeof COLOR_MAP] || COLOR_MAP.strong;
+			return <span key={index} className={colorClass}>{text}</span>;
+		}
+
+		// HTML tags (like <em>, <strong>, <mark>)
+		if (/^<.*>$/.test(part)) {
+			// Remove angle brackets
+			const tagContent = part.slice(1, -1);
+
+			// Split tag into type and content
+			const matches = tagContent.match(/^(\w+)>(.*)<\/\1$/);
+			if (matches) {
+				const [, tagType, content] = matches;
+				const TagComponent = tagType as keyof JSX.IntrinsicElements;
+				return <TagComponent key={index}>{content}</TagComponent>;
+			}
+
+			return part;
+		}
+
+		// Plain text
+		return baseMuted ? <span key={index} className="text-foreground/60">{part}</span> : part;
+	});
+};
+
+export default function GameSection({
+	game,
+	isActive,
+	onVisibilityChange,
+	globalAudioEnabled = false
+}: GameSectionProps) {
 	const sectionRef = useRef<HTMLDivElement>(null);
+	const [audioState, setAudioState] = useState(false);
+
+	// オーディオ状態の変更を追跡
+	useEffect(() => {
+		if (isActive) {
+			// アクティブになったときにグローバルオーディオ設定を適用
+			setAudioState(globalAudioEnabled);
+		}
+	}, [isActive, globalAudioEnabled]);
+	//}, []);
 
 	// 可視性を監視
 	useEffect(() => {
@@ -5814,6 +5859,12 @@ export default function GameSection({ game, isActive, onVisibilityChange }: Game
 			}
 		};
 	}, [onVisibilityChange]);
+	//}, []);
+
+	// 個別の動画のオーディオ状態が変更されたときの処理
+	const handleAudioStateChange = (isAudioOn: boolean) => {
+		setAudioState(isAudioOn);
+	};
 
 	return (
 		<div
@@ -5828,20 +5879,22 @@ export default function GameSection({ game, isActive, onVisibilityChange }: Game
 							title={game.title}
 							thumbnailSrc={game.thumbnailSrc}
 							isActive={isActive}
+							globalAudioEnabled={globalAudioEnabled}
+							onAudioStateChange={handleAudioStateChange}
 						/>
 					</div>
 					<div className="max-w-3xl mx-auto">
-						<h2 className="text-3xl font-bold mb-6">{game.title}</h2>
+						<h2 className="text-3xl font-bold mb-2">{game.title}</h2>
 						<p className="mb-8 text-lg">{game.description}</p>
 						{renderGameDetails(game)}
 					</div>
 				</div>
 				<div className="hidden md:flex">
 					<div className="w-1/2 pr-8">
-						<div className="max-w-xl ml-auto h-screen flex items-center">
+						<div className="max-w-4xl ml-auto h-screen flex items-center">
 							{gameTitleDetails(game)}
 						</div>
-						<div className="max-w-xl ml-auto h-screen">
+						<div className="max-w-4xl ml-auto h-screen">
 							{renderGameDetails(game)}
 						</div>
 					</div>
@@ -5852,11 +5905,12 @@ export default function GameSection({ game, isActive, onVisibilityChange }: Game
 								title={game.title}
 								thumbnailSrc={game.thumbnailSrc}
 								isActive={isActive}
+								globalAudioEnabled={globalAudioEnabled}
+								onAudioStateChange={handleAudioStateChange}
 							/>
 						</div>
 					</div>
 				</div>
-
 			</div>
 		</div>
 	);
@@ -5866,19 +5920,23 @@ export default function GameSection({ game, isActive, onVisibilityChange }: Game
 			<>
 				<div className="w-full">
 					<h2 className="text-3xl font-bold mb-1 ml-2">{game.title}</h2>
-					<p className="mb-4 text-lg ml-2">{game.description}</p>
+					<p className="mb-4 ml-2">{renderMarkdownText(game.description)}</p>
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 bg-border/10 p-6 rounded-2xl">
 						<div>
 							<h4 className="text-foreground/60 font-medium mb-2">プレイ人数</h4>
-							<p className="text-lg font-bold">{game.playerCount}</p>
+							<p className="text-lg text-foreground/60">{game.playerCount}</p>
 						</div>
 						<div>
 							<h4 className="text-foreground/60 font-medium mb-2">推奨プレイ時間</h4>
-							<p className="text-lg font-bold">{game.recommendedTime}</p>
+							<p className="text-lg text-foreground/60">{game.recommendedTime}</p>
 						</div>
 						<div>
 							<h4 className="text-foreground/60 font-medium mb-2">難易度</h4>
-							<p className="text-lg font-bold">{game.difficulty}</p>
+							<p className="text-lg text-foreground/60">{game.difficulty}</p>
+						</div>
+						<div>
+							<h4 className="text-foreground/60 font-medium mb-2">ジャンル</h4>
+							<p className="text-lg text-foreground/60">{game.genre}</p>
 						</div>
 					</div>
 				</div>
@@ -5886,35 +5944,14 @@ export default function GameSection({ game, isActive, onVisibilityChange }: Game
 		);
 	}
 
-
 	function renderGameDetails(game: Game) {
 		return (
 			<>
-
 				<div className="mb-8">
-					<h3 className="text-xl font-bold mb-4">ゲーム体験</h3>
-					<p className="mb-4">
-						当店では、最高の環境でこのゲームをお楽しみいただけます。最新のハードウェアと大画面モニターで、
-						臨場感あふれるゲーム体験をご提供します。
+					<h3 className="text-xl font-bold mb-1">ルール・コツ</h3>
+					<p className="mb-2">
+						{renderMarkdownText(game.rule)}
 					</p>
-					<p className="mb-4">
-						友達との対戦や協力プレイも可能です。初心者の方にもスタッフがサポートいたします。
-					</p>
-				</div>
-
-				<div className="mb-8">
-					<h3 className="text-xl font-bold mb-4">類似ゲーム</h3>
-					<p className="mb-3">このゲームを気に入ったら、こちらもおすすめです：</p>
-					<div className="flex flex-wrap gap-2">
-						{game.similarGames.map(similarGame => (
-							<span
-								key={similarGame}
-								className="px-4 py-2 bg-border/20 rounded-full text-base"
-							>
-								{similarGame}
-							</span>
-						))}
-					</div>
 				</div>
 			</>
 		);
@@ -5925,39 +5962,24 @@ export default function GameSection({ game, isActive, onVisibilityChange }: Game
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import CategoryHeader from './CategoryHeader';
 import GameSection from './GameSession';
-
-interface Game {
-	id: string;
-	title: string;
-	description: string;
-	playerCount: string;
-	recommendedTime: string;
-	difficulty: string;
-	videoSrc: string;
-	thumbnailSrc: string;
-	similarGames: string[];
-}
-
+import AudioPermissionModal from './AudioPermissionModal';
+import { useAudio } from '@/context/AudioContext';
+import {Game} from '../../lib/gameData';
 interface GameCategoryLayoutProps {
-	category: string;
-	title: string;
-	description: string;
 	games: Game[];
 	onActiveIndexChange?: (index: number) => void;
 }
-
 export default function GameCategoryLayout({
-	category,
-	title,
-	description,
 	games,
 	onActiveIndexChange
 }: GameCategoryLayoutProps) {
 	const [activeGameIndex, setActiveGameIndex] = useState(0);
 	const [visibleSections, setVisibleSections] = useState<boolean[]>(Array(games.length).fill(false));
 	const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL || 'https://d1abhb48aypmuo.cloudfront.net/e-sports-sakura';
+
+	// オーディオコンテキストを使用
+	const { globalAudioEnabled } = useAudio();
 
 	// Prepare games with full video URLs
 	const gamesWithFullUrls = games.map(game => ({
@@ -5991,17 +6013,14 @@ export default function GameCategoryLayout({
 
 	return (
 		<>
-			<CategoryHeader
-				category={category}
-				title={title}
-				description={description}
-			/>
+			<AudioPermissionModal />
 			{gamesWithFullUrls.map((game, index) => (
 				<GameSection
 					key={game.id}
 					game={game}
 					isActive={index === activeGameIndex}
 					onVisibilityChange={(isVisible) => handleVisibilityChange(index, isVisible)}
+					globalAudioEnabled={globalAudioEnabled}
 				/>
 			))}
 		</>
@@ -6219,7 +6238,10 @@ export default function VideoPreloader({ videoSrcs, currentIndex }: VideoPreload
 			{videoSrcs.map((src, index) => (
 				<video
 					key={`preload-${index}`}
-					ref={el => videoRefs.current[index] = el}
+					ref={(el) => {
+						videoRefs.current[index] = el;
+					}}
+
 					src={src}
 					muted
 					playsInline
@@ -6235,6 +6257,7 @@ export default function VideoPreloader({ videoSrcs, currentIndex }: VideoPreload
 import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { Play, Pause, Volume2, VolumeX, Eye, Download } from 'lucide-react';
+import { useAudio } from '@/context/AudioContext';
 
 interface StickyGameVideoProps {
 	videoSrc: string;
@@ -6255,6 +6278,9 @@ export default function StickyGameVideo({
 	globalAudioEnabled = false,
 	onAudioStateChange
 }: StickyGameVideoProps) {
+	// AudioContextを使用
+	const { hasUserInteracted, enableAudio } = useAudio();
+
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [isMuted, setIsMuted] = useState(!globalAudioEnabled);
 	const [isLoading, setIsLoading] = useState(true);
@@ -6264,7 +6290,9 @@ export default function StickyGameVideo({
 	const [videoDuration, setVideoDuration] = useState(0);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [isBuffering, setIsBuffering] = useState(false);
-	const [hasUserInteracted, setHasUserInteracted] = useState(false);
+	const [hasLocalUserInteracted, setHasLocalUserInteracted] = useState(false);
+	const [wasEverPlayed, setWasEverPlayed] = useState(false); // この動画が一度でも再生されたかを記録
+	const [showThumbnail, setShowThumbnail] = useState(true); // サムネイル表示制御用
 
 	// Load state tracking
 	useEffect(() => {
@@ -6284,11 +6312,11 @@ export default function StickyGameVideo({
 		};
 	}, [isLoading, loadProgress]);
 
-	// Handle video play/pause
+	// Handle video play/pause - ユーザーインタラクション状態を考慮
 	useEffect(() => {
-		if (!videoRef.current) return;
+		if (!videoRef.current || hasError) return;
 
-		if (isActive && isPlaying && !hasError) {
+		if (isPlaying) {
 			const playPromise = videoRef.current.play();
 			if (playPromise !== undefined) {
 				playPromise.catch(error => {
@@ -6299,18 +6327,36 @@ export default function StickyGameVideo({
 		} else {
 			videoRef.current.pause();
 		}
-	}, [isActive, isPlaying, hasError]);
+	}, [isPlaying, hasError]);
+
+	// ビデオのアクティブ状態による制御
+	useEffect(() => {
+		// アクティブになった時の処理
+		if (isActive) {
+			// 一度でも再生されたことがあり、ユーザーがインタラクションしていれば
+			if (wasEverPlayed && hasUserInteracted) {
+				// サムネイルを非表示にして動画を表示
+				setShowThumbnail(false);
+				// 再生開始
+				setIsPlaying(true);
+			}
+		} else {
+			// 非アクティブになったときは再生停止
+			if (isPlaying) {
+				setIsPlaying(false);
+			}
+		}
+	}, [isActive, wasEverPlayed, hasUserInteracted]);
 
 	// グローバル音声設定が変更されたときの処理
 	useEffect(() => {
 		if (!videoRef.current) return;
 
-		if (isActive && globalAudioEnabled && !hasUserInteracted) {
+		if (isActive && globalAudioEnabled && !hasLocalUserInteracted) {
 			// ユーザーがまだ手動で変更していない場合のみグローバル設定を適用
-			videoRef.current.muted = !globalAudioEnabled;
 			setIsMuted(!globalAudioEnabled);
 		}
-	}, [globalAudioEnabled, isActive, hasUserInteracted]);
+	}, [globalAudioEnabled, isActive, hasLocalUserInteracted]);
 
 	// Handle video mute/unmute
 	useEffect(() => {
@@ -6322,17 +6368,6 @@ export default function StickyGameVideo({
 			onAudioStateChange(!isMuted);
 		}
 	}, [isMuted, isActive, onAudioStateChange]);
-
-	// Auto-play when component becomes active
-	useEffect(() => {
-		if (isActive && !isPlaying && !hasError && !isLoading) {
-			setIsPlaying(true);
-		}
-
-		if (!isActive && isPlaying) {
-			setIsPlaying(false);
-		}
-	}, [isActive, isPlaying, hasError, isLoading]);
 
 	// Track video time
 	useEffect(() => {
@@ -6367,13 +6402,44 @@ export default function StickyGameVideo({
 		};
 	}, []);
 
+	// サムネイルをクリックして再生開始
+	const handleThumbnailClick = () => {
+		if (hasError || isLoading) return;
+
+		// ユーザーインタラクションフラグを設定
+		enableAudio();
+		setHasLocalUserInteracted(true);
+
+		// 一度でも再生された状態にする
+		setWasEverPlayed(true);
+
+		// サムネイルを非表示にして動画を表示
+		setShowThumbnail(false);
+
+		// 再生開始
+		setIsPlaying(true);
+
+		// 音量設定（グローバル設定に従う）
+		setIsMuted(!globalAudioEnabled);
+	};
+
 	const togglePlay = () => {
 		if (hasError) return;
+
+		// もし初めての再生なら、この動画が再生されたことを記録
+		if (!wasEverPlayed) {
+			setWasEverPlayed(true);
+			enableAudio(); // ユーザーインタラクションを記録
+		}
+
 		setIsPlaying(!isPlaying);
+		if (showThumbnail) {
+			setShowThumbnail(false);
+		}
 	};
 
 	const toggleMute = () => {
-		setHasUserInteracted(true); // ユーザーが手動で変更したことを記録
+		setHasLocalUserInteracted(true); // ユーザーが手動で変更したことを記録
 		setIsMuted(!isMuted);
 	};
 
@@ -6413,7 +6479,7 @@ export default function StickyGameVideo({
 			)}
 
 			{/* Buffering indicator */}
-			{isBuffering && !isLoading && !hasError && (
+			{isBuffering && !isLoading && !hasError && !showThumbnail && (
 				<div className="absolute inset-0 flex items-center justify-center z-10 bg-background/30">
 					<div className="w-8 h-8 border-4 border-white/60 border-t-transparent rounded-full animate-spin"></div>
 				</div>
@@ -6448,24 +6514,37 @@ export default function StickyGameVideo({
 				</div>
 			)}
 
-			{/* Video thumbnail placeholder before video loads */}
-			{isLoading && thumbnailSrc && (
-				<div className="absolute inset-0 z-0">
+			{/* クリック可能なサムネイル（初回表示または非再生時） */}
+			{!isLoading && !hasError && showThumbnail && thumbnailSrc && (
+				<div
+					className="absolute inset-0 z-20 cursor-pointer group"
+					onClick={handleThumbnailClick}
+				>
 					<Image
 						src={thumbnailSrc}
 						alt={`${title} サムネイル`}
 						fill
 						style={{ objectFit: 'cover' }}
-						className="opacity-50"
+						className="brightness-75 group-hover:brightness-90 transition-all duration-300"
 					/>
-					<div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+					<div className="absolute inset-0 flex flex-col items-center justify-center">
+						<div className="bg-accent/80 rounded-full p-5 shadow-lg transform transition-transform group-hover:scale-110">
+							<Play className="h-12 w-12 text-white" />
+						</div>
+						<p className="mt-4 text-white text-lg font-medium text-shadow shadow-black">
+							クリックして再生
+						</p>
+					</div>
+					<div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent h-24">
+						<div className="absolute bottom-4 left-4">
+							<p className="text-white font-medium text-lg">{title}</p>
+						</div>
+					</div>
 				</div>
 			)}
-
-			{/* Video element */}
 			<video
 				ref={videoRef}
-				className={`w-full h-full object-cover ${isLoading || hasError ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}
+				className={`w-full h-full object-cover ${isLoading || hasError || showThumbnail ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}
 				src={videoSrc}
 				playsInline
 				loop
@@ -6474,222 +6553,57 @@ export default function StickyGameVideo({
 				onError={handleVideoError}
 				preload="auto"
 			/>
+			{!showThumbnail && !isLoading && !hasError && (
+				<div className="absolute bottom-0 left-0 right-0 py-2 px-4 bg-gradient-to-t from-black/70 to-transparent flex flex-col">
+					{videoDuration > 0 && (
+						<div className="w-full h-1 bg-white/20 rounded-full mb-3 overflow-hidden">
+							<div
+								className="h-full bg-accent"
+								style={{ width: `${(currentTime / videoDuration) * 100}%` }}
+							></div>
+						</div>
+					)}
 
-			{/* Video controls */}
-			<div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent flex flex-col">
-				{/* Progress bar */}
-				{!isLoading && !hasError && videoDuration > 0 && (
-					<div className="w-full h-1 bg-white/20 rounded-full mb-3 overflow-hidden">
-						<div
-							className="h-full bg-accent"
-							style={{ width: `${(currentTime / videoDuration) * 100}%` }}
-						></div>
-					</div>
-				)}
-
-				<div className="flex justify-between items-center">
-					<div className="flex-1">
-						<p className="text-white font-medium text-lg">{title}</p>
-						{isPlaying && !isLoading && !hasError && (
-							<div className="flex items-center text-white/70 text-xs">
-								<Eye className="h-3 w-3 mr-1" />
-								<span>リアルタイムゲームプレイ映像</span>
-								<span className="ml-2">{formatTime(currentTime)} / {formatTime(videoDuration)}</span>
+					<div className="flex justify-between items-center">
+						<div className="flex-1">
+							<div className="flex items-end justify-left text-white font-medium text-lg">
+								<span>{title}</span>
+								<div className="flex items-center text-white/70 text-xs ml-2 mb-1">
+									<span>
+										{formatTime(currentTime)} / {formatTime(videoDuration)}
+									</span>
+								</div>
 							</div>
-						)}
-					</div>
 
-					<div className="flex gap-2">
-						<button
-							onClick={togglePlay}
-							disabled={hasError || isLoading}
-							className={`rounded-full p-2 bg-background/30 backdrop-blur-sm hover:bg-background/50 transition-colors ${(hasError || isLoading) ? 'opacity-50 cursor-not-allowed' : ''
-								}`}
-							aria-label={isPlaying ? 'Pause video' : 'Play video'}
-						>
-							{isPlaying ? (
-								<Pause className="h-5 w-5 text-white" />
-							) : (
-								<Play className="h-5 w-5 text-white" />
-							)}
-						</button>
+						</div>
+						<div className="flex gap-2">
+							<button
+								onClick={togglePlay}
+								className="rounded-full p-2 bg-background/30 backdrop-blur-sm hover:bg-background/50 transition-colors"
+								aria-label={isPlaying ? 'Pause video' : 'Play video'}
+							>
+								{isPlaying ? (
+									<Pause className="h-5 w-5 text-white" />
+								) : (
+									<Play className="h-5 w-5 text-white" />
+								)}
+							</button>
 
-						<button
-							onClick={toggleMute}
-							disabled={hasError || isLoading}
-							className={`rounded-full p-2 bg-background/30 backdrop-blur-sm hover:bg-background/50 transition-colors ${(hasError || isLoading) ? 'opacity-50 cursor-not-allowed' : ''
-								}`}
-							aria-label={isMuted ? 'Unmute video' : 'Mute video'}
-						>
-							{isMuted ? (
-								<VolumeX className="h-5 w-5 text-white" />
-							) : (
-								<Volume2 className="h-5 w-5 text-white" />
-							)}
-						</button>
+							<button
+								onClick={toggleMute}
+								className="rounded-full p-2 bg-background/30 backdrop-blur-sm hover:bg-background/50 transition-colors"
+								aria-label={isMuted ? 'Unmute video' : 'Mute video'}
+							>
+								{isMuted ? (
+									<VolumeX className="h-5 w-5 text-white" />
+								) : (
+									<Volume2 className="h-5 w-5 text-white" />
+								)}
+							</button>
+						</div>
 					</div>
 				</div>
-			</div>
-		</div>
-	);
-}-e 
-### FILE: ./src/components/games/QuickGameNav.tsx
-
-'use client';
-
-import React from 'react';
-import Image from 'next/image';
-import { motion } from 'framer-motion';
-
-interface Game {
-	id: string;
-	title: string;
-	thumbnailSrc: string;
-}
-
-interface QuickGameNavProps {
-	games: Game[];
-	activeGameIndex: number;
-	onGameSelect: (index: number) => void;
-	categoryColor?: string;
-}
-
-export default function QuickGameNav({
-	games,
-	activeGameIndex,
-	onGameSelect,
-	categoryColor = 'ring-accent'
-}: QuickGameNavProps) {
-	return (
-		<div className="fixed right-8 top-1/2 -translate-y-1/2 z-30 hidden md:block">
-			<div className="flex flex-col items-center space-y-4 bg-background/50 backdrop-blur-sm p-2 rounded-full shadow-soft">
-				{games.map((game, index) => (
-					<motion.button
-						key={game.id}
-						onClick={() => onGameSelect(index)}
-						className={`relative rounded-full overflow-hidden transition-all duration-300 ${activeGameIndex === index
-								? 'w-12 h-12 ring-2 ring-offset-2 ring-offset-background ' + categoryColor
-								: 'w-10 h-10 opacity-70 hover:opacity-100'
-							}`}
-						whileHover={{ scale: activeGameIndex === index ? 1 : 1.1 }}
-						whileTap={{ scale: 0.95 }}
-						title={game.title}
-					>
-						<Image
-							src={game.thumbnailSrc}
-							alt={game.title}
-							fill
-							style={{ objectFit: 'cover' }}
-						/>
-						{activeGameIndex === index && (
-							<div className="absolute inset-0 ring-1 ring-white/30"></div>
-						)}
-					</motion.button>
-				))}
-			</div>
-		</div>
-	);
-}-e 
-### FILE: ./src/components/games/ScrollSnapContainer.tsx
-
-'use client';
-
-import React, { useRef, useEffect, useState } from 'react';
-
-interface ScrollSnapContainerProps {
-	children: React.ReactNode;
-	onSectionChange?: (index: number) => void;
-	initialIndex?: number;
-	className?: string;
-}
-
-/**
- * スクロールスナップコンテナ
- * モバイルでのスクロール体験を向上させるためのコンポーネント
- */
-export default function ScrollSnapContainer({
-	children,
-	onSectionChange,
-	initialIndex = 0,
-	className = ''
-}: ScrollSnapContainerProps) {
-	const containerRef = useRef<HTMLDivElement>(null);
-	const [isInitialized, setIsInitialized] = useState(false);
-
-	// 初期位置へのスクロール
-	useEffect(() => {
-		if (!containerRef.current || initialIndex === 0 || isInitialized) return;
-
-		const childElements = containerRef.current.children;
-		if (initialIndex < childElements.length) {
-			const targetElement = childElements[initialIndex];
-			targetElement.scrollIntoView({ behavior: 'auto', block: 'start' });
-			setIsInitialized(true);
-		}
-	}, [initialIndex, isInitialized]);
-
-	// スクロール位置の監視とコールバック
-	useEffect(() => {
-		if (!containerRef.current || !onSectionChange) return;
-
-		const observer = new IntersectionObserver(
-			(entries) => {
-				entries.forEach(entry => {
-					if (entry.isIntersecting) {
-						const index = Array.from(containerRef.current?.children || []).findIndex(
-							child => child === entry.target
-						);
-						if (index !== -1) {
-							onSectionChange(index);
-						}
-					}
-				});
-			},
-			{
-				root: containerRef.current,
-				threshold: 0.7, // 70%が見えた時に変更と見なす
-				rootMargin: '0px'
-			}
-		);
-
-		// 子要素を監視
-		Array.from(containerRef.current.children).forEach(child => {
-			observer.observe(child);
-		});
-
-		return () => {
-			observer.disconnect();
-		};
-	}, [onSectionChange]);
-
-	return (
-		<div
-			ref={containerRef}
-			className={`scroll-snap-container overflow-y-auto snap-y snap-mandatory ${className}`}
-			style={{
-				scrollBehavior: 'smooth',
-				WebkitOverflowScrolling: 'touch'
-			}}
-		>
-			{children}
-		</div>
-	);
-}
-
-/**
- * スクロールスナップアイテム
- * ScrollSnapContainerの子要素として使用するコンポーネント
- */
-export function ScrollSnapItem({
-	children,
-	className = ''
-}: {
-	children: React.ReactNode;
-	className?: string;
-}) {
-	return (
-		<div className={`snap-start ${className}`}>
-			{children}
+			)}
 		</div>
 	);
 }-e 
@@ -9330,21 +9244,21 @@ const usageScenes = [
 		id: 'scene-1',
 		title: '夕飯・サシ飯があっさり終了',
 		description: '夜街でもうちょっと時間つぶしたい！ノンアルコールで時間を潰せる場所です。ふかふかの椅子でマイホームな時間を。',
-		image: '/images/lp/scene-pair.jpg',
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/scene-pair.webp`,
 		alt: 'サシ飲み後のペア'
 	},
 	{
 		id: 'scene-2',
 		title: '集まったけど、、ゲームだったら楽しめる？',
 		description:'共通項がなくてもマルチプレイで盛り上がるタイトルをご用意してます。監事さん思いの場所です。',
-		image: '/images/lp/scene-group.jpg',
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/scene-group.webp`,
 		alt: '飲み会帰りのグループ'
 	},
 	{
 		id: 'scene-3',
 		title:'久々の自由時間',
 		description:'ゲームは好きだけどたまにしかやる時間が取れない！厳選された数多くのタイトルをご用意してます。',
-		image: '/images/lp/scene-solo.jpg',
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/scene-solo.webp`,
 		alt: 'ソロゲーマー'
 	}
 ];
@@ -9977,7 +9891,7 @@ export default function HeroSection() {
 		<section className="relative min-h-screen flex items-center overflow-hidden">
 			<div className="absolute inset-0 z-0">
 				<Image
-					src="/images/lp/hero-bg.jpg"
+					src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/hero-bg.webp`}
 					alt="深夜のゲーミングスペース"
 					fill
 					priority
@@ -10072,154 +9986,70 @@ export default function HeroSection() {
 
 'use client';
 
-import { useRef } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
-import { motion, useInView } from 'framer-motion';
-import { ChevronRight } from 'lucide-react';
-
-// ゲームカテゴリとタイトル
-const gameCategories = [
-	{
-		id: 'party',
-		title: 'ワイワイ系',
-		caption: 'コントローラーで2人でも盛り上がれる',
-		games: [
-			{ name: 'Party Animals', icon: '/images/lp/games/overcooked.png' },
-			{ name: 'Fall Guys', icon: '/images/lp/games/fallguys.png' },
-			{ name: 'Pummel Party', icon: '/images/lp/games/pummel.png' }
-		],
-		image: '/images/lp/games/party.jpg',
-		alt: 'ワイワイ系ゲーム'
-	},
-	{
-		id: 'competitive',
-		title: '競技系',
-		caption: '120FPSでぬるぬる動く、プロ仕様',
-		games: [
-			{ name: 'Counter-Strike 2', icon: '/images/lp/games/valorant.png' },
-			{ name: 'PUBG', icon: '/images/lp/games/pubg.png' },
-			{ name: 'Apex Legends', icon: '/images/lp/games/apex.png' }
-		],
-		image: '/images/lp/games/competitive.jpg',
-		alt: '競技系ゲーム'
-	},
-	{
-		id: 'immersive',
-		title: 'じっくり系',
-		caption: '1人でも仲間とでも、',
-		games: [
-			{ name: 'Operation: Tango', icon: '/images/lp/games/slaythespire.png' },
-			{ name: 'Portal 2', icon: '/images/lp/games/cities.png' },
-			{ name: 'The Witness', icon: '/images/lp/games/witness.png' }
-		],
-		image: '/images/lp/games/immersive.jpg',
-		alt: 'じっくり系ゲーム'
-	}
-];
+import React, { useState, useEffect } from 'react';
+import { GAME_DATA } from '@/lib/gameData';
+import GameCategoryLayout from '@/components/games/GameCategoryLayout';
+import VideoPreloader from '@/components/games/VideoPreloader';
+import { CategoryPageContainer } from '@/components/ui/PageTransition';
 
 export default function GamesSection() {
-	const ref = useRef(null);
-	const isInView = useInView(ref, { once: true, amount: 0.2 });
+	// Use 'party' as the default category for the landing page
+	const defaultCategory = 'party';
+	const [isLoading, setIsLoading] = useState(true);
+	const [activeIndex, setActiveIndex] = useState(0);
+	const [currentCategory, setCurrentCategory] = useState(defaultCategory);
+	const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL;
+
+	useEffect(() => {
+		// Simulate loading data
+		const timer = setTimeout(() => {
+			setIsLoading(false);
+		}, 500);
+
+		return () => clearTimeout(timer);
+	}, []);
+
+	// Get the category data
+	const categoryData = GAME_DATA[currentCategory];
+
+	// Get all video sources for preloading
+	const videoSources = categoryData.games.map(game =>
+		game.videoSrc.startsWith('http') ? game.videoSrc : `${cloudFrontUrl}${game.videoSrc}`
+	);
 
 	return (
-		<section
-			id="games"
-			className="py-20 bg-gradient-to-b from-background/90 to-background"
-			ref={ref}
-		>
+		<section id="games" className="py-16">
 			<div className="container mx-auto px-4">
-				{/* セクションタイトル */}
-				<motion.div
-					className="text-center mb-16"
-					initial={{ opacity: 0, y: 20 }}
-					animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-					transition={{ duration: 0.5 }}
-				>
-					<h2 className="text-3xl md:text-4xl font-bold mb-4">
-						気分に合わせて<span className="text-accent">遊べるゲーム</span>
-					</h2>
-					<p className="text-foreground/70 max-w-4xl mx-auto">
-						RTX 4070搭載のPCで、あらゆるゲームを快適に。
-						一人でじっくり、友達とワイワイ、あなた好みのプレイスタイルで。
-					</p>
-				</motion.div>
+				<CategoryPageContainer category={currentCategory}>
+					{isLoading ? (
+						<div className="flex items-center justify-center min-h-[600px]">
+							<div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
+						</div>
+					) : (
+						<div className="min-h-[600px]">
+							<GameCategoryLayout
+								games={categoryData.games}
+								onActiveIndexChange={setActiveIndex}
+							/>
 
-				{/* ゲームカテゴリ */}
-				<div className="space-y-24">
-					{gameCategories.map((category, index) => (
-						<motion.div
-							key={category.id}
-							className={`flex flex-col ${index % 2 === 1 ? 'md:flex-row-reverse' : 'md:flex-row'} items-center gap-8 md:gap-12`}
-							initial={{ opacity: 0, y: 50 }}
-							animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 50 }}
-							transition={{ duration: 0.6, delay: index * 0.2 }}
-						>
-							{/* ゲームカテゴリ画像 - 全体をクリック可能に */}
-							<div className="md:w-1/2">
-								<Link href={`/games/${category.id}`} className="block">
-									<div className="relative h-64 md:h-80 rounded-2xl overflow-hidden shadow-soft group cursor-pointer">
-										<Image
-											src={category.image}
-											alt={category.alt}
-											fill
-											style={{ objectFit: 'cover' }}
-											className="transition-transform duration-700 group-hover:scale-105"
-										/>
-										<div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center p-6">
-											<span className="inline-flex items-center text-white font-medium px-4 py-2 rounded-full bg-accent/80 backdrop-blur-sm">
-												詳しく見る <ChevronRight className="ml-1 h-4 w-4" />
-											</span>
-										</div>
-									</div>
-								</Link>
-							</div>
+							{/* プリロード用の非表示コンポーネント */}
+							<VideoPreloader
+								videoSrcs={videoSources}
+								currentIndex={activeIndex}
+							/>
+						</div>
+					)}
+				</CategoryPageContainer>
 
-							{/* ゲーム情報 */}
-							<div className="md:w-1/2">
-								<Link href={`/games/${category.id}`} className="block">
-									<h3 className="text-2xl font-bold mb-3 hover:text-accent transition-colors">
-										{category.title}
-									</h3>
-								</Link>
-								<p className="text-accent text-lg mb-6">
-									{category.caption}
-								</p>
-
-								{/* ゲームリスト */}
-								<ul className="space-y-4">
-									{category.games.map((game, gameIndex) => (
-										<motion.li
-											key={game.name}
-											className="flex items-center gap-3 bg-border/10 p-3 rounded-xl hover:bg-border/20 transition-colors"
-											initial={{ opacity: 0, x: -20 }}
-											animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
-											transition={{ duration: 0.4, delay: index * 0.2 + gameIndex * 0.1 }}
-										>
-											<div className="w-8 h-8 relative flex-shrink-0">
-												<Image
-													src={game.icon}
-													alt={game.name}
-													width={32}
-													height={32}
-													className="rounded-md"
-												/>
-											</div>
-											<span>{game.name}</span>
-										</motion.li>
-									))}
-								</ul>
-
-								{/* 詳細へのリンク */}
-								<Link
-									href={`/games/${category.id}`}
-									className="mt-6 inline-flex items-center text-accent hover:text-accent/80 font-medium transition-colors"
-								>
-									すべてのゲームを見る <ChevronRight className="ml-1 h-4 w-4" />
-								</Link>
-							</div>
-						</motion.div>
-					))}
+				{/* Call to Action */}
+				<div className="text-center mt-16">
+					<p className="text-xl mb-4">これらのゲームをプレイしてみませんか？</p>
+					<a
+						href="#reservation"
+						className="inline-block bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-3 rounded-full font-medium text-lg transition-colors"
+					>
+						今すぐ予約する
+					</a>
 				</div>
 			</div>
 		</section>
@@ -11486,26 +11316,94 @@ export function EkycProvider({ children }: { children: ReactNode }) {
 
 // カスタムフック
 export const useEkyc = () => useContext(EkycContext);-e 
+### FILE: ./src/context/AudioContext.tsx
+
+'use client';
+
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+
+interface AudioContextType {
+	globalAudioEnabled: boolean;
+	hasUserInteracted: boolean;
+	enableAudio: () => void;
+	disableAudio: () => void;
+}
+
+const AudioContext = createContext<AudioContextType | undefined>(undefined);
+
+interface AudioProviderProps {
+	children: ReactNode;
+}
+
+export function AudioProvider({ children }: AudioProviderProps) {
+	// ユーザーのオーディオ設定と、インタラクション状態を管理
+	const [globalAudioEnabled, setGlobalAudioEnabled] = useState(false);
+	const [hasUserInteracted, setHasUserInteracted] = useState(false);
+
+	// ローカルストレージから設定を復元（ページリロード時やセッション間）
+	useEffect(() => {
+		const storedAudioPref = localStorage.getItem('audioPreference');
+		const storedInteraction = localStorage.getItem('userInteracted');
+
+		if (storedAudioPref === 'enabled') {
+			setGlobalAudioEnabled(true);
+		}
+
+		if (storedInteraction === 'true') {
+			setHasUserInteracted(true);
+		}
+	}, []);
+
+	// オーディオを有効にする関数（ユーザーインタラクション捕捉）
+	const enableAudio = () => {
+		setGlobalAudioEnabled(true);
+		setHasUserInteracted(true);
+		localStorage.setItem('audioPreference', 'enabled');
+		localStorage.setItem('userInteracted', 'true');
+	};
+
+	// オーディオを無効にする関数
+	const disableAudio = () => {
+		setGlobalAudioEnabled(false);
+		localStorage.setItem('audioPreference', 'disabled');
+	};
+
+	return (
+		<AudioContext.Provider
+			value={{
+				globalAudioEnabled,
+				hasUserInteracted,
+				enableAudio,
+				disableAudio
+			}}
+		>
+			{children}
+		</AudioContext.Provider>
+	);
+}
+
+// カスタムフック - コンポーネントからオーディオコンテキストにアクセスするために使用
+export function useAudio() {
+	const context = useContext(AudioContext);
+	if (context === undefined) {
+		throw new Error('useAudio must be used within an AudioProvider');
+	}
+	return context;
+}-e 
 ### FILE: ./src/context/reservation-context.tsx
 
 // src/context/reservation-context.tsx
-
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './auth-context';
 import { SeatDocument, ReservationDocument, BranchDocument } from '@/types/firebase';
-import { collection, getDocs, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-// 予約コンテキスト用の追加型
 interface SelectedTimeSlots {
 	seatId: string;
 	startTime: string;
 	endTime: string;
 }
-
-interface DateAvailability {
-	[date: string]: 'available' | 'limited' | 'booked' | 'unknown';
-}
-
+interface DateAvailability {[date: string]: 'available' | 'limited' | 'booked' | 'unknown';}
 interface ReservationContextType {
 	branches: BranchDocument[];
 	selectedBranch: BranchDocument | null;
@@ -11547,23 +11445,19 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 	const [isLoading, setIsLoading] = useState<boolean>(false);
 	const [error, setError] = useState<string | null>(null);
 	const [fetchCount, setFetchCount] = useState<number>(0); // APIコール回数を追跡
-
 	// 支店一覧を取得 - useCallbackでメモ化して無限ループを防止
 	const fetchBranches = useCallback(async (): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
-
 		// すでにbranchesがあり、fetchCountが1以上なら再取得しない（無限ループ対策）
 		if (branches.length > 0 && fetchCount > 0) {
 			setIsLoading(false);
 			return;
 		}
-
 		try {
 			// Firestoreからbranchコレクションのデータを取得
 			const branchesCollection = collection(db, 'branch');
 			const branchesSnapshot = await getDocs(branchesCollection);
-
 			const branchesData: BranchDocument[] = [];
 			branchesSnapshot.forEach((doc) => {
 				// ドキュメントのデータとIDを組み合わせて配列に追加
@@ -11610,7 +11504,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 					seatId: `${branchCode}-PC-${i.toString().padStart(2, '0')}`,
 					name: `Gaming PC #${i}${isHighSpec ? ' (High-Spec)' : ''}`,
 					ipAddress: `192.168.${targetBranchId === 'tachikawa' ? '1' : targetBranchId === 'shinjuku' ? '2' : '3'}.${i.toString().padStart(3, '0')}`,
-					ratePerMinute: isHighSpec ? 12 : 8, // 高スペックPCは料金が高い
+					ratePerHour: 400, // 高スペックPCは料金が高い
 					status: 'available',
 					branchCode: branchCode,
 					branchName: branches.find(b => b.branchId === targetBranchId)?.branchName || 'Unknown',
@@ -12253,6 +12147,7 @@ const nextConfig = {
 		domains: [
 			'lh3.googleusercontent.com', // Google プロフィール画像用
 			'firebasestorage.googleapis.com', // Firebase Storage 用（後で必要になる場合）
+			'd1abhb48aypmuo.cloudfront.net'
 		],
 	},
 }

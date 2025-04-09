@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { VALID_CATEGORIES, GAME_DATA } from '@/lib/gameData';
+import { GAME_DATA } from '@/lib/gameData';
 import GameCategoryLayout from '@/components/games/GameCategoryLayout';
 import VideoPreloader from '@/components/games/VideoPreloader';
 import { CategoryPageContainer } from '@/components/ui/PageTransition';
@@ -23,20 +23,6 @@ export default function GamesSection() {
 		return () => clearTimeout(timer);
 	}, []);
 
-	// Handle category change
-	const handleCategoryChange = (category) => {
-		if (VALID_CATEGORIES.includes(category)) {
-			setCurrentCategory(category);
-			setActiveIndex(0);
-			setIsLoading(true);
-
-			// Simulate loading when changing categories
-			setTimeout(() => {
-				setIsLoading(false);
-			}, 300);
-		}
-	};
-
 	// Get the category data
 	const categoryData = GAME_DATA[currentCategory];
 
@@ -56,9 +42,6 @@ export default function GamesSection() {
 					) : (
 						<div className="min-h-[600px]">
 							<GameCategoryLayout
-								category={currentCategory}
-								title={categoryData.title}
-								description={categoryData.description}
 								games={categoryData.games}
 								onActiveIndexChange={setActiveIndex}
 							/>

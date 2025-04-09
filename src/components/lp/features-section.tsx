@@ -10,21 +10,21 @@ const usageScenes = [
 		id: 'scene-1',
 		title: '夕飯・サシ飯があっさり終了',
 		description: '夜街でもうちょっと時間つぶしたい！ノンアルコールで時間を潰せる場所です。ふかふかの椅子でマイホームな時間を。',
-		image: '/images/lp/scene-pair.jpg',
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/scene-pair.webp`,
 		alt: 'サシ飲み後のペア'
 	},
 	{
 		id: 'scene-2',
 		title: '集まったけど、、ゲームだったら楽しめる？',
 		description:'共通項がなくてもマルチプレイで盛り上がるタイトルをご用意してます。監事さん思いの場所です。',
-		image: '/images/lp/scene-group.jpg',
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/scene-group.webp`,
 		alt: '飲み会帰りのグループ'
 	},
 	{
 		id: 'scene-3',
 		title:'久々の自由時間',
 		description:'ゲームは好きだけどたまにしかやる時間が取れない！厳選された数多くのタイトルをご用意してます。',
-		image: '/images/lp/scene-solo.jpg',
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/scene-solo.webp`,
 		alt: 'ソロゲーマー'
 	}
 ];

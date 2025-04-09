@@ -1,35 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import CategoryHeader from './CategoryHeader';
 import GameSection from './GameSession';
 import AudioPermissionModal from './AudioPermissionModal';
 import { useAudio } from '@/context/AudioContext';
-
-interface Game {
-	id: string;
-	title: string;
-	description: string;
-	playerCount: string;
-	recommendedTime: string;
-	difficulty: string;
-	videoSrc: string;
-	thumbnailSrc: string;
-	similarGames: string[];
-}
-
+import {Game} from '../../lib/gameData';
 interface GameCategoryLayoutProps {
-	category: string;
-	title: string;
-	description: string;
 	games: Game[];
 	onActiveIndexChange?: (index: number) => void;
 }
-
 export default function GameCategoryLayout({
-	category,
-	title,
-	description,
 	games,
 	onActiveIndexChange
 }: GameCategoryLayoutProps) {

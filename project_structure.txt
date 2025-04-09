@@ -8,12 +8,6 @@
 ├── project_files.md
 ├── project_structure.txt
 ├── public
-│   ├── images
-│   │   └── lp
-│   │       ├── hero-bg.jpg
-│   │       ├── scene-group.jpg
-│   │       ├── scene-pair.jpg
-│   │       └── scene-solo.jpg
 │   ├── next.svg
 │   └── vercel.svg
 ├── src
@@ -51,9 +45,6 @@
 │   │   ├── dashboard
 │   │   │   └── page.tsx
 │   │   ├── favicon.ico
-│   │   ├── games
-│   │   │   └── [category]
-│   │   │       └── page.tsx
 │   │   ├── globals.css
 │   │   ├── layout.tsx
 │   │   ├── login
@@ -85,14 +76,11 @@
 │   │   │   ├── reservation-history.tsx
 │   │   │   └── usage-history.tsx
 │   │   ├── games
-│   │   │   ├── AudioPermissionBanner.tsx
 │   │   │   ├── AudioPermissionModal.tsx
 │   │   │   ├── CategoryHeader.tsx
 │   │   │   ├── GameCategoryLayout.tsx
 │   │   │   ├── GameDetailExpansion.tsx
 │   │   │   ├── GameSession.tsx
-│   │   │   ├── QuickGameNav.tsx
-│   │   │   ├── ScrollSnapContainer.tsx
 │   │   │   ├── StickyGameVideo.tsx
 │   │   │   └── VideoPreloader.tsx
 │   │   ├── icons
@@ -134,6 +122,7 @@
 │   │       ├── verification-status-v2.tsx
 │   │       └── verification-status.tsx
 │   ├── context
+│   │   ├── AudioContext.tsx
 │   │   ├── auth-context.tsx
 │   │   ├── ekyc-context.tsx
 │   │   ├── registration-context.tsx
@@ -156,4 +145,4 @@
 ├── tailwind.config.js
 └── tsconfig.json
 
-50 directories, 106 files
+46 directories, 99 files

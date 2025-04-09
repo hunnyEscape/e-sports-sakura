@@ -216,18 +216,5 @@ export const GAME_DATA: Record<string, CategoryData> = {
 				genre:`本格`,
 			},
 		]
-	},
-	competitive: {
-		title: 'PCゲームっぽいゲーム',
-		description: '120FPSでぬるぬる動く、プロ仕様',
-		games: [
-		]
-	},
-	immersive: {
-		title: 'じっくり系ゲーム',
-		description: '1人でも仲間とでも、じっくり楽しめる',
-		games: [
-
-		]
 	}
 };
