@@ -2,14 +2,26 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './auth-context';
 import { SeatDocument, ReservationDocument, BranchDocument } from '@/types/firebase';
-import { collection, getDocs, query, where, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+import { 
+	collection, 
+	doc, 
+	getDocs, 
+	query, 
+	where, 
+	writeBatch
+  } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-interface SelectedTimeSlots {
+
+// 座席予約の時間枠情報を複数管理できるように修正
+export interface SelectedTimeSlotsItem {
 	seatId: string;
 	startTime: string;
 	endTime: string;
+	seatName?: string;
 }
+
 interface DateAvailability { [date: string]: 'available' | 'limited' | 'booked' | 'unknown'; }
+
 interface ReservationContextType {
 	branches: BranchDocument[];
 	selectedBranch: BranchDocument | null;
@@ -19,12 +31,16 @@ interface ReservationContextType {
 	reservations: ReservationDocument[];
 	selectedDate: Date | null;
 	setSelectedDate: (date: Date | null) => void;
-	selectedTimeSlots: SelectedTimeSlots;
-	setSelectedTimeSlots: (slots: SelectedTimeSlots) => void;
+	// 複数の座席予約を管理するために配列に変更
+	selectedTimeSlots: SelectedTimeSlotsItem[];
+	setSelectedTimeSlots: (slots: SelectedTimeSlotsItem[]) => void;
+	addSelectedTimeSlot: (slot: SelectedTimeSlotsItem) => void;
+	removeSelectedTimeSlot: (seatId: string) => void;
+	clearSelectedTimeSlots: () => void;
 	dateAvailability: DateAvailability;
 	fetchSeats: (branchId?: string) => Promise<void>;
 	fetchReservations: (date?: Date, branchId?: string) => Promise<void>;
-	createReservation: (reservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+	createReservation: (reservations: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>[]) => Promise<void>;
 	cancelReservation: (reservationId: string) => Promise<void>;
 	isLoading: boolean;
 	error: string | null;
@@ -42,15 +58,38 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 	const [seats, setSeats] = useState<SeatDocument[]>([]);
 	const [reservations, setReservations] = useState<ReservationDocument[]>([]);
 	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-	const [selectedTimeSlots, setSelectedTimeSlots] = useState<SelectedTimeSlots>({
-		seatId: '',
-		startTime: '',
-		endTime: ''
-	});
+	// 複数の座席予約を管理するために配列に変更
+	const [selectedTimeSlots, setSelectedTimeSlots] = useState<SelectedTimeSlotsItem[]>([]);
 	const [dateAvailability, setDateAvailability] = useState<DateAvailability>({});
 	const [isLoading, setIsLoading] = useState<boolean>(false);
 	const [error, setError] = useState<string | null>(null);
 	const [fetchCount, setFetchCount] = useState<number>(0); // APIコール回数を追跡
+
+	// 個別の座席予約を追加するヘルパー関数
+	const addSelectedTimeSlot = useCallback((slot: SelectedTimeSlotsItem) => {
+		setSelectedTimeSlots(prev => {
+			// 既存の同じ座席の予約があれば更新、なければ追加
+			const exists = prev.some(item => item.seatId === slot.seatId);
+			if (exists) {
+				return prev.map(item =>
+					item.seatId === slot.seatId ? slot : item
+				);
+			} else {
+				return [...prev, slot];
+			}
+		});
+	}, []);
+
+	// 指定した座席IDの予約を削除するヘルパー関数
+	const removeSelectedTimeSlot = useCallback((seatId: string) => {
+		setSelectedTimeSlots(prev => prev.filter(item => item.seatId !== seatId));
+	}, []);
+
+	// すべての選択をクリアするヘルパー関数
+	const clearSelectedTimeSlots = useCallback(() => {
+		setSelectedTimeSlots([]);
+	}, []);
+
 	// 支店一覧を取得 - useCallbackでメモ化して無限ループを防止
 	const fetchBranches = useCallback(async (): Promise<void> => {
 		setIsLoading(true);
@@ -159,7 +198,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				{
 					id: `res-${branchCode}-001`,
 					userId: 'user1',
-					seatId: `${branchCode}-PC-01`,
+					seatId: `${branchCode}-01`,
 					seatName: `Gaming PC #1 (High-Spec)`,
 					date: dateStr,
 					startTime: '14:00',
@@ -172,7 +211,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				{
 					id: `res-${branchCode}-002`,
 					userId: 'user2',
-					seatId: `${branchCode}-PC-02`,
+					seatId: `${branchCode}-02`,
 					seatName: `Gaming PC #2 (High-Spec)`,
 					date: dateStr,
 					startTime: '18:00',
@@ -229,8 +268,8 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		setDateAvailability(availability);
 	}, [selectedBranch]);
 
-	// 予約を作成 - useCallbackでメモ化
-	const createReservation = useCallback(async (reservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
+	// 予約を作成 - useCallbackでメモ化（複数予約対応＋Firebase書き込み）
+	const createReservation = useCallback(async (reservationsData: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>[]): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 
@@ -243,30 +282,44 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				throw new Error('支店が選択されていません');
 			}
 
-			// API呼び出しをシミュレート
-			console.log('Creating reservation:', {
-				...reservation,
-				userId: user.uid,
-				branchId: selectedBranch.branchId,
-				branchName: selectedBranch.branchName
-			});
+			if (reservationsData.length === 0) {
+				throw new Error('予約データがありません');
+			}
 
-			// 成功をシミュレート
-			setTimeout(() => {
-				setIsLoading(false);
-				setSelectedTimeSlots({
-					seatId: '',
-					startTime: '',
-					endTime: ''
-				});
-				fetchReservations();
-			}, 1000);
+			// Firestoreに書き込むデータを準備
+			const reservationsCollection = collection(db, 'reservations');
+			const now = new Date().toISOString();
+			const batch = writeBatch(db);
+
+			// 各予約データをバッチ処理で追加
+			for (const reservationData of reservationsData) {
+				const reservationDocRef = doc(reservationsCollection);
+				const completeReservationData = {
+					...reservationData,
+					userId: user.uid,
+					userEmail: user.email || '',
+					branchId: selectedBranch.branchId,
+					branchName: selectedBranch.branchName,
+					createdAt: now,
+					updatedAt: now
+				};
+
+				batch.set(reservationDocRef, completeReservationData);
+			}
+
+			// バッチ処理を実行（全ての予約を一度にコミット）
+			await batch.commit();
+			console.log(`${reservationsData.length}件の予約をFirestoreに保存しました`);
+
+			setIsLoading(false);
+			clearSelectedTimeSlots(); // すべての選択をクリア
+			fetchReservations();
 		} catch (err) {
-			console.error('Error creating reservation:', err);
+			console.error('Error creating reservations:', err);
 			setError('予約の作成に失敗しました。もう一度お試しください。');
 			setIsLoading(false);
 		}
-	}, [fetchReservations, selectedBranch, user]);
+	}, [fetchReservations, selectedBranch, user, clearSelectedTimeSlots]);
 
 	// 予約をキャンセル - useCallbackでメモ化
 	const cancelReservation = useCallback(async (reservationId: string): Promise<void> => {
@@ -303,15 +356,19 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		if (selectedBranch) {
 			fetchSeats(selectedBranch.branchId);
 			updateDateAvailability(selectedBranch.branchId);
+			// 支店が変わったら選択済みの座席をクリア
+			clearSelectedTimeSlots();
 		}
-	}, [selectedBranch, fetchSeats, updateDateAvailability]);
+	}, [selectedBranch, fetchSeats, updateDateAvailability, clearSelectedTimeSlots]);
 
 	// 日付が選択された時に予約情報を取得
 	useEffect(() => {
 		if (selectedDate && selectedBranch) {
 			fetchReservations(selectedDate, selectedBranch.branchId);
+			// 日付が変わったら選択済みの座席をクリア
+			clearSelectedTimeSlots();
 		}
-	}, [selectedDate, selectedBranch, fetchReservations]);
+	}, [selectedDate, selectedBranch, fetchReservations, clearSelectedTimeSlots]);
 
 	const value = {
 		branches,
@@ -324,6 +381,9 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		setSelectedDate,
 		selectedTimeSlots,
 		setSelectedTimeSlots,
+		addSelectedTimeSlot,
+		removeSelectedTimeSlot,
+		clearSelectedTimeSlots,
 		dateAvailability,
 		fetchSeats,
 		fetchReservations,

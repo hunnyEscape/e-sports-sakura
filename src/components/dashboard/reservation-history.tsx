@@ -1,18 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, Clock, MapPin, Loader, Ban, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, MapPin, Loader, Ban, CheckCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
+// 予約データの型定義
 interface Reservation {
-	id: string;
+	id?: string;
 	userId: string;
+	userEmail?: string;
 	seatId: string;
-	seatName: string;
+	seatName?: string;
+	branchId?: string;
+	branchName?: string;
 	date: string;
 	startTime: string;
 	endTime: string;
 	duration: number;
 	status: 'confirmed' | 'cancelled' | 'completed';
+	notes?: string;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -23,93 +30,112 @@ const ReservationHistory: React.FC = () => {
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [showAll, setShowAll] = useState(false);
+	const [isCancelling, setIsCancelling] = useState(false);
 
-	// Fetch reservations (mock implementation for now)
-	useEffect(() => {
+	// Fetch reservations from Firestore
+	const fetchReservations = async () => {
 		if (!user) return;
 
 		setIsLoading(true);
 		setError(null);
 
-		// Simulate API call with setTimeout
-		const timer = setTimeout(() => {
-			try {
-				// This would be an actual API call in production
-				const mockReservations: Reservation[] = [
-					{
-						id: 'res001',
-						userId: user.uid,
-						seatId: 'pc01',
-						seatName: 'Gaming PC #1',
-						date: '2025-04-10',
-						startTime: '14:00',
-						endTime: '16:00',
-						duration: 120,
-						status: 'completed',
-						createdAt: '2025-04-05T10:00:00Z',
-						updatedAt: '2025-04-05T10:00:00Z'
-					},
-					{
-						id: 'res002',
-						userId: user.uid,
-						seatId: 'pc02',
-						seatName: 'Gaming PC #2',
-						date: '2025-04-15',
-						startTime: '18:00',
-						endTime: '20:00',
-						duration: 120,
-						status: 'confirmed',
-						createdAt: '2025-04-05T15:30:00Z',
-						updatedAt: '2025-04-05T15:30:00Z'
-					},
-					{
-						id: 'res003',
-						userId: user.uid,
-						seatId: 'pc01',
-						seatName: 'Gaming PC #1',
-						date: '2025-04-08',
-						startTime: '20:00',
-						endTime: '22:00',
-						duration: 120,
-						status: 'cancelled',
-						createdAt: '2025-04-04T09:15:00Z',
-						updatedAt: '2025-04-04T14:20:00Z'
-					},
-					{
-						id: 'res004',
-						userId: user.uid,
-						seatId: 'pc03',
-						seatName: 'Standard PC #1',
-						date: '2025-04-20',
-						startTime: '10:00',
-						endTime: '12:00',
-						duration: 120,
-						status: 'confirmed',
-						createdAt: '2025-04-06T18:45:00Z',
-						updatedAt: '2025-04-06T18:45:00Z'
-					}
-				];
+		try {
+			console.log('Fetching reservations for user:', user.uid);
 
-				// Sort reservations by date (newest first for upcoming, oldest first for past)
-				const sortedReservations = mockReservations.sort((a, b) => {
-					if (a.status === 'confirmed' && b.status === 'confirmed') {
-						return new Date(a.date).getTime() - new Date(b.date).getTime();
-					} else if (a.status === 'completed' && b.status === 'completed') {
-						return new Date(b.date).getTime() - new Date(a.date).getTime();
-					}
-					return 0;
-				});
+			// Firestoreからユーザーの予約を取得
+			const reservationsRef = collection(db, 'reservations');
+			const reservationsQuery = query(
+				reservationsRef,
+				where('userId', '==', user.uid)
+			);
 
-				setReservations(sortedReservations);
+			const querySnapshot = await getDocs(reservationsQuery);
+
+			if (querySnapshot.empty) {
+				console.log('No reservations found');
+				setReservations([]);
 				setIsLoading(false);
-			} catch (err) {
-				console.error('Error fetching reservations:', err);
-				setError('予約履歴の取得に失敗しました。もう一度お試しください。');
-				setIsLoading(false);
+				return;
 			}
-		}, 1000);
 
-		return () => clearTimeout(timer);
+			console.log(`Found ${querySnapshot.size} reservations`);
+
+			// 現在の日付を取得
+			const today = new Date();
+			today.setHours(0, 0, 0, 0);
+			const todayStr = today.toISOString().split('T')[0];
+
+			// 予約データを処理
+			const reservationsData: Reservation[] = [];
+			querySnapshot.forEach((doc) => {
+				const data = doc.data() as Omit<Reservation, 'id'>;
+
+				// 基本的な型安全性チェック
+				if (!data.date || !data.startTime || !data.endTime || !data.seatId) {
+					console.warn('Skipping reservation with missing required fields:', doc.id);
+					return;
+				}
+
+				const reservation: Reservation = {
+					id: doc.id,
+					...data,
+					// 必須フィールドが欠けている場合のデフォルト値を設定
+					status: data.status || 'confirmed',
+					duration: data.duration || 0,
+					userId: data.userId || user.uid,
+					createdAt: data.createdAt || new Date().toISOString(),
+					updatedAt: data.updatedAt || new Date().toISOString()
+				};
+
+				// 過去の予約で、statusがconfirmedのものは自動的にcompletedに変更
+				if (reservation.status === 'confirmed' && reservation.date < todayStr) {
+					reservation.status = 'completed';
+
+					// Firestoreの更新は別途非同期で行う（UIブロックを避けるため）
+					updateReservationStatus(doc.id, 'completed').catch(console.error);
+				}
+
+				reservationsData.push(reservation);
+			});
+
+			console.log('Processed reservations:', reservationsData);
+
+			// 未来の予約は日付昇順、過去の予約は日付降順でソート
+			const sortedReservations = reservationsData.sort((a, b) => {
+				if (a.status === 'confirmed' && b.status === 'confirmed') {
+					return new Date(a.date).getTime() - new Date(b.date).getTime();
+				} else if ((a.status === 'completed' || a.status === 'cancelled') &&
+					(b.status === 'completed' || b.status === 'cancelled')) {
+					return new Date(b.date).getTime() - new Date(a.date).getTime();
+				}
+				return 0;
+			});
+
+			setReservations(sortedReservations);
+		} catch (err) {
+			console.error('Error fetching reservations:', err);
+			setError('予約履歴の取得に失敗しました。もう一度お試しください。');
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	// 予約ステータスを更新する非同期関数
+	const updateReservationStatus = async (reservationId: string, status: string) => {
+		try {
+			const reservationRef = doc(db, 'reservations', reservationId);
+			await updateDoc(reservationRef, {
+				status,
+				updatedAt: new Date().toISOString()
+			});
+			console.log(`Updated reservation ${reservationId} status to ${status}`);
+		} catch (err) {
+			console.error(`Failed to update reservation ${reservationId} status:`, err);
+		}
+	};
+
+	useEffect(() => {
+		fetchReservations();
 	}, [user]);
 
 	// Get upcoming reservations
@@ -134,20 +160,45 @@ const ReservationHistory: React.FC = () => {
 	};
 
 	// Handle cancel reservation
-	const handleCancelReservation = (reservationId: string) => {
-		if (!confirm('予約をキャンセルしますか？')) return;
+	const handleCancelReservation = async (reservationId: string) => {
+		if (!reservationId || !confirm('予約をキャンセルしますか？')) return;
 
-		// Update local state immediately for better UX
-		setReservations(prevReservations =>
-			prevReservations.map(reservation =>
-				reservation.id === reservationId
-					? { ...reservation, status: 'cancelled' }
-					: reservation
-			)
-		);
+		setIsCancelling(true);
 
-		// This would be an API call in production
-		console.log(`Cancelling reservation: ${reservationId}`);
+		try {
+			// Update local state immediately for better UX
+			setReservations(prevReservations =>
+				prevReservations.map(reservation =>
+					reservation.id === reservationId
+						? { ...reservation, status: 'cancelled' }
+						: reservation
+				)
+			);
+
+			// Update in Firestore
+			const reservationRef = doc(db, 'reservations', reservationId);
+			await updateDoc(reservationRef, {
+				status: 'cancelled',
+				updatedAt: new Date().toISOString()
+			});
+
+			console.log(`予約 ${reservationId} をキャンセルしました`);
+		} catch (err) {
+			console.error('Error cancelling reservation:', err);
+
+			// Revert local state if the operation failed
+			setReservations(prevReservations =>
+				prevReservations.map(reservation =>
+					reservation.id === reservationId && reservation.status === 'cancelled'
+						? { ...reservation, status: 'confirmed' }
+						: reservation
+				)
+			);
+
+			alert('予約のキャンセルに失敗しました。もう一度お試しください。');
+		} finally {
+			setIsCancelling(false);
+		}
 	};
 
 	// Reservation card component
@@ -189,13 +240,24 @@ const ReservationHistory: React.FC = () => {
 					{/* Cancel button for upcoming reservations */}
 					{isUpcoming && (
 						<button
-							onClick={() => handleCancelReservation(reservation.id)}
-							className="text-xs text-foreground/60 hover:text-red-400 transition-colors"
+							onClick={() => handleCancelReservation(reservation.id || '')}
+							disabled={isCancelling}
+							className="text-xs text-foreground/60 hover:text-red-400 transition-colors disabled:opacity-50"
 						>
-							キャンセル
+							{isCancelling ? '処理中...' : 'キャンセル'}
 						</button>
 					)}
 				</div>
+
+				{/* Branch name if available */}
+				{reservation.branchName && (
+					<div className="flex items-start mb-2">
+						<MapPin className="w-4 h-4 text-accent mr-2 mt-0.5 flex-shrink-0" />
+						<div className="text-foreground font-medium">
+							{reservation.branchName}支店
+						</div>
+					</div>
+				)}
 
 				{/* Date */}
 				<div className="flex items-start mb-2">
@@ -220,7 +282,7 @@ const ReservationHistory: React.FC = () => {
 				<div className="flex items-start">
 					<MapPin className="w-4 h-4 text-accent mr-2 mt-0.5 flex-shrink-0" />
 					<div className="text-foreground">
-						{reservation.seatName}
+						{reservation.seatName || reservation.seatId}
 					</div>
 				</div>
 			</motion.div>
@@ -241,9 +303,10 @@ const ReservationHistory: React.FC = () => {
 			<div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-center">
 				<p className="text-red-500 mb-2">{error}</p>
 				<button
-					onClick={() => window.location.reload()}
-					className="text-sm text-accent hover:underline"
+					onClick={fetchReservations}
+					className="mt-2 px-4 py-2 inline-flex items-center text-sm bg-accent/10 hover:bg-accent/20 text-accent rounded-md transition-colors"
 				>
+					<RefreshCw className="w-4 h-4 mr-2" />
 					再読み込み
 				</button>
 			</div>
@@ -300,16 +363,6 @@ const ReservationHistory: React.FC = () => {
 							</div>
 						</div>
 					)}
-
-					{/* New reservation button */}
-					<div className="mt-8 text-center">
-						<button
-							onClick={() => window.location.href = '/reservation'}
-							className="px-6 py-2 bg-accent text-white rounded-md hover:bg-accent/90 transition-colors"
-						>
-							新規予約をする
-						</button>
-					</div>
 				</>
 			)}
 		</div>

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
-import { useReservation } from '@/context/reservation-context';
+import { useReservation, SelectedTimeSlotsItem } from '@/context/reservation-context';
 import { ReservationProvider } from '@/context/reservation-context';
 import { ChevronLeft } from 'lucide-react';
 import { BranchDocument } from '@/types/firebase';
@@ -13,10 +13,9 @@ import CalendarView from '@/components/reservation/calendar-view';
 import TimeGrid from '@/components/reservation/time-grid';
 import ReservationForm from '@/components/reservation/reservation-form';
 import LoginPrompt from '@/components/reservation/login-prompt';
-//import SeatInitializer from '@/components/ini/create-seat-documents';
 
 enum ReservationStep {
-	SELECT_BRANCH,  // 新しいステップ
+	SELECT_BRANCH,
 	SELECT_DATE,
 	SELECT_TIME,
 	CONFIRM
@@ -24,18 +23,13 @@ enum ReservationStep {
 
 const ReservationPageContent: React.FC = () => {
 	const { user, loading } = useAuth();
-	const { setSelectedBranch } = useReservation(); // ここでフックを呼び出す
+	const { setSelectedBranch, selectedTimeSlots, clearSelectedTimeSlots } = useReservation();
 	const router = useRouter();
 
 	const [currentStep, setCurrentStep] = useState<ReservationStep>(ReservationStep.SELECT_BRANCH);
 	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 	const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-	const [reservationDetails, setReservationDetails] = useState<{
-		date: Date;
-		seatId: string;
-		startTime: string;
-		endTime: string;
-	} | null>(null);
+	const [pendingTimeSlots, setPendingTimeSlots] = useState<SelectedTimeSlotsItem[]>([]);
 
 	// Check for pending reservation in sessionStorage (after login/register)
 	useEffect(() => {
@@ -44,14 +38,28 @@ const ReservationPageContent: React.FC = () => {
 			if (pendingReservation) {
 				try {
 					const details = JSON.parse(pendingReservation);
-					setReservationDetails({
-						date: new Date(details.date),
-						seatId: details.seatId,
-						startTime: details.startTime,
-						endTime: details.endTime
-					});
-					setSelectedDate(new Date(details.date));
-					setCurrentStep(ReservationStep.CONFIRM);
+					if (Array.isArray(details)) {
+						// 複数座席予約に対応
+						const timeSlots = details.map((item: any) => ({
+							seatId: item.seatId,
+							seatName: item.seatName,
+							startTime: item.startTime,
+							endTime: item.endTime
+						}));
+						setPendingTimeSlots(timeSlots);
+						setSelectedDate(new Date(details[0].date));
+						setCurrentStep(ReservationStep.CONFIRM);
+					} else {
+						// 後方互換性のため、単一座席予約も処理
+						const timeSlot = {
+							seatId: details.seatId,
+							startTime: details.startTime,
+							endTime: details.endTime
+						};
+						setPendingTimeSlots([timeSlot]);
+						setSelectedDate(new Date(details.date));
+						setCurrentStep(ReservationStep.CONFIRM);
+					}
 
 					// Clear the pending reservation
 					sessionStorage.removeItem('pendingReservation');
@@ -64,7 +72,6 @@ const ReservationPageContent: React.FC = () => {
 
 	// 支店選択ハンドラー
 	const handleBranchSelect = (branch: BranchDocument) => {
-		// useReservationフックを使用した結果をここで使う
 		setSelectedBranch(branch);
 		setCurrentStep(ReservationStep.SELECT_DATE);
 	};
@@ -75,26 +82,15 @@ const ReservationPageContent: React.FC = () => {
 		setCurrentStep(ReservationStep.SELECT_TIME);
 	};
 
-	// Handle time selection
-	const handleTimeSelect = (seatId: string, startTime: string, endTime: string) => {
+	// Handle time selection - 複数座席対応
+	const handleTimeSelect = (timeSlots: SelectedTimeSlotsItem[]) => {
 		if (!user && !loading) {
 			// Show login prompt for non-logged in users
-			setReservationDetails({
-				date: selectedDate!,
-				seatId,
-				startTime,
-				endTime
-			});
+			setPendingTimeSlots(timeSlots);
 			setShowLoginPrompt(true);
 			return;
 		}
 
-		setReservationDetails({
-			date: selectedDate!,
-			seatId,
-			startTime,
-			endTime
-		});
 		setCurrentStep(ReservationStep.CONFIRM);
 	};
 
@@ -110,6 +106,7 @@ const ReservationPageContent: React.FC = () => {
 		} else if (currentStep === ReservationStep.SELECT_TIME) {
 			setCurrentStep(ReservationStep.SELECT_DATE);
 		} else if (currentStep === ReservationStep.SELECT_DATE) {
+			clearSelectedTimeSlots();
 			setCurrentStep(ReservationStep.SELECT_BRANCH);
 		}
 	};
@@ -188,8 +185,8 @@ const ReservationPageContent: React.FC = () => {
 					<div className="flex items-center justify-between">
 						<div className="flex flex-col items-center">
 							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_BRANCH
-									? 'bg-accent text-white'
-									: 'bg-border text-foreground/70'
+								? 'bg-accent text-white'
+								: 'bg-border text-foreground/70'
 								}`}>
 								1
 							</div>
@@ -197,14 +194,14 @@ const ReservationPageContent: React.FC = () => {
 						</div>
 
 						<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_BRANCH
-								? 'bg-accent'
-								: 'bg-border'
+							? 'bg-accent'
+							: 'bg-border'
 							}`} />
 
 						<div className="flex flex-col items-center">
 							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_DATE
-									? 'bg-accent text-white'
-									: 'bg-border text-foreground/70'
+								? 'bg-accent text-white'
+								: 'bg-border text-foreground/70'
 								}`}>
 								2
 							</div>
@@ -212,14 +209,14 @@ const ReservationPageContent: React.FC = () => {
 						</div>
 
 						<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_DATE
-								? 'bg-accent'
-								: 'bg-border'
+							? 'bg-accent'
+							: 'bg-border'
 							}`} />
 
 						<div className="flex flex-col items-center">
 							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_TIME
-									? 'bg-accent text-white'
-									: 'bg-border text-foreground/70'
+								? 'bg-accent text-white'
+								: 'bg-border text-foreground/70'
 								}`}>
 								3
 							</div>
@@ -227,14 +224,14 @@ const ReservationPageContent: React.FC = () => {
 						</div>
 
 						<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_TIME
-								? 'bg-accent'
-								: 'bg-border'
+							? 'bg-accent'
+							: 'bg-border'
 							}`} />
 
 						<div className="flex flex-col items-center">
 							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.CONFIRM
-									? 'bg-accent text-white'
-									: 'bg-border text-foreground/70'
+								? 'bg-accent text-white'
+								: 'bg-border text-foreground/70'
 								}`}>
 								4
 							</div>
@@ -247,10 +244,13 @@ const ReservationPageContent: React.FC = () => {
 				{renderStep()}
 
 				{/* Login prompt */}
-				{showLoginPrompt && reservationDetails && (
+				{showLoginPrompt && selectedDate && pendingTimeSlots.length > 0 && (
 					<LoginPrompt
 						onClose={() => setShowLoginPrompt(false)}
-						reservationDetails={reservationDetails}
+						reservationDetails={pendingTimeSlots.map(slot => ({
+							...slot,
+							date: selectedDate.toISOString()
+						}))}
 					/>
 				)}
 			</motion.div>

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useReservation } from '@/context/reservation-context';
 import { useAuth } from '@/context/auth-context';
-import { Calendar, Clock, Info, CreditCard, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, Info, CreditCard, CheckCircle, X } from 'lucide-react';
 
 interface ReservationFormProps {
 	onSuccess?: () => void;
@@ -16,36 +16,12 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		selectedTimeSlots,
 		seats,
 		createReservation,
-		isLoading
+		isLoading,
+		selectedBranch
 	} = useReservation();
 
 	const [notes, setNotes] = useState('');
 	const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
-
-	// Get selected seat information
-	const selectedSeat = seats.find(seat => seat.id === selectedTimeSlots.seatId);
-
-	// Calculate reservation details
-	const calculateDuration = (): number => {
-		if (!selectedTimeSlots.startTime || !selectedTimeSlots.endTime) return 0;
-
-		const startParts = selectedTimeSlots.startTime.split(':').map(Number);
-		const endParts = selectedTimeSlots.endTime.split(':').map(Number);
-
-		const startMinutes = startParts[0] * 60 + startParts[1];
-		const endMinutes = endParts[0] * 60 + endParts[1];
-
-		return endMinutes - startMinutes;
-	};
-
-	const duration = calculateDuration();
-
-	const calculateTotalPrice = (): number => {
-		if (!selectedSeat) return 0;
-		return duration * selectedSeat.ratePerMinute;
-	};
-
-	const totalPrice = calculateTotalPrice();
 
 	// Format date for display
 	const formatDate = (date: Date | null): string => {
@@ -59,27 +35,58 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		return `${year}年${month}月${day}日(${dayOfWeek})`;
 	};
 
+	// 座席ごとの詳細情報を計算
+	const seatDetails = selectedTimeSlots.map(slot => {
+		const seat = seats.find(s => s.seatId === slot.seatId);
+		if (!seat) return null;
+
+		// 分数の計算
+		const startParts = slot.startTime.split(':').map(Number);
+		const endParts = slot.endTime.split(':').map(Number);
+		const startMinutes = startParts[0] * 60 + startParts[1];
+		const endMinutes = endParts[0] * 60 + endParts[1];
+		const duration = endMinutes - startMinutes;
+
+		// 料金計算
+		const ratePerMinute = seat.ratePerHour / 60;
+		const cost = Math.round(ratePerMinute * duration);
+
+		return {
+			seat,
+			slot,
+			duration,
+			cost
+		};
+	}).filter(Boolean);
+
+	// 合計金額の計算
+	const totalCost = seatDetails.reduce((sum, detail) => sum + (detail?.cost || 0), 0);
+
 	// Handle form submission
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 
-		if (!selectedDate || !selectedTimeSlots.seatId || !selectedTimeSlots.startTime || !selectedTimeSlots.endTime) {
+		if (!selectedDate || selectedTimeSlots.length === 0) {
 			return;
 		}
 
 		try {
 			const dateStr = selectedDate.toISOString().split('T')[0];
 
-			await createReservation({
+			// 複数の予約データを準備
+			const reservationsData = selectedTimeSlots.map(slot => ({
 				userId: user?.uid || '',
-				seatId: selectedTimeSlots.seatId,
+				seatId: slot.seatId,
+				seatName: slot.seatName || seats.find(s => s.seatId === slot.seatId)?.name || '',
 				date: dateStr,
-				startTime: selectedTimeSlots.startTime,
-				endTime: selectedTimeSlots.endTime,
-				duration,
+				startTime: slot.startTime,
+				endTime: slot.endTime,
+				duration: calculateDuration(slot.startTime, slot.endTime),
 				status: 'confirmed',
 				notes
-			});
+			}));
+
+			await createReservation(reservationsData);
 
 			setSubmitStatus('success');
 
@@ -95,13 +102,17 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		}
 	};
 
+	// 分数を計算するヘルパー関数
+	const calculateDuration = (startTime: string, endTime: string): number => {
+		const startParts = startTime.split(':').map(Number);
+		const endParts = endTime.split(':').map(Number);
+		const startMinutes = startParts[0] * 60 + startParts[1];
+		const endMinutes = endParts[0] * 60 + endParts[1];
+		return endMinutes - startMinutes;
+	};
+
 	// Determine if form is valid for submission
-	const isFormValid =
-		selectedDate !== null &&
-		selectedTimeSlots.seatId !== '' &&
-		selectedTimeSlots.startTime !== '' &&
-		selectedTimeSlots.endTime !== '' &&
-		duration > 0;
+	const isFormValid = selectedDate !== null && selectedTimeSlots.length > 0;
 
 	if (submitStatus === 'success') {
 		return (
@@ -131,13 +142,26 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		<motion.div
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
-			className="w-full max-w-2xl mx-auto"
+			className="w-full max-w-3xl mx-auto"
 		>
 			<h2 className="text-xl font-medium text-foreground mb-4">予約内容の確認</h2>
 
 			<form onSubmit={handleSubmit} className="space-y-6">
 				{/* Reservation Summary */}
 				<div className="bg-background/5 p-4 rounded-lg space-y-4">
+					{/* Branch */}
+					{selectedBranch && (
+						<div className="flex items-start">
+							<Info className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
+							<div>
+								<div className="font-medium text-foreground">支店</div>
+								<div className="text-foreground/70">
+									{selectedBranch.branchName}
+								</div>
+							</div>
+						</div>
+					)}
+
 					{/* Date */}
 					<div className="flex items-start">
 						<Calendar className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
@@ -149,54 +173,36 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 						</div>
 					</div>
 
-					{/* Time */}
-					<div className="flex items-start">
-						<Clock className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
-						<div>
-							<div className="font-medium text-foreground">時間</div>
-							<div className="text-foreground/70">
-								{selectedTimeSlots.startTime} - {selectedTimeSlots.endTime}
-								{duration > 0 && <span className="ml-2">({duration}分間)</span>}
-							</div>
+					{/* Selected Seats */}
+					<div className="mt-4">
+						<h3 className="font-medium text-foreground mb-2">選択した座席 ({seatDetails.length}席)</h3>
+						<div className="space-y-3">
+							{seatDetails.map((detail, index) => (
+								<div key={detail?.seat.seatId || index}
+									className="p-3 bg-background/30 rounded border border-border/20"
+								>
+									<div className="flex justify-between items-start">
+										<span className="font-medium text-foreground/80">{detail?.seat.name}</span>
+										<span className="text-sm bg-accent/10 text-accent px-2 py-0.5 rounded">
+											¥{detail?.cost.toLocaleString()}
+										</span>
+									</div>
+									<div className="text-sm text-foreground/70 mt-1">
+										{detail?.slot.startTime} - {detail?.slot.endTime} ({detail?.duration}分)
+									</div>
+									<div className="text-xs text-foreground/50 mt-1">
+										単価: ¥{Math.round(detail?.seat.ratePerHour / 60)}円/分 × {detail?.duration}分
+									</div>
+								</div>
+							))}
+						</div>
+
+						{/* Total Price */}
+						<div className="flex justify-between items-center mt-4 pt-3 border-t border-border/20">
+							<span className="font-medium text-foreground/60">合計金額</span>
+							<span className="text-xl font-bold text-foreground/80">¥{totalCost.toLocaleString()}</span>
 						</div>
 					</div>
-
-					{/* Seat */}
-					<div className="flex items-start">
-						<Info className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
-						<div>
-							<div className="font-medium text-foreground">座席</div>
-							<div className="text-foreground/70">
-								{selectedSeat?.name}
-							</div>
-						</div>
-					</div>
-
-					{/* Price */}
-					<div className="flex items-start">
-						<CreditCard className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
-						<div>
-							<div className="font-medium text-foreground">料金</div>
-							<div className="text-foreground/70">
-								¥{totalPrice} ({selectedSeat?.ratePerMinute}円 × {duration}分)
-							</div>
-						</div>
-					</div>
-				</div>
-
-				{/* Notes */}
-				<div>
-					<label htmlFor="notes" className="block text-sm font-medium text-foreground mb-1">
-						備考（オプション）
-					</label>
-					<textarea
-						id="notes"
-						value={notes}
-						onChange={(e) => setNotes(e.target.value)}
-						className="w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
-						rows={3}
-						placeholder="特別なリクエストがあればご記入ください"
-					/>
 				</div>
 
 				{/* Terms and Conditions */}
@@ -208,22 +214,19 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 					</p>
 				</div>
 
-				{/* Error message */}
 				{submitStatus === 'error' && (
 					<div className="p-3 bg-red-500/10 border border-red-500/30 rounded-md text-red-500">
 						予約の処理中にエラーが発生しました。もう一度お試しください。
 					</div>
 				)}
-
-				{/* Action buttons */}
 				<div className="flex justify-end">
 					<button
 						type="submit"
 						disabled={!isFormValid || isLoading}
 						className={`
-              px-6 py-2 rounded-md text-white transition-colors
-              ${isFormValid ? 'bg-accent hover:bg-accent/90' : 'bg-border/50 cursor-not-allowed'}
-            `}
+							px-6 py-2 rounded-md text-white transition-colors
+							${isFormValid ? 'bg-accent hover:bg-accent/90' : 'bg-border/50 cursor-not-allowed'}
+						`}
 					>
 						{isLoading ? '処理中...' : '予約を確定する'}
 					</button>
