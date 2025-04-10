@@ -39,7 +39,7 @@ export default function DashboardPage() {
 					<header className="bg-background/80 backdrop-blur-sm border-b border-border sticky top-0 z-10">
 						<div className="container mx-auto px-4">
 							<div className="flex items-center justify-between h-16">
-								<Link href="/dashboard" className="flex items-center">
+								<Link href="/lp" className="flex items-center">
 									<Image
 										src="/images/logo.svg"
 										alt="E-Sports Sakura"

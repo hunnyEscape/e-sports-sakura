@@ -11,6 +11,7 @@ import AccessSection from '@/components/lp/access-section';
 import CtaSection from '@/components/lp/cta-section';
 import LpHeader from '@/components/lp/lp-header';
 import LpFooter from '@/components/lp/lp-footer';
+import SeatInitializer from '@/components/ini/create-seat-documents';
 
 export default function LandingPage() {
 	return (
@@ -18,6 +19,7 @@ export default function LandingPage() {
 			<LpHeader />
 			<div className="pt-16">
 				<HeroSection />
+				<SeatInitializer/>
 				<FeaturesSection />
 				<div className="h-[50vh] flex items-center justify-center mb-12">
 					<div className="text-center">

@@ -1,8 +1,8 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
+import { getFirestore, collection, getDocs, query, where, addDoc, doc, getDoc, updateDoc, deleteDoc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 
 // Firebaseの設定
 // 注: 実際の値は.env.localから取得
@@ -26,4 +26,7 @@ const functions = getFunctions(app, 'asia-northeast1'); // 東京リージョン
 // 認証プロバイダー
 const googleProvider = new GoogleAuthProvider();
 
-export { app, auth, db, storage, functions, googleProvider };
+export {
+	app, auth, db, storage, functions, googleProvider,
+	collection, getDocs, query, where, addDoc, doc, getDoc, updateDoc, deleteDoc
+  };

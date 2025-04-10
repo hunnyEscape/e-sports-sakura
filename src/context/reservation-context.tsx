@@ -2,14 +2,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './auth-context';
 import { SeatDocument, ReservationDocument, BranchDocument } from '@/types/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 interface SelectedTimeSlots {
 	seatId: string;
 	startTime: string;
 	endTime: string;
 }
-interface DateAvailability {[date: string]: 'available' | 'limited' | 'booked' | 'unknown';}
+interface DateAvailability { [date: string]: 'available' | 'limited' | 'booked' | 'unknown'; }
 interface ReservationContextType {
 	branches: BranchDocument[];
 	selectedBranch: BranchDocument | null;
@@ -95,36 +95,43 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				throw new Error('支店が選択されていません');
 			}
 
-			// 支店別の座席情報を模擬的に生成
-			const mockSeats: SeatDocument[] = [];
-			const branchCode = branches.find(b => b.branchId === targetBranchId)?.branchCode || 'UNKNOWN';
-
-			// 支店によって座席数を変える
-			const seatCount = targetBranchId === 'tachikawa' ? 12 :
-				targetBranchId === 'shinjuku' ? 20 :
-					targetBranchId === 'akihabara' ? 16 : 10;
-
-			for (let i = 1; i <= seatCount; i++) {
-				const isHighSpec = i <= Math.ceil(seatCount / 2); // 半分は高スペックPCとする
-				mockSeats.push({
-					seatId: `${branchCode}-PC-${i.toString().padStart(2, '0')}`,
-					name: `Gaming PC #${i}${isHighSpec ? ' (High-Spec)' : ''}`,
-					ipAddress: `192.168.${targetBranchId === 'tachikawa' ? '1' : targetBranchId === 'shinjuku' ? '2' : '3'}.${i.toString().padStart(3, '0')}`,
-					ratePerHour: 400, // 高スペックPCは料金が高い
-					status: 'available',
-					branchCode: branchCode,
-					branchName: branches.find(b => b.branchId === targetBranchId)?.branchName || 'Unknown',
-					seatType: 'PC',
-					seatNumber: i,
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				});
+			// 支店情報を取得
+			const targetBranch = branches.find(b => b.branchId === targetBranchId);
+			if (!targetBranch) {
+				throw new Error('支店情報が見つかりません');
 			}
 
-			setSeats(mockSeats);
+			console.log(`支店コード「${targetBranch.branchCode}」の座席情報を取得します`);
+
+			// Firestoreから座席データの取得を試みる
+			const seatsQuery = query(
+				collection(db, 'seats'),
+				where('branchCode', '==', targetBranch.branchCode),
+				where('status', '==', 'available')
+			);
+
+			const seatsSnapshot = await getDocs(seatsQuery);
+
+			if (seatsSnapshot.empty) {
+				console.log(`支店コード「${targetBranch.branchCode}」の座席データが見つかりません。座席データを初期化してください。`);
+				setSeats([]);  // 空の配列を設定
+			} else {
+				// Firestoreから取得した座席データを処理
+				const seatsData: SeatDocument[] = [];
+				seatsSnapshot.forEach((doc) => {
+					seatsData.push({
+						seatId: doc.id,
+						...doc.data()
+					} as SeatDocument);
+				});
+
+				console.log(`${seatsData.length}件の座席データを取得しました`);
+				setSeats(seatsData);
+			}
 		} catch (err) {
 			console.error('Error fetching seats:', err);
 			setError('座席情報の取得に失敗しました。もう一度お試しください。');
+			setSeats([]); // エラー時は空の配列を設定
 		} finally {
 			setIsLoading(false);
 		}

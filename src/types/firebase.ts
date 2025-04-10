@@ -90,7 +90,7 @@ export interface SeatDocument {
 	ratePerHour: number;
 	status: 'available' | 'in-use' | 'maintenance';
 	availableHours?: {
-		[key: string]: string[];
+		[key: string]: string;
 	};
 	maxAdvanceBookingDays?: number;
 	createdAt: Timestamp | string;

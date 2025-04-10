@@ -1,3 +1,5 @@
+// src/components/reservation/time-grid.tsx
+'use client';
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useReservation } from '@/context/reservation-context';
@@ -5,24 +7,12 @@ import { ArrowRight, Calendar, Clock, AlertCircle, Users, Plus, Minus, Check } f
 
 interface TimeGridProps {
 	date: Date;
-	onTimeSelect?: (reservations: SeatReservation[], people: number) => void;
+	onTimeSelect: (seatId: string, startTime: string, endTime: string) => void;
 }
 
 interface TimeSlot {
 	time: string;
 	formattedTime: string;
-}
-
-interface Seat {
-	id: string;
-	name: string;
-	ratePerMinute: number;
-}
-
-interface SeatReservation {
-	seatId: string;
-	startTime: string;
-	endTime: string;
 }
 
 interface RangeSelection {
@@ -31,14 +21,26 @@ interface RangeSelection {
 }
 
 const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
-	const { seats, reservations, selectedTimeSlots, setSelectedTimeSlots } = useReservation();
+	const { seats, reservations, selectedTimeSlots, setSelectedTimeSlots, selectedBranch } = useReservation();
 	const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
 	const [seatRanges, setSeatRanges] = useState<Record<string, RangeSelection>>({});
 	const [people, setPeople] = useState<number>(1);
+	
+	// Filter seats by the selected branch
+	const filteredSeats = seats.filter(seat => 
+		selectedBranch && seat.branchCode === selectedBranch.branchCode
+	);
+
 	const generateTimeSlots = (): TimeSlot[] => {
 		const slots: TimeSlot[] = [];
-		const startHour = 10;
-		const endHour = 22;
+		
+		// Use branch business hours if available, otherwise default hours
+		const startHour = selectedBranch?.businessHours?.open 
+			? parseInt(selectedBranch.businessHours.open.split(':')[0]) 
+			: 10;
+		const endHour = selectedBranch?.businessHours?.close 
+			? parseInt(selectedBranch.businessHours.close.split(':')[0]) 
+			: 22;
 
 		for (let hour = startHour; hour <= endHour; hour++) {
 			for (let minute = 0; minute < 60; minute += 30) {
@@ -61,12 +63,12 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		if (!date) return false;
 
 		const dateStr = date.toISOString().split('T')[0];
-		const dateTimeStr = `${dateStr}T${timeSlot}:00`;
-
+		
 		return reservations.some(reservation =>
 			reservation.seatId === seatId &&
-			new Date(reservation.startTime) <= new Date(dateTimeStr) &&
-			new Date(reservation.endTime) > new Date(dateTimeStr)
+			reservation.date === dateStr &&
+			reservation.startTime <= timeSlot &&
+			reservation.endTime > timeSlot
 		);
 	};
 
@@ -158,84 +160,60 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		return `${timeDate.getHours().toString().padStart(2, '0')}:${timeDate.getMinutes().toString().padStart(2, '0')}`;
 	};
 
-	// Update selected time slots when selections change
-	useEffect(() => {
-		// Create an array of SeatReservation objects
-		const newSelectedTimeSlots: SeatReservation[] = selectedSeatIds
-			.filter(seatId => seatRanges[seatId] && seatRanges[seatId].rangeStart)
-			.map(seatId => {
-				const range = seatRanges[seatId];
-				return {
-					seatId,
-					startTime: range.rangeStart as string,
-					endTime: range.rangeEnd
-						? calculateEndTime(range.rangeEnd)
-						: calculateEndTime(range.rangeStart as string)
-				};
-			});
-
-		// Update context with multiple seat selections
-		if (newSelectedTimeSlots.length > 0) {
-			// If there's a setSelectedTimeSlots that expects an array
-			// This might require updating the context to support multiple selections
-			if (Array.isArray(selectedTimeSlots)) {
-				setSelectedTimeSlots(newSelectedTimeSlots);
-			} else {
-				// Fallback for backward compatibility - just use the first selection
-				const firstSelection = newSelectedTimeSlots[0];
-				setSelectedTimeSlots(firstSelection);
-			}
-		} else {
-			// Clear selection
-			if (Array.isArray(selectedTimeSlots)) {
-				setSelectedTimeSlots([]);
-			} else {
-				setSelectedTimeSlots({ seatId: '', startTime: '', endTime: '' });
-			}
-		}
-	}, [seatRanges, selectedSeatIds, setSelectedTimeSlots]);
-
-	// Handle increase/decrease people count
-	const handlePeopleChange = (increment: boolean) => {
-		setPeople(prev => {
-			if (increment) {
-				return prev < 10 ? prev + 1 : prev;
-			} else {
-				return prev > 1 ? prev - 1 : prev;
-			}
-		});
-	};
-
-	// Handle continue to confirmation
-	const handleContinue = () => {
-		if (selectedSeatIds.length > 0 && onTimeSelect) {
-			const seatReservations = selectedSeatIds
-				.filter(seatId => seatRanges[seatId] && seatRanges[seatId].rangeStart)
-				.map(seatId => {
-					const range = seatRanges[seatId];
-					return {
-						seatId,
-						startTime: range.rangeStart as string,
-						endTime: range.rangeEnd
-							? calculateEndTime(range.rangeEnd)
-							: calculateEndTime(range.rangeStart as string)
-					};
-				});
-
-			onTimeSelect(seatReservations, people);
-		}
-	};
-
 	// Reset selection when date changes
 	useEffect(() => {
 		setSelectedSeatIds([]);
 		setSeatRanges({});
-		if (Array.isArray(selectedTimeSlots)) {
-			setSelectedTimeSlots([]);
-		} else {
-			setSelectedTimeSlots({ seatId: '', startTime: '', endTime: '' });
-		}
+		setSelectedTimeSlots({
+			seatId: '',
+			startTime: '',
+			endTime: ''
+		});
 	}, [date, setSelectedTimeSlots]);
+
+	// Update selected time slots when selections change
+	useEffect(() => {
+		// For now, we're handling just one seat - pick the first one in the selection
+		// Your TimeGrid component supports multiple seat selection, but we'll just use one here since
+		// your reservation flow seems to expect a single seat.
+		if (selectedSeatIds.length > 0) {
+			const seatId = selectedSeatIds[0]; // Just take the first selected seat
+			const range = seatRanges[seatId];
+			
+			if (range && range.rangeStart) {
+				setSelectedTimeSlots({
+					seatId,
+					startTime: range.rangeStart,
+					endTime: range.rangeEnd 
+						? calculateEndTime(range.rangeEnd)
+						: calculateEndTime(range.rangeStart)
+				});
+			}
+		} else {
+			// Clear selection
+			setSelectedTimeSlots({
+				seatId: '',
+				startTime: '',
+				endTime: ''
+			});
+		}
+	}, [seatRanges, selectedSeatIds, setSelectedTimeSlots]);
+
+	// Handle continue to confirmation
+	const handleContinue = () => {
+		if (selectedSeatIds.length > 0) {
+			const seatId = selectedSeatIds[0]; // Just take the first selected seat
+			const range = seatRanges[seatId];
+			
+			if (range && range.rangeStart) {
+				const endTime = range.rangeEnd 
+					? calculateEndTime(range.rangeEnd) 
+					: calculateEndTime(range.rangeStart);
+				
+				onTimeSelect(seatId, range.rangeStart, endTime);
+			}
+		}
+	};
 
 	// Format date for display
 	const formatDate = (date: Date): string => {
@@ -271,7 +249,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 	const selectedSeatsInfo = selectedSeatIds
 		.filter(id => seatRanges[id] && seatRanges[id].rangeStart)
 		.map(id => {
-			const seat = seats.find(s => s.id === id);
+			const seat = filteredSeats.find(s => s.seatId === id);
 			const range = seatRanges[id];
 
 			if (!seat || !range || !range.rangeStart) return null;
@@ -287,12 +265,16 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 			let endMinutes = endParts[0] * 60 + endParts[1] + 30; // Add 30 minutes
 
 			const duration = endMinutes - startMinutes;
+			
+			// Calculate rate per minute from ratePerHour
+			const ratePerMinute = seat.ratePerHour ? seat.ratePerHour / 60 : 0;
 
 			return {
 				seat,
 				startTime: range.rangeStart,
 				endTime,
-				duration
+				duration,
+				ratePerMinute
 			};
 		})
 		.filter(Boolean);
@@ -306,9 +288,40 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 	const calculateTotalCost = (): number => {
 		return selectedSeatsInfo.reduce((total, info) => {
 			if (!info) return total;
-			return total + (info.seat.ratePerMinute * info.duration);
+			return total + (info.ratePerMinute * info.duration);
 		}, 0);
 	};
+
+	// Check if branch is selected and there are no available seats
+	if (!selectedBranch) {
+		return (
+			<div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800">
+				<p>支店が選択されていません。戻って支店を選択してください。</p>
+			</div>
+		);
+	}
+
+	if (filteredSeats.length === 0) {
+		return (
+			<div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800">
+				<p>この支店には利用可能な座席がありません。別の支店を選択してください。</p>
+			</div>
+		);
+	}
+
+	// Check if the branch is closed on the selected date
+	if (selectedBranch?.businessHours?.dayOff) {
+		const dayOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
+		const isDayOff = selectedBranch.businessHours.dayOff.includes(dayOfWeek);
+		
+		if (isDayOff) {
+			return (
+				<div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800">
+					<p>選択された日付は定休日です。別の日を選んでください。</p>
+				</div>
+			);
+		}
+	}
 
 	return (
 		<div className="space-y-6">
@@ -329,35 +342,35 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 						))}
 					</div>
 
-					{/*Seats and time slots grid */}
-					{seats.map((seat) => (
+					{/* Seats and time slots grid */}
+					{filteredSeats.map((seat) => (
 						<div
-							key={seat.id}
+							key={seat.seatId}
 							className="flex border-b border-border/20 hover:bg-background/5"
 						>
 							{/* Seat name */}
 							<div className="w-32 flex-shrink-0 p-2 border-r border-border/20 flex flex-col sticky left-0 bg-background">
 								<div className="flex items-center justify-between">
 									<span className="font-medium text-foreground">{seat.name}</span>
-									{selectedSeatIds.includes(seat.id) && (
+									{selectedSeatIds.includes(seat.seatId) && (
 										<Check className="h-4 w-4 text-accent"/>
 									)}
 								</div>
-								<span className="text-xs text-foreground/60">¥{seat.ratePerMinute}/分</span>
+								<span className="text-xs text-foreground/60">¥{seat.ratePerHour}/時間</span>
 							</div>
 
 							{/* Time slots */}
 							{timeSlots.map((slot) => {
-								const isSlotReserved = isReserved(seat.id, slot.time);
-								const isSelected = isInSelectedRange(seat.id, slot.time);
+								const isSlotReserved = isReserved(seat.seatId, slot.time);
+								const isSelected = isInSelectedRange(seat.seatId, slot.time);
 
-								const range = seatRanges[seat.id] || { rangeStart: null, rangeEnd: null };
+								const range = seatRanges[seat.seatId] || { rangeStart: null, rangeEnd: null };
 								const isRangeStart = range.rangeStart === slot.time;
 								const isRangeEnd = range.rangeEnd === slot.time;
 
 								return (
 									<motion.div
-										key={`${seat.id}-${slot.time}`}
+										key={`${seat.seatId}-${slot.time}`}
 										className={`
                       w-16 h-16 flex-shrink-0 border-l border-border/20
                       ${isSlotReserved ? 'bg-border/50 cursor-not-allowed' : 'cursor-pointer'}
@@ -369,7 +382,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
                     `}
 										whileHover={!isSlotReserved ? { scale: 1.05 } : {}}
 										whileTap={!isSlotReserved ? { scale: 0.95 } : {}}
-										onClick={() => !isSlotReserved && handleSlotClick(seat.id, slot.time)}
+										onClick={() => !isSlotReserved && handleSlotClick(seat.seatId, slot.time)}
 									>
 										{(isRangeStart || isRangeEnd) && (
 											<div className="w-2 h-2 bg-white rounded-full"></div>
@@ -402,7 +415,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 									{selectedSeatsInfo.map((info, index) => {
 										if (!info) return null;
 										return (
-											<div key={info.seat.id} className="p-2 bg-border/10 rounded-md">
+											<div key={info.seat.seatId} className="p-2 bg-border/10 rounded-md">
 												<div className="font-medium text-foreground/80">
 													{info.seat.name}
 												</div>
@@ -414,7 +427,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 													</span>
 												</div>
 												<div className="text-sm text-foreground/70 mt-1">
-													予想料金: ¥{(info.seat.ratePerMinute * info.duration).toLocaleString()}
+													予想料金: ¥{Math.round(info.ratePerMinute * info.duration).toLocaleString()}
 												</div>
 											</div>
 										);
@@ -422,7 +435,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 								</div>
 
 								<div className="pt-2 mt-2 border-t border-border/20 font-medium text-foreground/80">
-									合計予想料金: ¥{calculateTotalCost().toLocaleString()}
+									合計予想料金: ¥{Math.round(calculateTotalCost()).toLocaleString()}
 								</div>
 							</div>
 						</div>
@@ -442,7 +455,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 				<div className="bg-border/5 p-3 rounded-lg flex items-start">
 					<AlertCircle className="text-accent mr-2 mt-0.5 flex-shrink-0" size={18} />
 					<p className="text-sm text-foreground/80">
-						希望する座席と開始時間をクリックしてください。複数の座席を同時に予約できます。
+						希望する座席と開始時間をクリックしてください。座席を選択してから、時間枠をクリックして予約範囲を指定できます。
 					</p>
 				</div>
 			)}
