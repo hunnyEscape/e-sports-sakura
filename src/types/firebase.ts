@@ -1,8 +1,5 @@
-// src/types/firebase.ts
-
 import { Timestamp } from './index';
 // src/types/firebase.ts に追加
-
 // 支店情報
 export interface BranchDocument {
 	branchId: string;
@@ -12,9 +9,9 @@ export interface BranchDocument {
 	phoneNumber?: string;
 	email?: string;
 	businessHours: {
-	  open: string;  // "10:00" のような形式
-	  close: string; // "22:00" のような形式
-	  dayOff?: string[]; // 定休日（"sunday", "monday" など）
+		open: string;  // "10:00" のような形式
+		close: string; // "22:00" のような形式
+		dayOff?: string[]; // 定休日（"sunday", "monday" など）
 	};
 	totalSeats: number;
 	description?: string;
@@ -22,12 +19,12 @@ export interface BranchDocument {
 	layoutImagePath?: string;
 	mapImagePath?: string;
 	location?: {
-	  latitude: number;
-	  longitude: number;
+		latitude: number;
+		longitude: number;
 	};
 	createdAt: Timestamp | string;
 	updatedAt: Timestamp | string;
-  }
+}
 
 // Firestore User ドキュメントのインターフェース
 export interface UserDocument {
@@ -74,7 +71,7 @@ export interface SessionDocument {
 	endTime: Timestamp | string;
 	durationMinutes: number;
 	amount: number;
-	pricePerMinute: number;
+	pricePerHour: number;
 	active: boolean;
 }
 
@@ -112,4 +109,18 @@ export interface ReservationDocument {
 	notes?: string;
 	createdAt: Timestamp | string;
 	updatedAt: Timestamp | string;
+}
+
+// 利用履歴情報
+export interface UsageHistoryDocument {
+	id?: string;            // ドキュメントID
+	userId: string;         // ユーザーID
+	amount: number;         // 金額
+	description: string;    // 説明（例：「テスト利用 (60分)」）
+	durationMinutes: number; // 利用時間（分）
+	invoiceId?: string;     // 請求ID
+	isTest?: boolean;       // テスト利用フラグ
+	status: string;         // 状態（"paid", "pending"など）
+	timestamp: Timestamp | string; // 利用日時
+	seatId?: string;        // 座席ID（あれば）
 }

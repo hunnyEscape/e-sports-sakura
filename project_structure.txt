@@ -111,6 +111,7 @@
 │   │   │   ├── calendar-view.tsx
 │   │   │   ├── login-prompt.tsx
 │   │   │   ├── reservation-form.tsx
+│   │   │   ├── seat-selector.tsx
 │   │   │   └── time-grid.tsx
 │   │   ├── ui
 │   │   │   ├── PageTransition.tsx
@@ -145,4 +146,4 @@
 ├── tailwind.config.js
 └── tsconfig.json
 
-46 directories, 99 files
+46 directories, 100 files

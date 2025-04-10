@@ -35,6 +35,7 @@ export default function DashboardPage() {
 		<ProtectedRoute>
 			<ReservationProvider>
 				<div className="min-h-screen bg-background text-foreground">
+					{/* ヘッダー */}
 					<header className="bg-background/80 backdrop-blur-sm border-b border-border sticky top-0 z-10">
 						<div className="container mx-auto px-4">
 							<div className="flex items-center justify-between h-16">

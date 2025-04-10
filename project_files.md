@@ -93,7 +93,7 @@ export interface SeatDocument {
 	ratePerHour: number;
 	status: 'available' | 'in-use' | 'maintenance';
 	availableHours?: {
-		[key: string]: string[];
+		[key: string]: string;
 	};
 	maxAdvanceBookingDays?: number;
 	createdAt: Timestamp | string;
@@ -603,9 +603,9 @@ export async function initializeStripeWithPaymentMethods(): Promise<{
 
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
+import { getFirestore, collection, getDocs, query, where, addDoc, doc, getDoc, updateDoc, deleteDoc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 
 // Firebaseの設定
 // 注: 実際の値は.env.localから取得
@@ -629,7 +629,10 @@ const functions = getFunctions(app, 'asia-northeast1'); // 東京リージョン
 // 認証プロバイダー
 const googleProvider = new GoogleAuthProvider();
 
-export { app, auth, db, storage, functions, googleProvider };-e 
+export {
+	app, auth, db, storage, functions, googleProvider,
+	collection, getDocs, query, where, addDoc, doc, getDoc, updateDoc, deleteDoc
+  };-e 
 ### FILE: ./src/lib/firebase-admin.ts
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
@@ -1411,11 +1414,10 @@ export default function DashboardPage() {
 		<ProtectedRoute>
 			<ReservationProvider>
 				<div className="min-h-screen bg-background text-foreground">
-					{/* ヘッダー */}
 					<header className="bg-background/80 backdrop-blur-sm border-b border-border sticky top-0 z-10">
 						<div className="container mx-auto px-4">
 							<div className="flex items-center justify-between h-16">
-								<Link href="/dashboard" className="flex items-center">
+								<Link href="/lp" className="flex items-center">
 									<Image
 										src="/images/logo.svg"
 										alt="E-Sports Sakura"
@@ -1627,7 +1629,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
-import { useReservation } from '@/context/reservation-context';
+import { useReservation, SelectedTimeSlotsItem } from '@/context/reservation-context';
 import { ReservationProvider } from '@/context/reservation-context';
 import { ChevronLeft } from 'lucide-react';
 import { BranchDocument } from '@/types/firebase';
@@ -1636,10 +1638,9 @@ import CalendarView from '@/components/reservation/calendar-view';
 import TimeGrid from '@/components/reservation/time-grid';
 import ReservationForm from '@/components/reservation/reservation-form';
 import LoginPrompt from '@/components/reservation/login-prompt';
-//import SeatInitializer from '@/components/ini/create-seat-documents';
 
 enum ReservationStep {
-	SELECT_BRANCH,  // 新しいステップ
+	SELECT_BRANCH,
 	SELECT_DATE,
 	SELECT_TIME,
 	CONFIRM
@@ -1647,18 +1648,13 @@ enum ReservationStep {
 
 const ReservationPageContent: React.FC = () => {
 	const { user, loading } = useAuth();
-	const { setSelectedBranch } = useReservation(); // ここでフックを呼び出す
+	const { setSelectedBranch, selectedTimeSlots, clearSelectedTimeSlots } = useReservation();
 	const router = useRouter();
 
 	const [currentStep, setCurrentStep] = useState<ReservationStep>(ReservationStep.SELECT_BRANCH);
 	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 	const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-	const [reservationDetails, setReservationDetails] = useState<{
-		date: Date;
-		seatId: string;
-		startTime: string;
-		endTime: string;
-	} | null>(null);
+	const [pendingTimeSlots, setPendingTimeSlots] = useState<SelectedTimeSlotsItem[]>([]);
 
 	// Check for pending reservation in sessionStorage (after login/register)
 	useEffect(() => {
@@ -1667,14 +1663,28 @@ const ReservationPageContent: React.FC = () => {
 			if (pendingReservation) {
 				try {
 					const details = JSON.parse(pendingReservation);
-					setReservationDetails({
-						date: new Date(details.date),
-						seatId: details.seatId,
-						startTime: details.startTime,
-						endTime: details.endTime
-					});
-					setSelectedDate(new Date(details.date));
-					setCurrentStep(ReservationStep.CONFIRM);
+					if (Array.isArray(details)) {
+						// 複数座席予約に対応
+						const timeSlots = details.map((item: any) => ({
+							seatId: item.seatId,
+							seatName: item.seatName,
+							startTime: item.startTime,
+							endTime: item.endTime
+						}));
+						setPendingTimeSlots(timeSlots);
+						setSelectedDate(new Date(details[0].date));
+						setCurrentStep(ReservationStep.CONFIRM);
+					} else {
+						// 後方互換性のため、単一座席予約も処理
+						const timeSlot = {
+							seatId: details.seatId,
+							startTime: details.startTime,
+							endTime: details.endTime
+						};
+						setPendingTimeSlots([timeSlot]);
+						setSelectedDate(new Date(details.date));
+						setCurrentStep(ReservationStep.CONFIRM);
+					}
 
 					// Clear the pending reservation
 					sessionStorage.removeItem('pendingReservation');
@@ -1687,7 +1697,6 @@ const ReservationPageContent: React.FC = () => {
 
 	// 支店選択ハンドラー
 	const handleBranchSelect = (branch: BranchDocument) => {
-		// useReservationフックを使用した結果をここで使う
 		setSelectedBranch(branch);
 		setCurrentStep(ReservationStep.SELECT_DATE);
 	};
@@ -1698,26 +1707,15 @@ const ReservationPageContent: React.FC = () => {
 		setCurrentStep(ReservationStep.SELECT_TIME);
 	};
 
-	// Handle time selection
-	const handleTimeSelect = (seatId: string, startTime: string, endTime: string) => {
+	// Handle time selection - 複数座席対応
+	const handleTimeSelect = (timeSlots: SelectedTimeSlotsItem[]) => {
 		if (!user && !loading) {
 			// Show login prompt for non-logged in users
-			setReservationDetails({
-				date: selectedDate!,
-				seatId,
-				startTime,
-				endTime
-			});
+			setPendingTimeSlots(timeSlots);
 			setShowLoginPrompt(true);
 			return;
 		}
 
-		setReservationDetails({
-			date: selectedDate!,
-			seatId,
-			startTime,
-			endTime
-		});
 		setCurrentStep(ReservationStep.CONFIRM);
 	};
 
@@ -1733,6 +1731,7 @@ const ReservationPageContent: React.FC = () => {
 		} else if (currentStep === ReservationStep.SELECT_TIME) {
 			setCurrentStep(ReservationStep.SELECT_DATE);
 		} else if (currentStep === ReservationStep.SELECT_DATE) {
+			clearSelectedTimeSlots();
 			setCurrentStep(ReservationStep.SELECT_BRANCH);
 		}
 	};
@@ -1811,8 +1810,8 @@ const ReservationPageContent: React.FC = () => {
 					<div className="flex items-center justify-between">
 						<div className="flex flex-col items-center">
 							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_BRANCH
-									? 'bg-accent text-white'
-									: 'bg-border text-foreground/70'
+								? 'bg-accent text-white'
+								: 'bg-border text-foreground/70'
 								}`}>
 								1
 							</div>
@@ -1820,14 +1819,14 @@ const ReservationPageContent: React.FC = () => {
 						</div>
 
 						<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_BRANCH
-								? 'bg-accent'
-								: 'bg-border'
+							? 'bg-accent'
+							: 'bg-border'
 							}`} />
 
 						<div className="flex flex-col items-center">
 							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_DATE
-									? 'bg-accent text-white'
-									: 'bg-border text-foreground/70'
+								? 'bg-accent text-white'
+								: 'bg-border text-foreground/70'
 								}`}>
 								2
 							</div>
@@ -1835,14 +1834,14 @@ const ReservationPageContent: React.FC = () => {
 						</div>
 
 						<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_DATE
-								? 'bg-accent'
-								: 'bg-border'
+							? 'bg-accent'
+							: 'bg-border'
 							}`} />
 
 						<div className="flex flex-col items-center">
 							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.SELECT_TIME
-									? 'bg-accent text-white'
-									: 'bg-border text-foreground/70'
+								? 'bg-accent text-white'
+								: 'bg-border text-foreground/70'
 								}`}>
 								3
 							</div>
@@ -1850,14 +1849,14 @@ const ReservationPageContent: React.FC = () => {
 						</div>
 
 						<div className={`flex-1 h-1 mx-2 ${currentStep > ReservationStep.SELECT_TIME
-								? 'bg-accent'
-								: 'bg-border'
+							? 'bg-accent'
+							: 'bg-border'
 							}`} />
 
 						<div className="flex flex-col items-center">
 							<div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= ReservationStep.CONFIRM
-									? 'bg-accent text-white'
-									: 'bg-border text-foreground/70'
+								? 'bg-accent text-white'
+								: 'bg-border text-foreground/70'
 								}`}>
 								4
 							</div>
@@ -1870,10 +1869,13 @@ const ReservationPageContent: React.FC = () => {
 				{renderStep()}
 
 				{/* Login prompt */}
-				{showLoginPrompt && reservationDetails && (
+				{showLoginPrompt && selectedDate && pendingTimeSlots.length > 0 && (
 					<LoginPrompt
 						onClose={() => setShowLoginPrompt(false)}
-						reservationDetails={reservationDetails}
+						reservationDetails={pendingTimeSlots.map(slot => ({
+							...slot,
+							date: selectedDate.toISOString()
+						}))}
 					/>
 				)}
 			</motion.div>
@@ -1906,6 +1908,7 @@ import AccessSection from '@/components/lp/access-section';
 import CtaSection from '@/components/lp/cta-section';
 import LpHeader from '@/components/lp/lp-header';
 import LpFooter from '@/components/lp/lp-footer';
+import SeatInitializer from '@/components/ini/create-seat-documents';
 
 export default function LandingPage() {
 	return (
@@ -1913,6 +1916,7 @@ export default function LandingPage() {
 			<LpHeader />
 			<div className="pt-16">
 				<HeroSection />
+				<SeatInitializer/>
 				<FeaturesSection />
 				<div className="h-[50vh] flex items-center justify-center mb-12">
 					<div className="text-center">
@@ -2203,7 +2207,7 @@ export default function HomePage() {
 			<header className="bg-background/80 backdrop-blur-sm border-b border-border">
 				<div className="container mx-auto px-4">
 					<div className="flex items-center justify-between h-16">
-						<Link href="/" className="flex items-center">
+						<Link href="/lp" className="flex items-center">
 							<Image
 								src="/images/logo.svg"
 								alt="E-Sports Sakura"
@@ -4416,74 +4420,178 @@ export function useVeriff(): UseVeriffReturn {
 }-e 
 ### FILE: ./src/components/ini/create-seat-documents.tsx
 
+'use client';
 import React, { useState } from 'react';
-import { collection, doc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase'; // 先ほど見せていただいたFirebase初期化ファイルからdbをインポート
+import { collection, setDoc, getDocs, query, where, doc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { SeatDocument, BranchDocument } from '@/types/firebase';
 
-export default function SeatInitializer() {
-	const [isLoading, setIsLoading] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+// This is a utility component for initializing seats in Firestore
+// It's not part of the main app flow, but can be used for setup
+const SeatInitializer: React.FC = () => {
+	const [status, setStatus] = useState<string>('');
+	const [isInitializing, setIsInitializing] = useState<boolean>(false);
+	const [selectedBranchId, setSelectedBranchId] = useState<string>('');
+	const [branches, setBranches] = useState<BranchDocument[]>([]);
 
-	const createSeatDocuments = async () => {
-		setIsLoading(true);
-		setError(null);
+	// Fetch branches
+	const fetchBranches = async () => {
+		setStatus('支店情報を取得中...');
+		try {
+			const branchesCollection = collection(db, 'branch');
+			const branchesSnapshot = await getDocs(branchesCollection);
+
+			const branchesData: BranchDocument[] = [];
+			branchesSnapshot.forEach((doc) => {
+				branchesData.push({
+					branchId: doc.id,
+					...doc.data()
+				} as BranchDocument);
+			});
+
+			setBranches(branchesData);
+			setStatus(`${branchesData.length}店舗を取得しました`);
+		} catch (error) {
+			console.error('Error fetching branches:', error);
+			setStatus('支店情報の取得に失敗しました');
+		}
+	};
+
+	// Initialize seats for selected branch
+	const initializeSeats = async () => {
+		if (!selectedBranchId) {
+			setStatus('支店を選択してください');
+			return;
+		}
+
+		setIsInitializing(true);
+		setStatus('座席情報を初期化中...');
 
 		try {
-			const seatNumbers = [1,2, 3, 4, 5, 6, 7, 8];
-			const seatsCollection = collection(db, 'seats');
-
-			for (const seatNumber of seatNumbers) {
-				const seatId = `TACH-${seatNumber.toString().padStart(2, '0')}`;
-				const seatDoc = {
-					seatId: seatId,
-					branchCode: 'TACH',
-					branchName: '立川店',
-					seatType: 'PC',
-					seatNumber: seatNumber,
-					name: `Gaming PC #${seatNumber}`,
-					ipAddress: `192.000.123.00${seatNumber}`,
-					ratePerHour: {
-						'weekday night': 400,
-						'weekday noon': 1300,
-						'weekend': 400
-					},
-					status: 'available',
-					availableHours: {
-						'weekday night': ['18:00-23:00'],
-						'weekday noon': ['9:00-17:00'],
-						'weekend': ['9:00-23:00']
-					},
-					maxAdvanceBookingDays: 90,
-					createdAt: new Date('2025-04-08T14:00:00').toISOString(),
-					updatedAt: new Date('2025-04-08T14:00:00').toISOString()
-				};
-
-				// 各座席ドキュメントをFirestoreに保存
-				await setDoc(doc(seatsCollection, seatId), seatDoc);
+			const targetBranch = branches.find(b => b.branchId === selectedBranchId);
+			if (!targetBranch) {
+				throw new Error('選択された支店が見つかりません');
 			}
 
-			alert('座席情報をFirestoreに保存しました！');
-		} catch (err) {
-			console.error('座席情報の保存中にエラーが発生しました:', err);
-			setError('座席情報の保存に失敗しました');
+			// Check if seats already exist for this branch
+			const existingSeatsQuery = query(
+				collection(db, 'seats'),
+				where('branchCode', '==', targetBranch.branchCode)
+			);
+
+			const existingSeatsSnapshot = await getDocs(existingSeatsQuery);
+			// Determine seat count based on branch
+			const seatCount =
+				selectedBranchId === 'tachikawa' ? 8 :
+					selectedBranchId === 'shinjuku' ? 20 :
+						selectedBranchId === 'akihabara' ? 16 : 10;
+
+			// シートデータを作成して追加
+			let createdCount = 0;
+			for (let i = 1; i <= seatCount; i++) {
+				//const isHighSpec = i <= Math.ceil(seatCount / 2); // 半分は高スペックPCとする
+
+				// カスタムドキュメントID（支店コード-NN形式）を作成
+				const seatId = `${targetBranch.branchCode}-${i.toString().padStart(2, '0')}`;
+
+				// ドキュメント参照を取得
+				const seatRef = doc(db, 'seats', seatId);
+
+				// データを準備
+				const seatData = {
+					name: `PC #${i}`,
+					branchCode: targetBranch.branchCode,
+					branchName: targetBranch.branchName,
+					seatType: 'Standard PC',
+					seatNumber: i,
+					ipAddress: `192.168.${selectedBranchId === 'tachikawa' ? '1' : selectedBranchId === 'shinjuku' ? '2' : '3'}.${i.toString().padStart(3, '0')}`,
+					ratePerHour: 400,
+					status: 'available',
+					// スクリーンショットで確認された構造に合わせて定義
+					availableHours: {
+						weekday_night: "18:00-23:00",
+						weekday_noon: "9:00-17:00",
+						weekend: "9:00-23:00"
+					},
+					maxAdvanceBookingDays: 30,
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				};
+
+				// setDocを使ってカスタムIDでドキュメントを作成
+				await setDoc(seatRef, seatData);
+				createdCount++;
+				setStatus(`座席を作成中... (${createdCount}/${seatCount})`);
+			}
+
+			setStatus(`${createdCount}席の座席情報を作成しました`);
+		} catch (error) {
+			console.error('Error initializing seats:', error);
+			setStatus('座席情報の初期化に失敗しました: ' + (error as Error).message);
 		} finally {
-			setIsLoading(false);
+			setIsInitializing(false);
 		}
 	};
 
 	return (
-		<div className="p-4">
-			<button
-				onClick={createSeatDocuments}
-				disabled={isLoading}
-				className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50"
-			>
-				{isLoading ? '保存中...' : '座席情報を保存 (TACH-02 to TACH-08)'}
-			</button>
-			{error && <p className="text-red-500 mt-2">{error}</p>}
+		<div className="max-w-md mx-auto p-6 bg-background border border-border rounded-lg shadow-sm">
+			<h2 className="text-xl font-semibold mb-4">座席データ初期化ツール</h2>
+			<p className="text-sm text-foreground/70 mb-4">
+				このツールは、各支店の座席データをFirestoreに初期化するためのものです。
+				運用開始時に一度だけ実行してください。
+			</p>
+
+			<div className="space-y-4">
+				<button
+					onClick={fetchBranches}
+					disabled={isInitializing}
+					className="w-full py-2 bg-accent/80 hover:bg-accent text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+				>
+					支店情報を取得する
+				</button>
+
+				{branches.length > 0 && (
+					<div>
+						<label className="block text-sm font-medium text-foreground mb-1">
+							初期化する支店を選択
+						</label>
+						<select
+							value={selectedBranchId}
+							onChange={(e) => setSelectedBranchId(e.target.value)}
+							disabled={isInitializing}
+							className="w-full p-2 border border-border rounded-md bg-background disabled:opacity-50"
+						>
+							<option value="">支店を選択してください</option>
+							{branches.map((branch) => (
+								<option key={branch.branchId} value={branch.branchId}>
+									{branch.branchName} ({branch.branchCode})
+								</option>
+							))}
+						</select>
+					</div>
+				)}
+
+				{selectedBranchId && (
+					<button
+						onClick={initializeSeats}
+						disabled={isInitializing || !selectedBranchId}
+						className="w-full py-2 bg-highlight hover:bg-highlight/90 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+					>
+						{isInitializing ? '処理中...' : '座席データを初期化する'}
+					</button>
+				)}
+
+				{status && (
+					<div className={`p-3 rounded-md ${status.includes('失敗') ? 'bg-red-500/10 text-red-500' : 'bg-accent/10 text-accent'}`}>
+						{status}
+					</div>
+				)}
+			</div>
 		</div>
 	);
-}-e 
+};
+
+export default SeatInitializer;-e 
 ### FILE: ./src/components/auth/email-password-form.tsx
 
 'use client';
@@ -7141,19 +7249,26 @@ export default function QrCodeDisplay() {
 
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, Clock, MapPin, Loader, Ban, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, MapPin, Loader, Ban, CheckCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
+// 予約データの型定義
 interface Reservation {
-	id: string;
+	id?: string;
 	userId: string;
+	userEmail?: string;
 	seatId: string;
-	seatName: string;
+	seatName?: string;
+	branchId?: string;
+	branchName?: string;
 	date: string;
 	startTime: string;
 	endTime: string;
 	duration: number;
 	status: 'confirmed' | 'cancelled' | 'completed';
+	notes?: string;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -7164,93 +7279,112 @@ const ReservationHistory: React.FC = () => {
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [showAll, setShowAll] = useState(false);
+	const [isCancelling, setIsCancelling] = useState(false);
 
-	// Fetch reservations (mock implementation for now)
-	useEffect(() => {
+	// Fetch reservations from Firestore
+	const fetchReservations = async () => {
 		if (!user) return;
 
 		setIsLoading(true);
 		setError(null);
 
-		// Simulate API call with setTimeout
-		const timer = setTimeout(() => {
-			try {
-				// This would be an actual API call in production
-				const mockReservations: Reservation[] = [
-					{
-						id: 'res001',
-						userId: user.uid,
-						seatId: 'pc01',
-						seatName: 'Gaming PC #1',
-						date: '2025-04-10',
-						startTime: '14:00',
-						endTime: '16:00',
-						duration: 120,
-						status: 'completed',
-						createdAt: '2025-04-05T10:00:00Z',
-						updatedAt: '2025-04-05T10:00:00Z'
-					},
-					{
-						id: 'res002',
-						userId: user.uid,
-						seatId: 'pc02',
-						seatName: 'Gaming PC #2',
-						date: '2025-04-15',
-						startTime: '18:00',
-						endTime: '20:00',
-						duration: 120,
-						status: 'confirmed',
-						createdAt: '2025-04-05T15:30:00Z',
-						updatedAt: '2025-04-05T15:30:00Z'
-					},
-					{
-						id: 'res003',
-						userId: user.uid,
-						seatId: 'pc01',
-						seatName: 'Gaming PC #1',
-						date: '2025-04-08',
-						startTime: '20:00',
-						endTime: '22:00',
-						duration: 120,
-						status: 'cancelled',
-						createdAt: '2025-04-04T09:15:00Z',
-						updatedAt: '2025-04-04T14:20:00Z'
-					},
-					{
-						id: 'res004',
-						userId: user.uid,
-						seatId: 'pc03',
-						seatName: 'Standard PC #1',
-						date: '2025-04-20',
-						startTime: '10:00',
-						endTime: '12:00',
-						duration: 120,
-						status: 'confirmed',
-						createdAt: '2025-04-06T18:45:00Z',
-						updatedAt: '2025-04-06T18:45:00Z'
-					}
-				];
+		try {
+			console.log('Fetching reservations for user:', user.uid);
 
-				// Sort reservations by date (newest first for upcoming, oldest first for past)
-				const sortedReservations = mockReservations.sort((a, b) => {
-					if (a.status === 'confirmed' && b.status === 'confirmed') {
-						return new Date(a.date).getTime() - new Date(b.date).getTime();
-					} else if (a.status === 'completed' && b.status === 'completed') {
-						return new Date(b.date).getTime() - new Date(a.date).getTime();
-					}
-					return 0;
-				});
+			// Firestoreからユーザーの予約を取得
+			const reservationsRef = collection(db, 'reservations');
+			const reservationsQuery = query(
+				reservationsRef,
+				where('userId', '==', user.uid)
+			);
 
-				setReservations(sortedReservations);
+			const querySnapshot = await getDocs(reservationsQuery);
+
+			if (querySnapshot.empty) {
+				console.log('No reservations found');
+				setReservations([]);
 				setIsLoading(false);
-			} catch (err) {
-				console.error('Error fetching reservations:', err);
-				setError('予約履歴の取得に失敗しました。もう一度お試しください。');
-				setIsLoading(false);
+				return;
 			}
-		}, 1000);
 
-		return () => clearTimeout(timer);
+			console.log(`Found ${querySnapshot.size} reservations`);
+
+			// 現在の日付を取得
+			const today = new Date();
+			today.setHours(0, 0, 0, 0);
+			const todayStr = today.toISOString().split('T')[0];
+
+			// 予約データを処理
+			const reservationsData: Reservation[] = [];
+			querySnapshot.forEach((doc) => {
+				const data = doc.data() as Omit<Reservation, 'id'>;
+
+				// 基本的な型安全性チェック
+				if (!data.date || !data.startTime || !data.endTime || !data.seatId) {
+					console.warn('Skipping reservation with missing required fields:', doc.id);
+					return;
+				}
+
+				const reservation: Reservation = {
+					id: doc.id,
+					...data,
+					// 必須フィールドが欠けている場合のデフォルト値を設定
+					status: data.status || 'confirmed',
+					duration: data.duration || 0,
+					userId: data.userId || user.uid,
+					createdAt: data.createdAt || new Date().toISOString(),
+					updatedAt: data.updatedAt || new Date().toISOString()
+				};
+
+				// 過去の予約で、statusがconfirmedのものは自動的にcompletedに変更
+				if (reservation.status === 'confirmed' && reservation.date < todayStr) {
+					reservation.status = 'completed';
+
+					// Firestoreの更新は別途非同期で行う（UIブロックを避けるため）
+					updateReservationStatus(doc.id, 'completed').catch(console.error);
+				}
+
+				reservationsData.push(reservation);
+			});
+
+			console.log('Processed reservations:', reservationsData);
+
+			// 未来の予約は日付昇順、過去の予約は日付降順でソート
+			const sortedReservations = reservationsData.sort((a, b) => {
+				if (a.status === 'confirmed' && b.status === 'confirmed') {
+					return new Date(a.date).getTime() - new Date(b.date).getTime();
+				} else if ((a.status === 'completed' || a.status === 'cancelled') &&
+					(b.status === 'completed' || b.status === 'cancelled')) {
+					return new Date(b.date).getTime() - new Date(a.date).getTime();
+				}
+				return 0;
+			});
+
+			setReservations(sortedReservations);
+		} catch (err) {
+			console.error('Error fetching reservations:', err);
+			setError('予約履歴の取得に失敗しました。もう一度お試しください。');
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	// 予約ステータスを更新する非同期関数
+	const updateReservationStatus = async (reservationId: string, status: string) => {
+		try {
+			const reservationRef = doc(db, 'reservations', reservationId);
+			await updateDoc(reservationRef, {
+				status,
+				updatedAt: new Date().toISOString()
+			});
+			console.log(`Updated reservation ${reservationId} status to ${status}`);
+		} catch (err) {
+			console.error(`Failed to update reservation ${reservationId} status:`, err);
+		}
+	};
+
+	useEffect(() => {
+		fetchReservations();
 	}, [user]);
 
 	// Get upcoming reservations
@@ -7275,20 +7409,45 @@ const ReservationHistory: React.FC = () => {
 	};
 
 	// Handle cancel reservation
-	const handleCancelReservation = (reservationId: string) => {
-		if (!confirm('予約をキャンセルしますか？')) return;
+	const handleCancelReservation = async (reservationId: string) => {
+		if (!reservationId || !confirm('予約をキャンセルしますか？')) return;
 
-		// Update local state immediately for better UX
-		setReservations(prevReservations =>
-			prevReservations.map(reservation =>
-				reservation.id === reservationId
-					? { ...reservation, status: 'cancelled' }
-					: reservation
-			)
-		);
+		setIsCancelling(true);
 
-		// This would be an API call in production
-		console.log(`Cancelling reservation: ${reservationId}`);
+		try {
+			// Update local state immediately for better UX
+			setReservations(prevReservations =>
+				prevReservations.map(reservation =>
+					reservation.id === reservationId
+						? { ...reservation, status: 'cancelled' }
+						: reservation
+				)
+			);
+
+			// Update in Firestore
+			const reservationRef = doc(db, 'reservations', reservationId);
+			await updateDoc(reservationRef, {
+				status: 'cancelled',
+				updatedAt: new Date().toISOString()
+			});
+
+			console.log(`予約 ${reservationId} をキャンセルしました`);
+		} catch (err) {
+			console.error('Error cancelling reservation:', err);
+
+			// Revert local state if the operation failed
+			setReservations(prevReservations =>
+				prevReservations.map(reservation =>
+					reservation.id === reservationId && reservation.status === 'cancelled'
+						? { ...reservation, status: 'confirmed' }
+						: reservation
+				)
+			);
+
+			alert('予約のキャンセルに失敗しました。もう一度お試しください。');
+		} finally {
+			setIsCancelling(false);
+		}
 	};
 
 	// Reservation card component
@@ -7330,13 +7489,24 @@ const ReservationHistory: React.FC = () => {
 					{/* Cancel button for upcoming reservations */}
 					{isUpcoming && (
 						<button
-							onClick={() => handleCancelReservation(reservation.id)}
-							className="text-xs text-foreground/60 hover:text-red-400 transition-colors"
+							onClick={() => handleCancelReservation(reservation.id || '')}
+							disabled={isCancelling}
+							className="text-xs text-foreground/60 hover:text-red-400 transition-colors disabled:opacity-50"
 						>
-							キャンセル
+							{isCancelling ? '処理中...' : 'キャンセル'}
 						</button>
 					)}
 				</div>
+
+				{/* Branch name if available */}
+				{reservation.branchName && (
+					<div className="flex items-start mb-2">
+						<MapPin className="w-4 h-4 text-accent mr-2 mt-0.5 flex-shrink-0" />
+						<div className="text-foreground font-medium">
+							{reservation.branchName}支店
+						</div>
+					</div>
+				)}
 
 				{/* Date */}
 				<div className="flex items-start mb-2">
@@ -7361,7 +7531,7 @@ const ReservationHistory: React.FC = () => {
 				<div className="flex items-start">
 					<MapPin className="w-4 h-4 text-accent mr-2 mt-0.5 flex-shrink-0" />
 					<div className="text-foreground">
-						{reservation.seatName}
+						{reservation.seatName || reservation.seatId}
 					</div>
 				</div>
 			</motion.div>
@@ -7382,9 +7552,10 @@ const ReservationHistory: React.FC = () => {
 			<div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-center">
 				<p className="text-red-500 mb-2">{error}</p>
 				<button
-					onClick={() => window.location.reload()}
-					className="text-sm text-accent hover:underline"
+					onClick={fetchReservations}
+					className="mt-2 px-4 py-2 inline-flex items-center text-sm bg-accent/10 hover:bg-accent/20 text-accent rounded-md transition-colors"
 				>
+					<RefreshCw className="w-4 h-4 mr-2" />
 					再読み込み
 				</button>
 			</div>
@@ -7441,16 +7612,6 @@ const ReservationHistory: React.FC = () => {
 							</div>
 						</div>
 					)}
-
-					{/* New reservation button */}
-					<div className="mt-8 text-center">
-						<button
-							onClick={() => window.location.href = '/reservation'}
-							className="px-6 py-2 bg-accent text-white rounded-md hover:bg-accent/90 transition-colors"
-						>
-							新規予約をする
-						</button>
-					</div>
 				</>
 			)}
 		</div>
@@ -7571,7 +7732,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useReservation } from '@/context/reservation-context';
 import { useAuth } from '@/context/auth-context';
-import { Calendar, Clock, Info, CreditCard, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, Info, CreditCard, CheckCircle, X } from 'lucide-react';
 
 interface ReservationFormProps {
 	onSuccess?: () => void;
@@ -7585,36 +7746,12 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		selectedTimeSlots,
 		seats,
 		createReservation,
-		isLoading
+		isLoading,
+		selectedBranch
 	} = useReservation();
 
 	const [notes, setNotes] = useState('');
 	const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
-
-	// Get selected seat information
-	const selectedSeat = seats.find(seat => seat.id === selectedTimeSlots.seatId);
-
-	// Calculate reservation details
-	const calculateDuration = (): number => {
-		if (!selectedTimeSlots.startTime || !selectedTimeSlots.endTime) return 0;
-
-		const startParts = selectedTimeSlots.startTime.split(':').map(Number);
-		const endParts = selectedTimeSlots.endTime.split(':').map(Number);
-
-		const startMinutes = startParts[0] * 60 + startParts[1];
-		const endMinutes = endParts[0] * 60 + endParts[1];
-
-		return endMinutes - startMinutes;
-	};
-
-	const duration = calculateDuration();
-
-	const calculateTotalPrice = (): number => {
-		if (!selectedSeat) return 0;
-		return duration * selectedSeat.ratePerMinute;
-	};
-
-	const totalPrice = calculateTotalPrice();
 
 	// Format date for display
 	const formatDate = (date: Date | null): string => {
@@ -7628,27 +7765,58 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		return `${year}年${month}月${day}日(${dayOfWeek})`;
 	};
 
+	// 座席ごとの詳細情報を計算
+	const seatDetails = selectedTimeSlots.map(slot => {
+		const seat = seats.find(s => s.seatId === slot.seatId);
+		if (!seat) return null;
+
+		// 分数の計算
+		const startParts = slot.startTime.split(':').map(Number);
+		const endParts = slot.endTime.split(':').map(Number);
+		const startMinutes = startParts[0] * 60 + startParts[1];
+		const endMinutes = endParts[0] * 60 + endParts[1];
+		const duration = endMinutes - startMinutes;
+
+		// 料金計算
+		const ratePerMinute = seat.ratePerHour / 60;
+		const cost = Math.round(ratePerMinute * duration);
+
+		return {
+			seat,
+			slot,
+			duration,
+			cost
+		};
+	}).filter(Boolean);
+
+	// 合計金額の計算
+	const totalCost = seatDetails.reduce((sum, detail) => sum + (detail?.cost || 0), 0);
+
 	// Handle form submission
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 
-		if (!selectedDate || !selectedTimeSlots.seatId || !selectedTimeSlots.startTime || !selectedTimeSlots.endTime) {
+		if (!selectedDate || selectedTimeSlots.length === 0) {
 			return;
 		}
 
 		try {
 			const dateStr = selectedDate.toISOString().split('T')[0];
 
-			await createReservation({
+			// 複数の予約データを準備
+			const reservationsData = selectedTimeSlots.map(slot => ({
 				userId: user?.uid || '',
-				seatId: selectedTimeSlots.seatId,
+				seatId: slot.seatId,
+				seatName: slot.seatName || seats.find(s => s.seatId === slot.seatId)?.name || '',
 				date: dateStr,
-				startTime: selectedTimeSlots.startTime,
-				endTime: selectedTimeSlots.endTime,
-				duration,
+				startTime: slot.startTime,
+				endTime: slot.endTime,
+				duration: calculateDuration(slot.startTime, slot.endTime),
 				status: 'confirmed',
 				notes
-			});
+			}));
+
+			await createReservation(reservationsData);
 
 			setSubmitStatus('success');
 
@@ -7664,13 +7832,17 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		}
 	};
 
+	// 分数を計算するヘルパー関数
+	const calculateDuration = (startTime: string, endTime: string): number => {
+		const startParts = startTime.split(':').map(Number);
+		const endParts = endTime.split(':').map(Number);
+		const startMinutes = startParts[0] * 60 + startParts[1];
+		const endMinutes = endParts[0] * 60 + endParts[1];
+		return endMinutes - startMinutes;
+	};
+
 	// Determine if form is valid for submission
-	const isFormValid =
-		selectedDate !== null &&
-		selectedTimeSlots.seatId !== '' &&
-		selectedTimeSlots.startTime !== '' &&
-		selectedTimeSlots.endTime !== '' &&
-		duration > 0;
+	const isFormValid = selectedDate !== null && selectedTimeSlots.length > 0;
 
 	if (submitStatus === 'success') {
 		return (
@@ -7700,13 +7872,26 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		<motion.div
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
-			className="w-full max-w-2xl mx-auto"
+			className="w-full max-w-3xl mx-auto"
 		>
 			<h2 className="text-xl font-medium text-foreground mb-4">予約内容の確認</h2>
 
 			<form onSubmit={handleSubmit} className="space-y-6">
 				{/* Reservation Summary */}
 				<div className="bg-background/5 p-4 rounded-lg space-y-4">
+					{/* Branch */}
+					{selectedBranch && (
+						<div className="flex items-start">
+							<Info className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
+							<div>
+								<div className="font-medium text-foreground">支店</div>
+								<div className="text-foreground/70">
+									{selectedBranch.branchName}
+								</div>
+							</div>
+						</div>
+					)}
+
 					{/* Date */}
 					<div className="flex items-start">
 						<Calendar className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
@@ -7718,54 +7903,36 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 						</div>
 					</div>
 
-					{/* Time */}
-					<div className="flex items-start">
-						<Clock className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
-						<div>
-							<div className="font-medium text-foreground">時間</div>
-							<div className="text-foreground/70">
-								{selectedTimeSlots.startTime} - {selectedTimeSlots.endTime}
-								{duration > 0 && <span className="ml-2">({duration}分間)</span>}
-							</div>
+					{/* Selected Seats */}
+					<div className="mt-4">
+						<h3 className="font-medium text-foreground mb-2">選択した座席 ({seatDetails.length}席)</h3>
+						<div className="space-y-3">
+							{seatDetails.map((detail, index) => (
+								<div key={detail?.seat.seatId || index}
+									className="p-3 bg-background/30 rounded border border-border/20"
+								>
+									<div className="flex justify-between items-start">
+										<span className="font-medium text-foreground/80">{detail?.seat.name}</span>
+										<span className="text-sm bg-accent/10 text-accent px-2 py-0.5 rounded">
+											¥{detail?.cost.toLocaleString()}
+										</span>
+									</div>
+									<div className="text-sm text-foreground/70 mt-1">
+										{detail?.slot.startTime} - {detail?.slot.endTime} ({detail?.duration}分)
+									</div>
+									<div className="text-xs text-foreground/50 mt-1">
+										単価: ¥{Math.round(detail?.seat.ratePerHour / 60)}円/分 × {detail?.duration}分
+									</div>
+								</div>
+							))}
+						</div>
+
+						{/* Total Price */}
+						<div className="flex justify-between items-center mt-4 pt-3 border-t border-border/20">
+							<span className="font-medium text-foreground/60">合計金額</span>
+							<span className="text-xl font-bold text-foreground/80">¥{totalCost.toLocaleString()}</span>
 						</div>
 					</div>
-
-					{/* Seat */}
-					<div className="flex items-start">
-						<Info className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
-						<div>
-							<div className="font-medium text-foreground">座席</div>
-							<div className="text-foreground/70">
-								{selectedSeat?.name}
-							</div>
-						</div>
-					</div>
-
-					{/* Price */}
-					<div className="flex items-start">
-						<CreditCard className="w-5 h-5 text-accent mr-3 mt-0.5 flex-shrink-0" />
-						<div>
-							<div className="font-medium text-foreground">料金</div>
-							<div className="text-foreground/70">
-								¥{totalPrice} ({selectedSeat?.ratePerMinute}円 × {duration}分)
-							</div>
-						</div>
-					</div>
-				</div>
-
-				{/* Notes */}
-				<div>
-					<label htmlFor="notes" className="block text-sm font-medium text-foreground mb-1">
-						備考（オプション）
-					</label>
-					<textarea
-						id="notes"
-						value={notes}
-						onChange={(e) => setNotes(e.target.value)}
-						className="w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
-						rows={3}
-						placeholder="特別なリクエストがあればご記入ください"
-					/>
 				</div>
 
 				{/* Terms and Conditions */}
@@ -7777,22 +7944,19 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 					</p>
 				</div>
 
-				{/* Error message */}
 				{submitStatus === 'error' && (
 					<div className="p-3 bg-red-500/10 border border-red-500/30 rounded-md text-red-500">
 						予約の処理中にエラーが発生しました。もう一度お試しください。
 					</div>
 				)}
-
-				{/* Action buttons */}
 				<div className="flex justify-end">
 					<button
 						type="submit"
 						disabled={!isFormValid || isLoading}
 						className={`
-              px-6 py-2 rounded-md text-white transition-colors
-              ${isFormValid ? 'bg-accent hover:bg-accent/90' : 'bg-border/50 cursor-not-allowed'}
-            `}
+							px-6 py-2 rounded-md text-white transition-colors
+							${isFormValid ? 'bg-accent hover:bg-accent/90' : 'bg-border/50 cursor-not-allowed'}
+						`}
 					>
 						{isLoading ? '処理中...' : '予約を確定する'}
 					</button>
@@ -7988,128 +8152,218 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 };
 
 export default CalendarView;-e 
+### FILE: ./src/components/reservation/seat-selector.tsx
+
+// src/components/reservation/seat-selector.tsx
+'use client';
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useReservation } from '@/context/reservation-context';
+import { SeatDocument } from '@/types/firebase';
+import { Loader2 } from 'lucide-react';
+
+interface SeatSelectorProps {
+	onSeatSelect: (seat: SeatDocument) => void;
+	date: Date;
+}
+
+const SeatSelector: React.FC<SeatSelectorProps> = ({ onSeatSelect, date }) => {
+	const { selectedBranch } = useReservation();
+	const [seats, setSeats] = useState<SeatDocument[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null);
+
+	useEffect(() => {
+		const fetchSeats = async () => {
+			if (!selectedBranch) {
+				setError('支店が選択されていません');
+				setLoading(false);
+				return;
+			}
+
+			setLoading(true);
+			try {
+				// Query seats collection for seats with matching branchCode
+				const seatsQuery = query(
+					collection(db, 'seats'),
+					where('branchCode', '==', selectedBranch.branchCode),
+					where('status', '==', 'available')
+				);
+
+				const seatsSnapshot = await getDocs(seatsQuery);
+				const seatsData = seatsSnapshot.docs.map(doc => ({
+					...doc.data(),
+					seatId: doc.id
+				})) as SeatDocument[];
+
+				setSeats(seatsData);
+				setError(null);
+			} catch (err) {
+				console.error('Error fetching seats:', err);
+				setError('座席データの取得中にエラーが発生しました');
+			} finally {
+				setLoading(false);
+			}
+		};
+
+		fetchSeats();
+	}, [selectedBranch]);
+
+	const handleSeatSelect = (seat: SeatDocument) => {
+		setSelectedSeatId(seat.seatId);
+		onSeatSelect(seat);
+	};
+
+	if (loading) {
+		return (
+			<div className="flex justify-center items-center py-12">
+				<Loader2 className="h-8 w-8 animate-spin text-accent" />
+				<span className="ml-2">座席情報を読み込んでいます...</span>
+			</div>
+		);
+	}
+
+	if (error) {
+		return (
+			<div className="p-4 bg-destructive/10 border border-destructive rounded-md text-destructive">
+				<p>{error}</p>
+			</div>
+		);
+	}
+
+	if (seats.length === 0) {
+		return (
+			<div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800">
+				<p>この支店には利用可能な座席がありません。別の支店を選択してください。</p>
+			</div>
+		);
+	}
+
+	return (
+		<div className="mt-4">
+			<h3 className="text-lg font-medium mb-4">座席を選択してください</h3>
+			<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+				{seats.map((seat) => (
+					<button
+						key={seat.seatId}
+						onClick={() => handleSeatSelect(seat)}
+						className={`p-4 border rounded-md transition-colors ${selectedSeatId === seat.seatId
+								? 'bg-accent text-white border-accent'
+								: 'bg-background hover:bg-accent/10 border-border'
+							}`}
+					>
+						<p className="font-medium">{seat.name}</p>
+						<p className="text-sm mt-1 text-foreground/70">
+							{seat.seatType} - 席番号: {seat.seatNumber}
+						</p>
+						<p className="text-sm mt-1 text-foreground/70">
+							料金: ¥{seat.ratePerHour}/時間
+						</p>
+					</button>
+				))}
+			</div>
+		</div>
+	);
+};
+
+export default SeatSelector;-e 
 ### FILE: ./src/components/reservation/login-prompt.tsx
 
+// src/components/reservation/login-prompt.tsx
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Lock, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { LockKeyhole, LogIn, UserPlus } from 'lucide-react';
+import { SelectedTimeSlotsItem } from '@/context/reservation-context';
 
 interface LoginPromptProps {
-	onClose?: () => void;
-	reservationDetails?: {
-		date: Date;
-		seatId: string;
-		startTime: string;
-		endTime: string;
-	};
+	onClose: () => void;
+	reservationDetails: (SelectedTimeSlotsItem & { date: string })[];
 }
 
 const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }) => {
 	const router = useRouter();
 
-	// Handle login click
-	const handleLoginClick = () => {
+	// Handle login button
+	const handleLogin = () => {
 		// Store reservation details in sessionStorage to retrieve after login
-		if (reservationDetails) {
-			sessionStorage.setItem('pendingReservation', JSON.stringify({
-				date: reservationDetails.date.toISOString(),
-				seatId: reservationDetails.seatId,
-				startTime: reservationDetails.startTime,
-				endTime: reservationDetails.endTime
-			}));
-		}
-
-		// Navigate to login page
-		router.push('/login?redirect=reservation');
+		sessionStorage.setItem('pendingReservation', JSON.stringify(reservationDetails));
+		router.push('/login');
 	};
 
-	// Handle register click
-	const handleRegisterClick = () => {
+	// Handle register button
+	const handleRegister = () => {
 		// Store reservation details in sessionStorage to retrieve after registration
-		if (reservationDetails) {
-			sessionStorage.setItem('pendingReservation', JSON.stringify({
-				date: reservationDetails.date.toISOString(),
-				seatId: reservationDetails.seatId,
-				startTime: reservationDetails.startTime,
-				endTime: reservationDetails.endTime
-			}));
-		}
-
-		// Navigate to registration page
-		router.push('/register?redirect=reservation');
+		sessionStorage.setItem('pendingReservation', JSON.stringify(reservationDetails));
+		router.push('/register');
 	};
 
-	// Format date for display
-	const formatDate = (date: Date): string => {
-		const year = date.getFullYear();
-		const month = date.getMonth() + 1;
-		const day = date.getDate();
-		const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
-
-		return `${year}年${month}月${day}日(${dayOfWeek})`;
-	};
+	// Calculate total seats
+	const totalSeats = reservationDetails.length;
 
 	return (
 		<motion.div
-			initial={{ opacity: 0, scale: 0.95 }}
-			animate={{ opacity: 1, scale: 1 }}
-			exit={{ opacity: 0, scale: 0.95 }}
-			className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-			onClick={() => onClose && onClose()}
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			exit={{ opacity: 0 }}
+			className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
 		>
 			<motion.div
-				className="w-full max-w-md p-6 bg-background rounded-2xl shadow-xl"
-				onClick={(e) => e.stopPropagation()}
-				initial={{ y: 20 }}
-				animate={{ y: 0 }}
+				initial={{ scale: 0.9, opacity: 0 }}
+				animate={{ scale: 1, opacity: 1 }}
+				exit={{ scale: 0.9, opacity: 0 }}
+				className="bg-background border border-border/20 rounded-lg shadow-lg p-6 max-w-md w-full"
 			>
-				<div className="flex justify-center mb-6">
-					<div className="w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center">
-						<LockKeyhole size={28} className="text-accent" />
+				<h2 className="text-xl font-bold text-foreground mb-4">アカウントが必要です</h2>
+				<p className="text-foreground/70 mb-6">
+					予約を完了するには、ログインまたは新規登録が必要です。
+				</p>
+
+				<div className="bg-border/5 p-3 rounded-md mb-6">
+					<h3 className="font-medium text-foreground mb-2">選択中の予約内容</h3>
+					<p className="text-sm text-foreground/70">
+						<span className="font-medium">{totalSeats}席</span>の予約
+						<span className="block mt-1">
+							{new Date(reservationDetails[0].date).toLocaleDateString('ja-JP', {
+								year: 'numeric',
+								month: 'long',
+								day: 'numeric',
+								weekday: 'long'
+							})}
+						</span>
+					</p>
+
+					{/* 予約情報のサマリー */}
+					<div className="mt-2 space-y-1 text-sm">
+						{reservationDetails.map((item, index) => (
+							<div key={index} className="flex justify-between">
+								<span>{item.seatName || `座席 #${index + 1}`}</span>
+								<span>{item.startTime} - {item.endTime}</span>
+							</div>
+						))}
 					</div>
 				</div>
 
-				<h2 className="text-xl font-medium text-foreground text-center mb-2">
-					会員限定機能です
-				</h2>
-
-				<p className="text-foreground/70 text-center mb-6">
-					予約機能を利用するには、ログインまたは会員登録が必要です。
-				</p>
-
-				{reservationDetails && (
-					<div className="mb-6 p-4 bg-border/10 rounded-lg">
-						<h3 className="font-medium text-foreground mb-2">選択中の予約</h3>
-						<p className="text-sm text-foreground/70">
-							{formatDate(reservationDetails.date)} {reservationDetails.startTime}〜{reservationDetails.endTime}
-						</p>
-						<p className="text-xs text-accent mt-1">
-							ログイン後に継続できます
-						</p>
-					</div>
-				)}
-
-				<div className="space-y-3">
+				<div className="flex flex-col space-y-3">
 					<button
-						onClick={handleLoginClick}
-						className="w-full py-3 flex items-center justify-center space-x-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
+						onClick={handleLogin}
+						className="flex items-center justify-center px-4 py-2 bg-accent text-white rounded-md hover:bg-accent/90 transition-colors"
 					>
-						<LogIn size={18} />
-						<span>ログイン</span>
+						<Lock className="w-4 h-4 mr-2" />
+						ログイン
 					</button>
-
 					<button
-						onClick={handleRegisterClick}
-						className="w-full py-3 flex items-center justify-center space-x-2 border border-border bg-background hover:bg-border/10 text-foreground rounded-lg transition-colors"
+						onClick={handleRegister}
+						className="flex items-center justify-center px-4 py-2 border border-accent text-accent bg-accent/5 rounded-md hover:bg-accent/10 transition-colors"
 					>
-						<UserPlus size={18} />
-						<span>新規会員登録</span>
+						<UserPlus className="w-4 h-4 mr-2" />
+						新規登録
 					</button>
-
 					<button
-						onClick={() => onClose && onClose()}
-						className="w-full py-2 text-foreground/70 hover:text-foreground text-sm transition-colors"
+						onClick={onClose}
+						className="px-4 py-2 text-foreground/70 hover:text-foreground hover:bg-border/10 rounded-md transition-colors"
 					>
 						キャンセル
 					</button>
@@ -8288,31 +8542,22 @@ export default function BranchSelector({ onBranchSelect }: BranchSelectorProps) 
 }-e 
 ### FILE: ./src/components/reservation/time-grid.tsx
 
+// src/components/reservation/time-grid.tsx
+'use client';
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useReservation } from '@/context/reservation-context';
-import { ArrowRight, Calendar, Clock, AlertCircle, Users, Plus, Minus, Check } from 'lucide-react';
+import { ArrowRight, Calendar, Clock, AlertCircle, Users, Plus, Minus, Check, X } from 'lucide-react';
+import { SelectedTimeSlotsItem } from '@/context/reservation-context';
 
 interface TimeGridProps {
 	date: Date;
-	onTimeSelect?: (reservations: SeatReservation[], people: number) => void;
+	onTimeSelect: (selectedTimeSlots: SelectedTimeSlotsItem[]) => void;
 }
 
 interface TimeSlot {
 	time: string;
 	formattedTime: string;
-}
-
-interface Seat {
-	id: string;
-	name: string;
-	ratePerMinute: number;
-}
-
-interface SeatReservation {
-	seatId: string;
-	startTime: string;
-	endTime: string;
 }
 
 interface RangeSelection {
@@ -8321,14 +8566,34 @@ interface RangeSelection {
 }
 
 const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
-	const { seats, reservations, selectedTimeSlots, setSelectedTimeSlots } = useReservation();
+	const {
+		seats,
+		reservations,
+		selectedTimeSlots,
+		setSelectedTimeSlots,
+		addSelectedTimeSlot,
+		removeSelectedTimeSlot,
+		clearSelectedTimeSlots,
+		selectedBranch
+	} = useReservation();
 	const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
 	const [seatRanges, setSeatRanges] = useState<Record<string, RangeSelection>>({});
-	const [people, setPeople] = useState<number>(1);
+
+	// Filter seats by the selected branch
+	const filteredSeats = seats.filter(seat =>
+		selectedBranch && seat.branchCode === selectedBranch.branchCode
+	);
+
 	const generateTimeSlots = (): TimeSlot[] => {
 		const slots: TimeSlot[] = [];
-		const startHour = 10;
-		const endHour = 22;
+
+		// Use branch business hours if available, otherwise default hours
+		const startHour = selectedBranch?.businessHours?.open
+			? parseInt(selectedBranch.businessHours.open.split(':')[0])
+			: 10;
+		const endHour = selectedBranch?.businessHours?.close
+			? parseInt(selectedBranch.businessHours.close.split(':')[0])
+			: 22;
 
 		for (let hour = startHour; hour <= endHour; hour++) {
 			for (let minute = 0; minute < 60; minute += 30) {
@@ -8351,12 +8616,12 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		if (!date) return false;
 
 		const dateStr = date.toISOString().split('T')[0];
-		const dateTimeStr = `${dateStr}T${timeSlot}:00`;
 
 		return reservations.some(reservation =>
 			reservation.seatId === seatId &&
-			new Date(reservation.startTime) <= new Date(dateTimeStr) &&
-			new Date(reservation.endTime) > new Date(dateTimeStr)
+			reservation.date === dateStr &&
+			reservation.startTime <= timeSlot &&
+			reservation.endTime > timeSlot
 		);
 	};
 
@@ -8448,84 +8713,43 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		return `${timeDate.getHours().toString().padStart(2, '0')}:${timeDate.getMinutes().toString().padStart(2, '0')}`;
 	};
 
-	// Update selected time slots when selections change
-	useEffect(() => {
-		// Create an array of SeatReservation objects
-		const newSelectedTimeSlots: SeatReservation[] = selectedSeatIds
-			.filter(seatId => seatRanges[seatId] && seatRanges[seatId].rangeStart)
-			.map(seatId => {
-				const range = seatRanges[seatId];
-				return {
-					seatId,
-					startTime: range.rangeStart as string,
-					endTime: range.rangeEnd
-						? calculateEndTime(range.rangeEnd)
-						: calculateEndTime(range.rangeStart as string)
-				};
-			});
-
-		// Update context with multiple seat selections
-		if (newSelectedTimeSlots.length > 0) {
-			// If there's a setSelectedTimeSlots that expects an array
-			// This might require updating the context to support multiple selections
-			if (Array.isArray(selectedTimeSlots)) {
-				setSelectedTimeSlots(newSelectedTimeSlots);
-			} else {
-				// Fallback for backward compatibility - just use the first selection
-				const firstSelection = newSelectedTimeSlots[0];
-				setSelectedTimeSlots(firstSelection);
-			}
-		} else {
-			// Clear selection
-			if (Array.isArray(selectedTimeSlots)) {
-				setSelectedTimeSlots([]);
-			} else {
-				setSelectedTimeSlots({ seatId: '', startTime: '', endTime: '' });
-			}
-		}
-	}, [seatRanges, selectedSeatIds, setSelectedTimeSlots]);
-
-	// Handle increase/decrease people count
-	const handlePeopleChange = (increment: boolean) => {
-		setPeople(prev => {
-			if (increment) {
-				return prev < 10 ? prev + 1 : prev;
-			} else {
-				return prev > 1 ? prev - 1 : prev;
-			}
-		});
-	};
-
-	// Handle continue to confirmation
-	const handleContinue = () => {
-		if (selectedSeatIds.length > 0 && onTimeSelect) {
-			const seatReservations = selectedSeatIds
-				.filter(seatId => seatRanges[seatId] && seatRanges[seatId].rangeStart)
-				.map(seatId => {
-					const range = seatRanges[seatId];
-					return {
-						seatId,
-						startTime: range.rangeStart as string,
-						endTime: range.rangeEnd
-							? calculateEndTime(range.rangeEnd)
-							: calculateEndTime(range.rangeStart as string)
-					};
-				});
-
-			onTimeSelect(seatReservations, people);
-		}
-	};
-
 	// Reset selection when date changes
 	useEffect(() => {
 		setSelectedSeatIds([]);
 		setSeatRanges({});
-		if (Array.isArray(selectedTimeSlots)) {
-			setSelectedTimeSlots([]);
-		} else {
-			setSelectedTimeSlots({ seatId: '', startTime: '', endTime: '' });
-		}
-	}, [date, setSelectedTimeSlots]);
+		clearSelectedTimeSlots();
+	}, [date, clearSelectedTimeSlots]);
+
+	// Update selected time slots when selections change
+	useEffect(() => {
+		// 各座席の選択情報をまとめる
+		const newSelectedTimeSlots: SelectedTimeSlotsItem[] = [];
+
+		selectedSeatIds.forEach(seatId => {
+			const range = seatRanges[seatId];
+			const seat = filteredSeats.find(s => s.seatId === seatId);
+
+			if (range && range.rangeStart && seat) {
+				newSelectedTimeSlots.push({
+					seatId,
+					seatName: seat.name,
+					startTime: range.rangeStart,
+					endTime: range.rangeEnd
+						? calculateEndTime(range.rangeEnd)
+						: calculateEndTime(range.rangeStart)
+				});
+			}
+		});
+
+		// コンテキストを更新
+		setSelectedTimeSlots(newSelectedTimeSlots);
+	}, [seatRanges, selectedSeatIds, setSelectedTimeSlots, filteredSeats]);
+
+	// Handle continue to confirmation
+	const handleContinue = () => {
+		// 全ての選択済み座席情報を渡す
+		onTimeSelect(selectedTimeSlots);
+	};
 
 	// Format date for display
 	const formatDate = (date: Date): string => {
@@ -8537,31 +8761,22 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		return `${year}年${month}月${day}日(${dayOfWeek})`;
 	};
 
-	// Calculate total duration in minutes across all selections
-	const calculateTotalDuration = (): number => {
-		return selectedSeatIds.reduce((total, seatId) => {
-			const range = seatRanges[seatId];
-			if (!range || !range.rangeStart) return total;
+	// Calculate total duration in minutes for a seat
+	const calculateDuration = (startTime: string, endTime: string): number => {
+		const startParts = startTime.split(':').map(Number);
+		const endParts = endTime.split(':').map(Number);
 
-			const endTimeForCalc = range.rangeEnd ? range.rangeEnd : range.rangeStart;
-			const startParts = range.rangeStart.split(':').map(Number);
-			const endParts = endTimeForCalc.split(':').map(Number);
+		let startMinutes = startParts[0] * 60 + startParts[1];
+		let endMinutes = endParts[0] * 60 + endParts[1];
 
-			let startMinutes = startParts[0] * 60 + startParts[1];
-			let endMinutes = endParts[0] * 60 + endParts[1];
-
-			// Add 30 minutes to end time for actual duration
-			endMinutes += 30;
-
-			return total + (endMinutes - startMinutes);
-		}, 0);
+		return endMinutes - startMinutes;
 	};
 
 	// Get selected seats
 	const selectedSeatsInfo = selectedSeatIds
 		.filter(id => seatRanges[id] && seatRanges[id].rangeStart)
 		.map(id => {
-			const seat = seats.find(s => s.id === id);
+			const seat = filteredSeats.find(s => s.seatId === id);
 			const range = seatRanges[id];
 
 			if (!seat || !range || !range.rangeStart) return null;
@@ -8570,19 +8785,18 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 				? calculateEndTime(range.rangeEnd)
 				: calculateEndTime(range.rangeStart);
 
-			const startParts = range.rangeStart.split(':').map(Number);
-			const endParts = (range.rangeEnd || range.rangeStart).split(':').map(Number);
+			const duration = calculateDuration(range.rangeStart, endTime);
 
-			let startMinutes = startParts[0] * 60 + startParts[1];
-			let endMinutes = endParts[0] * 60 + endParts[1] + 30; // Add 30 minutes
-
-			const duration = endMinutes - startMinutes;
+			// Calculate rate per minute from ratePerHour
+			const ratePerMinute = seat.ratePerHour ? seat.ratePerHour / 60 : 0;
 
 			return {
 				seat,
 				startTime: range.rangeStart,
 				endTime,
-				duration
+				duration,
+				ratePerMinute,
+				cost: Math.round(ratePerMinute * duration)
 			};
 		})
 		.filter(Boolean);
@@ -8596,9 +8810,51 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 	const calculateTotalCost = (): number => {
 		return selectedSeatsInfo.reduce((total, info) => {
 			if (!info) return total;
-			return total + (info.seat.ratePerMinute * info.duration);
+			return total + info.cost;
 		}, 0);
 	};
+
+	// Remove seat from selection
+	const handleRemoveSeat = (seatId: string) => {
+		setSelectedSeatIds(prev => prev.filter(id => id !== seatId));
+		setSeatRanges(prev => {
+			const newRanges = { ...prev };
+			delete newRanges[seatId];
+			return newRanges;
+		});
+		removeSelectedTimeSlot(seatId);
+	};
+
+	// Check if branch is selected and there are no available seats
+	if (!selectedBranch) {
+		return (
+			<div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800">
+				<p>支店が選択されていません。戻って支店を選択してください。</p>
+			</div>
+		);
+	}
+
+	if (filteredSeats.length === 0) {
+		return (
+			<div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800">
+				<p>この支店には利用可能な座席がありません。別の支店を選択してください。</p>
+			</div>
+		);
+	}
+
+	// Check if the branch is closed on the selected date
+	if (selectedBranch?.businessHours?.dayOff) {
+		const dayOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
+		const isDayOff = selectedBranch.businessHours.dayOff.includes(dayOfWeek);
+
+		if (isDayOff) {
+			return (
+				<div className="p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800">
+					<p>選択された日付は定休日です。別の日を選んでください。</p>
+				</div>
+			);
+		}
+	}
 
 	return (
 		<div className="space-y-6">
@@ -8619,35 +8875,35 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 						))}
 					</div>
 
-					{/*Seats and time slots grid */}
-					{seats.map((seat) => (
+					{/* Seats and time slots grid */}
+					{filteredSeats.map((seat) => (
 						<div
-							key={seat.id}
+							key={seat.seatId}
 							className="flex border-b border-border/20 hover:bg-background/5"
 						>
 							{/* Seat name */}
 							<div className="w-32 flex-shrink-0 p-2 border-r border-border/20 flex flex-col sticky left-0 bg-background">
 								<div className="flex items-center justify-between">
 									<span className="font-medium text-foreground">{seat.name}</span>
-									{selectedSeatIds.includes(seat.id) && (
-										<Check className="h-4 w-4 text-accent"/>
+									{selectedSeatIds.includes(seat.seatId) && (
+										<Check className="h-4 w-4 text-accent" />
 									)}
 								</div>
-								<span className="text-xs text-foreground/60">¥{seat.ratePerMinute}/分</span>
+								<span className="text-xs text-foreground/60">¥{seat.ratePerHour}/時間</span>
 							</div>
 
 							{/* Time slots */}
 							{timeSlots.map((slot) => {
-								const isSlotReserved = isReserved(seat.id, slot.time);
-								const isSelected = isInSelectedRange(seat.id, slot.time);
+								const isSlotReserved = isReserved(seat.seatId, slot.time);
+								const isSelected = isInSelectedRange(seat.seatId, slot.time);
 
-								const range = seatRanges[seat.id] || { rangeStart: null, rangeEnd: null };
+								const range = seatRanges[seat.seatId] || { rangeStart: null, rangeEnd: null };
 								const isRangeStart = range.rangeStart === slot.time;
 								const isRangeEnd = range.rangeEnd === slot.time;
 
 								return (
 									<motion.div
-										key={`${seat.id}-${slot.time}`}
+										key={`${seat.seatId}-${slot.time}`}
 										className={`
                       w-16 h-16 flex-shrink-0 border-l border-border/20
                       ${isSlotReserved ? 'bg-border/50 cursor-not-allowed' : 'cursor-pointer'}
@@ -8659,7 +8915,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
                     `}
 										whileHover={!isSlotReserved ? { scale: 1.05 } : {}}
 										whileTap={!isSlotReserved ? { scale: 0.95 } : {}}
-										onClick={() => !isSlotReserved && handleSlotClick(seat.id, slot.time)}
+										onClick={() => !isSlotReserved && handleSlotClick(seat.seatId, slot.time)}
 									>
 										{(isRangeStart || isRangeEnd) && (
 											<div className="w-2 h-2 bg-white rounded-full"></div>
@@ -8692,7 +8948,14 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 									{selectedSeatsInfo.map((info, index) => {
 										if (!info) return null;
 										return (
-											<div key={info.seat.id} className="p-2 bg-border/10 rounded-md">
+											<div key={info.seat.seatId} className="p-3 bg-border/10 rounded-md relative">
+												<button
+													onClick={() => handleRemoveSeat(info.seat.seatId)}
+													className="absolute top-2 right-2 text-foreground/50 hover:text-foreground"
+													aria-label="選択を削除"
+												>
+													<X size={16} />
+												</button>
 												<div className="font-medium text-foreground/80">
 													{info.seat.name}
 												</div>
@@ -8704,15 +8967,21 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 													</span>
 												</div>
 												<div className="text-sm text-foreground/70 mt-1">
-													予想料金: ¥{(info.seat.ratePerMinute * info.duration).toLocaleString()}
+													予想料金: ¥{info.cost.toLocaleString()}
 												</div>
 											</div>
 										);
 									})}
 								</div>
 
-								<div className="pt-2 mt-2 border-t border-border/20 font-medium text-foreground/80">
-									合計予想料金: ¥{calculateTotalCost().toLocaleString()}
+								<div className="pt-3 mt-2 border-t border-border/20">
+									<div className="flex justify-between items-center">
+										<span className="font-medium text-foreground/80">合計予想料金:</span>
+										<span className="font-bold text-lg text-foreground">¥{calculateTotalCost().toLocaleString()}</span>
+									</div>
+									<div className="text-xs text-foreground/50 mt-1">
+										選択中の座席数: {selectedSeatsInfo.length}席
+									</div>
 								</div>
 							</div>
 						</div>
@@ -8732,7 +9001,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 				<div className="bg-border/5 p-3 rounded-lg flex items-start">
 					<AlertCircle className="text-accent mr-2 mt-0.5 flex-shrink-0" size={18} />
 					<p className="text-sm text-foreground/80">
-						希望する座席と開始時間をクリックしてください。複数の座席を同時に予約できます。
+						希望する座席と開始時間をクリックしてください。次に終了時間までクリックすると範囲が指定できます。複数の座席を選択することもできます。
 					</p>
 				</div>
 			)}
@@ -11396,14 +11665,26 @@ export function useAudio() {
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './auth-context';
 import { SeatDocument, ReservationDocument, BranchDocument } from '@/types/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { 
+	collection, 
+	doc, 
+	getDocs, 
+	query, 
+	where, 
+	writeBatch
+  } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-interface SelectedTimeSlots {
+
+// 座席予約の時間枠情報を複数管理できるように修正
+export interface SelectedTimeSlotsItem {
 	seatId: string;
 	startTime: string;
 	endTime: string;
+	seatName?: string;
 }
-interface DateAvailability {[date: string]: 'available' | 'limited' | 'booked' | 'unknown';}
+
+interface DateAvailability { [date: string]: 'available' | 'limited' | 'booked' | 'unknown'; }
+
 interface ReservationContextType {
 	branches: BranchDocument[];
 	selectedBranch: BranchDocument | null;
@@ -11413,12 +11694,16 @@ interface ReservationContextType {
 	reservations: ReservationDocument[];
 	selectedDate: Date | null;
 	setSelectedDate: (date: Date | null) => void;
-	selectedTimeSlots: SelectedTimeSlots;
-	setSelectedTimeSlots: (slots: SelectedTimeSlots) => void;
+	// 複数の座席予約を管理するために配列に変更
+	selectedTimeSlots: SelectedTimeSlotsItem[];
+	setSelectedTimeSlots: (slots: SelectedTimeSlotsItem[]) => void;
+	addSelectedTimeSlot: (slot: SelectedTimeSlotsItem) => void;
+	removeSelectedTimeSlot: (seatId: string) => void;
+	clearSelectedTimeSlots: () => void;
 	dateAvailability: DateAvailability;
 	fetchSeats: (branchId?: string) => Promise<void>;
 	fetchReservations: (date?: Date, branchId?: string) => Promise<void>;
-	createReservation: (reservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+	createReservation: (reservations: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>[]) => Promise<void>;
 	cancelReservation: (reservationId: string) => Promise<void>;
 	isLoading: boolean;
 	error: string | null;
@@ -11436,15 +11721,38 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 	const [seats, setSeats] = useState<SeatDocument[]>([]);
 	const [reservations, setReservations] = useState<ReservationDocument[]>([]);
 	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-	const [selectedTimeSlots, setSelectedTimeSlots] = useState<SelectedTimeSlots>({
-		seatId: '',
-		startTime: '',
-		endTime: ''
-	});
+	// 複数の座席予約を管理するために配列に変更
+	const [selectedTimeSlots, setSelectedTimeSlots] = useState<SelectedTimeSlotsItem[]>([]);
 	const [dateAvailability, setDateAvailability] = useState<DateAvailability>({});
 	const [isLoading, setIsLoading] = useState<boolean>(false);
 	const [error, setError] = useState<string | null>(null);
 	const [fetchCount, setFetchCount] = useState<number>(0); // APIコール回数を追跡
+
+	// 個別の座席予約を追加するヘルパー関数
+	const addSelectedTimeSlot = useCallback((slot: SelectedTimeSlotsItem) => {
+		setSelectedTimeSlots(prev => {
+			// 既存の同じ座席の予約があれば更新、なければ追加
+			const exists = prev.some(item => item.seatId === slot.seatId);
+			if (exists) {
+				return prev.map(item =>
+					item.seatId === slot.seatId ? slot : item
+				);
+			} else {
+				return [...prev, slot];
+			}
+		});
+	}, []);
+
+	// 指定した座席IDの予約を削除するヘルパー関数
+	const removeSelectedTimeSlot = useCallback((seatId: string) => {
+		setSelectedTimeSlots(prev => prev.filter(item => item.seatId !== seatId));
+	}, []);
+
+	// すべての選択をクリアするヘルパー関数
+	const clearSelectedTimeSlots = useCallback(() => {
+		setSelectedTimeSlots([]);
+	}, []);
+
 	// 支店一覧を取得 - useCallbackでメモ化して無限ループを防止
 	const fetchBranches = useCallback(async (): Promise<void> => {
 		setIsLoading(true);
@@ -11489,36 +11797,43 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				throw new Error('支店が選択されていません');
 			}
 
-			// 支店別の座席情報を模擬的に生成
-			const mockSeats: SeatDocument[] = [];
-			const branchCode = branches.find(b => b.branchId === targetBranchId)?.branchCode || 'UNKNOWN';
-
-			// 支店によって座席数を変える
-			const seatCount = targetBranchId === 'tachikawa' ? 12 :
-				targetBranchId === 'shinjuku' ? 20 :
-					targetBranchId === 'akihabara' ? 16 : 10;
-
-			for (let i = 1; i <= seatCount; i++) {
-				const isHighSpec = i <= Math.ceil(seatCount / 2); // 半分は高スペックPCとする
-				mockSeats.push({
-					seatId: `${branchCode}-PC-${i.toString().padStart(2, '0')}`,
-					name: `Gaming PC #${i}${isHighSpec ? ' (High-Spec)' : ''}`,
-					ipAddress: `192.168.${targetBranchId === 'tachikawa' ? '1' : targetBranchId === 'shinjuku' ? '2' : '3'}.${i.toString().padStart(3, '0')}`,
-					ratePerHour: 400, // 高スペックPCは料金が高い
-					status: 'available',
-					branchCode: branchCode,
-					branchName: branches.find(b => b.branchId === targetBranchId)?.branchName || 'Unknown',
-					seatType: 'PC',
-					seatNumber: i,
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				});
+			// 支店情報を取得
+			const targetBranch = branches.find(b => b.branchId === targetBranchId);
+			if (!targetBranch) {
+				throw new Error('支店情報が見つかりません');
 			}
 
-			setSeats(mockSeats);
+			console.log(`支店コード「${targetBranch.branchCode}」の座席情報を取得します`);
+
+			// Firestoreから座席データの取得を試みる
+			const seatsQuery = query(
+				collection(db, 'seats'),
+				where('branchCode', '==', targetBranch.branchCode),
+				where('status', '==', 'available')
+			);
+
+			const seatsSnapshot = await getDocs(seatsQuery);
+
+			if (seatsSnapshot.empty) {
+				console.log(`支店コード「${targetBranch.branchCode}」の座席データが見つかりません。座席データを初期化してください。`);
+				setSeats([]);  // 空の配列を設定
+			} else {
+				// Firestoreから取得した座席データを処理
+				const seatsData: SeatDocument[] = [];
+				seatsSnapshot.forEach((doc) => {
+					seatsData.push({
+						seatId: doc.id,
+						...doc.data()
+					} as SeatDocument);
+				});
+
+				console.log(`${seatsData.length}件の座席データを取得しました`);
+				setSeats(seatsData);
+			}
 		} catch (err) {
 			console.error('Error fetching seats:', err);
 			setError('座席情報の取得に失敗しました。もう一度お試しください。');
+			setSeats([]); // エラー時は空の配列を設定
 		} finally {
 			setIsLoading(false);
 		}
@@ -11546,7 +11861,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				{
 					id: `res-${branchCode}-001`,
 					userId: 'user1',
-					seatId: `${branchCode}-PC-01`,
+					seatId: `${branchCode}-01`,
 					seatName: `Gaming PC #1 (High-Spec)`,
 					date: dateStr,
 					startTime: '14:00',
@@ -11559,7 +11874,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				{
 					id: `res-${branchCode}-002`,
 					userId: 'user2',
-					seatId: `${branchCode}-PC-02`,
+					seatId: `${branchCode}-02`,
 					seatName: `Gaming PC #2 (High-Spec)`,
 					date: dateStr,
 					startTime: '18:00',
@@ -11616,8 +11931,8 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		setDateAvailability(availability);
 	}, [selectedBranch]);
 
-	// 予約を作成 - useCallbackでメモ化
-	const createReservation = useCallback(async (reservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
+	// 予約を作成 - useCallbackでメモ化（複数予約対応＋Firebase書き込み）
+	const createReservation = useCallback(async (reservationsData: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>[]): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
 
@@ -11630,30 +11945,44 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				throw new Error('支店が選択されていません');
 			}
 
-			// API呼び出しをシミュレート
-			console.log('Creating reservation:', {
-				...reservation,
-				userId: user.uid,
-				branchId: selectedBranch.branchId,
-				branchName: selectedBranch.branchName
-			});
+			if (reservationsData.length === 0) {
+				throw new Error('予約データがありません');
+			}
 
-			// 成功をシミュレート
-			setTimeout(() => {
-				setIsLoading(false);
-				setSelectedTimeSlots({
-					seatId: '',
-					startTime: '',
-					endTime: ''
-				});
-				fetchReservations();
-			}, 1000);
+			// Firestoreに書き込むデータを準備
+			const reservationsCollection = collection(db, 'reservations');
+			const now = new Date().toISOString();
+			const batch = writeBatch(db);
+
+			// 各予約データをバッチ処理で追加
+			for (const reservationData of reservationsData) {
+				const reservationDocRef = doc(reservationsCollection);
+				const completeReservationData = {
+					...reservationData,
+					userId: user.uid,
+					userEmail: user.email || '',
+					branchId: selectedBranch.branchId,
+					branchName: selectedBranch.branchName,
+					createdAt: now,
+					updatedAt: now
+				};
+
+				batch.set(reservationDocRef, completeReservationData);
+			}
+
+			// バッチ処理を実行（全ての予約を一度にコミット）
+			await batch.commit();
+			console.log(`${reservationsData.length}件の予約をFirestoreに保存しました`);
+
+			setIsLoading(false);
+			clearSelectedTimeSlots(); // すべての選択をクリア
+			fetchReservations();
 		} catch (err) {
-			console.error('Error creating reservation:', err);
+			console.error('Error creating reservations:', err);
 			setError('予約の作成に失敗しました。もう一度お試しください。');
 			setIsLoading(false);
 		}
-	}, [fetchReservations, selectedBranch, user]);
+	}, [fetchReservations, selectedBranch, user, clearSelectedTimeSlots]);
 
 	// 予約をキャンセル - useCallbackでメモ化
 	const cancelReservation = useCallback(async (reservationId: string): Promise<void> => {
@@ -11690,15 +12019,19 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		if (selectedBranch) {
 			fetchSeats(selectedBranch.branchId);
 			updateDateAvailability(selectedBranch.branchId);
+			// 支店が変わったら選択済みの座席をクリア
+			clearSelectedTimeSlots();
 		}
-	}, [selectedBranch, fetchSeats, updateDateAvailability]);
+	}, [selectedBranch, fetchSeats, updateDateAvailability, clearSelectedTimeSlots]);
 
 	// 日付が選択された時に予約情報を取得
 	useEffect(() => {
 		if (selectedDate && selectedBranch) {
 			fetchReservations(selectedDate, selectedBranch.branchId);
+			// 日付が変わったら選択済みの座席をクリア
+			clearSelectedTimeSlots();
 		}
-	}, [selectedDate, selectedBranch, fetchReservations]);
+	}, [selectedDate, selectedBranch, fetchReservations, clearSelectedTimeSlots]);
 
 	const value = {
 		branches,
@@ -11711,6 +12044,9 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		setSelectedDate,
 		selectedTimeSlots,
 		setSelectedTimeSlots,
+		addSelectedTimeSlot,
+		removeSelectedTimeSlot,
+		clearSelectedTimeSlots,
 		dateAvailability,
 		fetchSeats,
 		fetchReservations,
