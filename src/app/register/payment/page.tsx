@@ -43,12 +43,13 @@ export default function PaymentPage() {
 	return (
 		<div className="max-w-2xl mx-auto">
 			<div className="bg-border/5 rounded-xl shadow-soft p-6">
-				<h2 className="text-xl font-semibold mb-6">決済情報の登録</h2>
+				<h2 className="text-xl font-semibold mb-2">決済情報の登録</h2>
 
-				<div className="bg-blue-500/10 text-blue-600 p-4 rounded-lg mb-6">
+				<div className="bg-border/10 text-white p-4 rounded-lg mb-6">
 					<p>
-						サービスをご利用いただくには、お支払い情報の登録が必要です。<br />
-						サービス利用後に自動的に決済されます。
+						本サービスは月末締めの後払い方式です。<br />
+						毎月末にご利用内容に基づいて請求書（インボイス）を発行し、<br />
+						ご登録のお支払い方法（クレジットカードまたは銀行口座振替）にて自動で決済されます。
 					</p>
 				</div>
 
@@ -58,18 +59,17 @@ export default function PaymentPage() {
 
 						<div className="bg-border/10 rounded-lg p-4">
 							<div className="flex justify-between items-center mb-2">
-								<span className="font-medium">従量課金プラン</span>
-								<span className="text-xl font-bold text-accent">¥700 <span className="text-sm font-normal">/時間</span></span>
+								<span className="font-medium">従量課金</span>
+								<span className="text-xl font-bold text-accent">¥400 <span className="text-sm font-normal">/時間</span></span>
 							</div>
 							<ul className="text-sm text-foreground/70 space-y-1">
-								<li>• 10分単位での課金（¥120/10分）</li>
+								<li>• 1分単位での課金</li>
 								<li>• フリードリンク・お菓子込み</li>
 								<li>• 高性能ゲーミングPC利用可能</li>
 								<li>• 深夜割増なし（24時間同一料金）</li>
 							</ul>
 						</div>
 					</div>
-
 					<div>
 						<Elements stripe={stripePromise}>
 							<EnhancedCardForm />

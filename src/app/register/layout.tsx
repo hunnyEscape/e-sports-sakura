@@ -1,5 +1,5 @@
 'use client';
-
+//src/app/register/layout.tsx
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';

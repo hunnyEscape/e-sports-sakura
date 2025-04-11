@@ -11,7 +11,7 @@ import {
 	signOut as firebaseSignOut,
 	onAuthStateChanged
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider } from '@/lib/firebase';
 import { UserDocument } from '@/types/firebase';
 
@@ -56,57 +56,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	// エラーをクリア
 	const clearError = () => setError(null);
 
-	// ユーザーの認証状態を監視
+	// ユーザーの認証状態を監視し、Firestore のユーザードキュメントの変更をリアルタイムで反映
 	useEffect(() => {
-		const unsubscribe = onAuthStateChanged(auth, async (user) => {
+		const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
 			setUser(user);
+			setLoading(false);
 
 			if (user) {
-				try {
-					// Firestoreからユーザーデータを取得
-					const userDocRef = doc(db, 'users', user.uid);
-					const userDoc = await getDoc(userDocRef);
-
-					if (userDoc.exists()) {
-						// 既存ユーザー - 最終ログイン時間を更新
-						const userData = userDoc.data() as UserDocument;
-						await setDoc(userDocRef, {
-							...userData,
-							lastLogin: serverTimestamp()
-						}, { merge: true });
-						setUserData(userData);
-					} else {
-						// 新規ユーザー
-						const newUserData: UserDocument = {
-							uid: user.uid,
-							email: user.email,
-							displayName: user.displayName,
-							photoURL: user.photoURL,
-							createdAt: serverTimestamp(),
-							lastLogin: serverTimestamp(),
-							registrationCompleted: false,
-							registrationStep: 0,
-							eKYC: {
-								status: 'pending'
-							}
-						};
-
-						await setDoc(userDocRef, newUserData);
-						setUserData(newUserData);
+				// Firestore のユーザードキュメントをリアルタイムで監視
+				const userDocRef = doc(db, 'users', user.uid);
+				const unsubscribeSnapshot = onSnapshot(
+					userDocRef,
+					(docSnap) => {
+						if (docSnap.exists()) {
+							const data = docSnap.data() as UserDocument;
+							setUserData(data);
+						} else {
+							// ユーザードキュメントが存在しない場合、新規作成
+							const newUserData: UserDocument = {
+								uid: user.uid,
+								email: user.email,
+								displayName: user.displayName,
+								photoURL: user.photoURL,
+								createdAt: serverTimestamp(),
+								lastLogin: serverTimestamp(),
+								registrationCompleted: false,
+								registrationStep: 2,
+								eKYC: {
+									status: 'pending'
+								}
+							};
+							setDoc(userDocRef, newUserData)
+								.then(() => setUserData(newUserData))
+								.catch((err) => {
+									console.error('Error setting new user document:', err);
+									setError('ユーザードキュメントの作成に失敗しました。');
+								});
+						}
+					},
+					(err) => {
+						console.error('Error fetching user data:', err);
+						setError('ユーザーデータの取得中にエラーが発生しました。');
 					}
-				} catch (err) {
-					console.error('Error fetching user data:', err);
-					setError('ユーザーデータの取得中にエラーが発生しました。');
-				}
+				);
+
+				// ユーザーがログアウトしたときなど、リスナーのクリーンアップ
+				return () => {
+					unsubscribeSnapshot();
+				};
 			} else {
 				setUserData(null);
 			}
-
-			setLoading(false);
 		});
 
-		// クリーンアップ関数
-		return () => unsubscribe();
+		return () => unsubscribeAuth();
 	}, []);
 
 	// Google認証でサインイン
@@ -128,8 +131,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			await firebaseSignInWithEmailAndPassword(auth, email, password);
 		} catch (err: any) {
 			console.error('Email/password sign in error:', err);
-
-			// エラーメッセージをユーザーフレンドリーに変換
 			if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
 				setError('メールアドレスまたはパスワードが正しくありません。');
 			} else if (err.code === 'auth/too-many-requests') {
@@ -137,7 +138,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			} else {
 				setError('ログイン中にエラーが発生しました。もう一度お試しください。');
 			}
-
 			throw err;
 		}
 	};
@@ -146,13 +146,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	const createUserWithEmailAndPassword = async (email: string, password: string) => {
 		try {
 			setError(null);
-			// ここが問題: 自分自身を呼び出して無限再帰になっています
-			// 修正: firebaseCreateUserWithEmailAndPasswordを使用
 			await firebaseCreateUserWithEmailAndPassword(auth, email, password);
 		} catch (err: any) {
 			console.error('Create user error:', err);
-
-			// エラーメッセージをユーザーフレンドリーに変換
 			if (err.code === 'auth/email-already-in-use') {
 				setError('このメールアドレスは既に使用されています。');
 			} else if (err.code === 'auth/weak-password') {
@@ -160,7 +156,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			} else {
 				setError('アカウント作成中にエラーが発生しました。もう一度お試しください。');
 			}
-
 			throw err;
 		}
 	};
@@ -172,13 +167,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			await sendPasswordResetEmail(auth, email);
 		} catch (err: any) {
 			console.error('Password reset error:', err);
-
 			if (err.code === 'auth/user-not-found') {
 				setError('このメールアドレスに登録されているアカウントが見つかりません。');
 			} else {
 				setError('パスワードリセットメールの送信中にエラーが発生しました。');
 			}
-
 			throw err;
 		}
 	};

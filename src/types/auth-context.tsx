@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 							createdAt: serverTimestamp(),
 							lastLogin: serverTimestamp(),
 							registrationCompleted: false,
-							registrationStep: 0,
+							registrationStep: 2,
 							eKYC: {
 								status: 'pending'
 							}

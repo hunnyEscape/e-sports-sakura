@@ -39,11 +39,14 @@ export interface UserDocument {
 	registrationStep?: number;
 
 	// eKYC情報
-	eKYC?: {
-		sessionId?: string;
-		status: string;
-		verifiedAt?: string;
-		lastUpdated?: string;
+	faceVideo?: {
+		storagePath: string;      // 例: users/{uid}/face.mp4
+		downloadURL?: string;     // 署名付きURLまたは管理者用URL
+		confirmed: boolean;       // 判定結果（初期値: true）
+		checkedAt?: string;       // 判定実行日（ISO形式）
+		rejectionReason?: string; // 拒否理由（"too_dark"|"masked"|"duplicate"など）
+		flagged?: boolean;        // 確認要/BAN対象フラグ
+		similarityCheckCompleted?: boolean; // 顔照合済みフラグ
 	};
 
 	// Stripe情報
