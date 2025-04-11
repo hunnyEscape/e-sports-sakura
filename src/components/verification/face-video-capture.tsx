@@ -32,19 +32,19 @@ const FaceVideoCapture: React.FC<FaceVideoCaptureProps> = ({ onComplete, onError
 	// 各ポーズ（正面、左、右）ごとのオーバーレイ画像、案内文、録画時間（秒）
 	const poseOverlays = [
 		{
-			src: "/images/face1.png",
+			src:`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/face1.webp`,
 			alt: "Front Pose Overlay",
 			instructions: "正面",
 			duration: 5
 		},
 		{
-			src: "/images/face2.png",
+			src:`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/face2.webp`,
 			alt: "Left Pose Overlay",
 			instructions: "左向き",
 			duration: 5
 		},
 		{
-			src: "/images/face3.png",
+			src:`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/face3.webp`,
 			alt: "Right Pose Overlay",
 			instructions: "右向き",
 			duration: 5

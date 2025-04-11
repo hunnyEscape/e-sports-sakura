@@ -15,7 +15,7 @@ const specs = [
 			{ label: "ストレージ", value: "1TB NVMe SSD" },
 			{ label: "モニター", value: "34インチ 湾曲ウルトラワイド WQHD 120Hz" }
 		],
-		image: "/images/spec1.png"
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/spec1.webp`,
 	},
 	{
 		category: "周辺機器",
@@ -26,7 +26,7 @@ const specs = [
 			{ label: "ヘッドセット", value: "HyperX Cloud III" },
 			{ label: "コントローラー", value: "Xbox / Switch Proコン対応" }
 		],
-		image: "/images/spec2.png"
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/spec2.webp`,
 	},
 	{
 		category: "設備・サービス",
@@ -35,7 +35,7 @@ const specs = [
 			{ label: "ドリンク", value: "フリードリンク (コーヒー、お茶など)" },
 			{ label: "スナック", value: "お菓子付き (補充は定期的)" },
 		],
-		image: "/images/spec3.png"
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/spec3.webp`,
 	}
 ];
 
@@ -61,7 +61,7 @@ export default function SpecsSection() {
 						<span className="text-accent">本格</span>スペック＆設備
 					</h2>
 					<p className="text-foreground/70 max-w-2xl mx-auto">
-						ゲームを本気で楽しむために十分快適な環境をご用意しています。
+						ゲームを本気で楽しむために快適な環境をご用意しています。
 					</p>
 				</motion.div>
 

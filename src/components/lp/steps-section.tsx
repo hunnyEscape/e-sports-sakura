@@ -9,19 +9,19 @@ const usageSteps = [
 		number: 1,
 		title: "QRコードで入室",
 		description: "会員QRコードを扉の読み取り機にかざして入室できます。",
-		icon: <img src="/images/qrEnter.png" alt="QRコードで入室" className="h-100 w-100" />
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/qrEnter.webp`} alt="QRコードで入室" className="h-100 w-100" />
 	},
 	{
 		number: 2,
 		title: "好きな席で自由に",
 		description: "会員QRコードを席の読み取り機にかざしてPCを起動します。インストールやログイン不要！すぐにゲームが始まります。",
-		icon: <img src="/images/qrStart.png" alt="好きな席で自由に" className="h-100 w-100" />
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/qrStart.webp`} alt="好きな席で自由に" className="h-100 w-100" />
 	},
 	{
 		number: 3,
 		title: "そのまま帰るだけ",
 		description: "PCをシャットダウンして、そのまま帰るだけ。料金は自動計算され、登録されたカードにまとめて月末に請求されます。",
-		icon: <img src="/images/exit.png" alt="そのまま帰るだけ" className="h-100 w-100" />
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/exit.webp`} alt="そのまま帰るだけ" className="h-100 w-100" />
 	}
 ];
 
