@@ -102,7 +102,7 @@ export async function checkAvailablePaymentMethods(stripe: Stripe | null): Promi
 	return result;
 }
 
-// Stripeを初期化し、支払い方法の利用可能性をチェックするラッパー関数
+// Stripeを初期化し、支払い方法の利用可能性をチェックするラッパー
 export async function initializeStripeWithPaymentMethods(): Promise<{
 	stripe: Stripe | null;
 	availableMethods: Record<string, boolean>;
