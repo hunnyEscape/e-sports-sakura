@@ -32,7 +32,7 @@ export default function GamesSection() {
 	);
 
 	return (
-		<section id="games" className="py-16">
+		<section id="games" className="py-0 bg-background/90">
 			<div className="container mx-auto px-4">
 				<CategoryPageContainer category={currentCategory}>
 					{isLoading ? (
@@ -45,26 +45,9 @@ export default function GamesSection() {
 								games={categoryData.games}
 								onActiveIndexChange={setActiveIndex}
 							/>
-
-							{/* プリロード用の非表示コンポーネント */}
-							<VideoPreloader
-								videoSrcs={videoSources}
-								currentIndex={activeIndex}
-							/>
 						</div>
 					)}
 				</CategoryPageContainer>
-
-				{/* Call to Action */}
-				<div className="text-center mt-16">
-					<p className="text-xl mb-4">これらのゲームをプレイしてみませんか？</p>
-					<a
-						href="#reservation"
-						className="inline-block bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-3 rounded-full font-medium text-lg transition-colors"
-					>
-						今すぐ予約する
-					</a>
-				</div>
 			</div>
 		</section>
 	);

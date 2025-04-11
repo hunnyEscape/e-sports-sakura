@@ -59,7 +59,7 @@ export default function FeaturesSection() {
 	return (
 		<section
 			id="features"
-			className="py-20 bg-gradient-to-b from-background to-background/90"
+			className="py-20 bg-gradient-to-b from-background/0 to-background/90"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">

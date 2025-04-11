@@ -8,42 +8,23 @@ const usageSteps = [
 	{
 		number: 1,
 		title: "QRコードで入室",
-		description: "会員登録後に表示されるQRコードをドアの読み取り機にかざすだけで入室できます。",
-		icon: (
-			<svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-				<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-				<rect x="7" y="7" width="3" height="3"></rect>
-				<rect x="14" y="7" width="3" height="3"></rect>
-				<rect x="7" y="14" width="3" height="3"></rect>
-				<rect x="14" y="14" width="3" height="3"></rect>
-			</svg>
-		)
+		description: "会員QRコードを扉の読み取り機にかざして入室できます。",
+		icon: <img src="/images/qrEnter.png" alt="QRコードで入室" className="h-100 w-100" />
 	},
 	{
 		number: 2,
 		title: "好きな席で自由に",
-		description: "お好きな席に座り、席のQRコードをスキャンするだけでPCが起動。すぐにゲームが始められます。",
-		icon: (
-			<svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-				<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-				<polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-				<line x1="12" y1="22.08" x2="12" y2="12"></line>
-			</svg>
-		)
+		description: "会員QRコードを席の読み取り機にかざしてPCを起動します。インストールやログイン不要！すぐにゲームが始まります。",
+		icon: <img src="/images/qrStart.png" alt="好きな席で自由に" className="h-100 w-100" />
 	},
 	{
 		number: 3,
 		title: "そのまま帰るだけ",
-		description: "利用終了後は席を立ってそのまま帰るだけ。料金は自動計算され、登録されたカードから引き落とされます。",
-		icon: (
-			<svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-				<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-				<polyline points="16 17 21 12 16 7"></polyline>
-				<line x1="21" y1="12" x2="9" y2="12"></line>
-			</svg>
-		)
+		description: "PCをシャットダウンして、そのまま帰るだけ。料金は自動計算され、登録されたカードにまとめて月末に請求されます。",
+		icon: <img src="/images/exit.png" alt="そのまま帰るだけ" className="h-100 w-100" />
 	}
 ];
+
 
 export default function StepsSection() {
 	const ref = useRef(null);
@@ -52,11 +33,10 @@ export default function StepsSection() {
 	return (
 		<section
 			id="steps"
-			className="py-20 bg-gradient-to-b from-background to-background/90"
+			className="pb-20 bg-background/90"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
-				{/* セクションタイトル */}
 				<motion.div
 					className="text-center mb-16"
 					initial={{ opacity: 0, y: 20 }}
@@ -64,26 +44,24 @@ export default function StepsSection() {
 					transition={{ duration: 0.5 }}
 				>
 					<h2 className="text-3xl md:text-4xl font-bold mb-4">
-						<span className="text-accent">めちゃ簡単</span>、3ステップで
+						利用は<span className="text-accent">めちゃ簡単</span>、3ステップで
 					</h2>
-					<p className="text-foreground/70 max-w-2xl mx-auto">
+					<p className="text-foreground/70 max-w-3xl mx-auto">
 						面倒な手続きも、スタッフ対応も必要ありません。
 						24時間いつでも、スマホ1つで完結します。
 					</p>
 				</motion.div>
-
-				{/* ステップカード */}
 				<div className="flex flex-col md:flex-row gap-8 justify-between max-w-4xl mx-auto">
 					{usageSteps.map((step, index) => (
 						<motion.div
 							key={step.number}
-							className="bg-border/10 rounded-2xl p-6 md:p-8 flex-1 relative shadow-soft"
+							className="bg-border/10 rounded-2xl p-4 md:p-8 flex-1 relative shadow-soft"
 							initial={{ opacity: 0, y: 30 }}
 							animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
 							transition={{ duration: 0.5, delay: index * 0.15 }}
 						>
 							{/* ステップ番号 */}
-							<div className="absolute -top-4 -left-4 bg-accent text-white w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-md">
+							<div className="absolute -top-4 -left-4 border border-accent bg-transparent w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-md">
 								{step.number}
 							</div>
 
@@ -110,6 +88,25 @@ export default function StepsSection() {
 					))}
 				</div>
 			</div>
+			<motion.div
+				className="mt-16 text-center"
+				initial={{ opacity: 0, y: 20 }}
+				animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+				transition={{ duration: 0.5, delay: 0.4 }}
+			>
+				<h3 className="text-2xl font-bold mb-4">
+					さっそく体験してみませんか？
+				</h3>
+				<p className="text-foreground/70 mb-6">
+					初回利用で1時間無料キャンペーン中！
+				</p>
+				<a
+					href="/reservation"
+					className="inline-block bg-accent text-white px-6 py-3 rounded-full font-semibold shadow-md hover:brightness-110 transition"
+				>
+					席を予約する
+				</a>
+			</motion.div>
 		</section>
 	);
 }

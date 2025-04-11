@@ -10,7 +10,7 @@ export default function AccessSection() {
 	return (
 		<section
 			id="access"
-			className="py-20 bg-gradient-to-b from-background/90 to-background"
+			className="py-20 bg-background/90"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
@@ -52,27 +52,14 @@ export default function AccessSection() {
 						<div className="space-y-4">
 							<div className="flex justify-between items-center border-b border-border pb-3">
 								<span className="text-foreground/70">基本料金</span>
-								<span className="text-2xl font-bold text-accent">¥700<span className="text-sm font-normal">/時間</span></span>
+								<span className="text-2xl font-bold text-accent">¥400<span className="text-sm font-normal">/時間</span></span>
 							</div>
-
-							<div className="flex justify-between items-center border-b border-border pb-3">
-								<span className="text-foreground/70">延長料金</span>
-								<span>10分ごと ¥120</span>
-							</div>
-
-							<div className="flex justify-between items-center border-b border-border pb-3">
-								<span className="text-foreground/70">パック料金</span>
-								<span>3時間 ¥1,800</span>
-							</div>
-
 							<div className="flex justify-between items-center pb-3">
 								<span className="text-foreground/70">ドリンク・お菓子</span>
 								<span className="text-highlight">無料</span>
 							</div>
-
 							<p className="text-sm text-foreground/60 mt-4">
-								※料金は自動計算され、登録カードから引き落とされます。<br />
-								※深夜帯（22時〜翌8時）は10%割増となります。
+								※料金は1分単位で自動計算され、月末にまとめて登録支払い方法から引き落とされます。<br />
 							</p>
 						</div>
 					</motion.div>

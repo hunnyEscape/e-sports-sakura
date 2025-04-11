@@ -42,7 +42,6 @@ export default function DashboardPage() {
 								<Link href="/lp" className="flex items-center">
 									<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 								</Link>
-
 								<div className="flex items-center space-x-4">
 									{user?.photoURL && (
 										<Image
@@ -183,12 +182,21 @@ export default function DashboardPage() {
 													</div>
 
 													<div className="flex justify-between items-center">
-														<Button
+														{/*<Button
 															href="/payment"
 															variant="outline"
+															disabled={true}
 														>
 															カード情報を更新
+														</Button>*/}
+
+														<Button
+															variant="outline"
+															className="opacity-50 pointer-events-auto cursor-pointer"
+														>
+															カード情報を更新（未実装）
 														</Button>
+
 
 														<button
 															className="text-sm text-foreground/60 hover:text-accent"

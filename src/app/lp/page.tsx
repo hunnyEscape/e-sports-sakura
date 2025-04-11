@@ -15,39 +15,19 @@ import SeatInitializer from '@/components/ini/create-seat-documents';
 
 export default function LandingPage() {
 	return (
-		<main className="landing-page bg-background text-foreground">
+		<main className="landing-page text-foreground">
 			<LpHeader />
 			<div className="pt-16">
-				<HeroSection />
-				<FeaturesSection />
-				<div className="h-[50vh] flex items-center justify-center mb-12">
-					<div className="text-center">
-						<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">ラインナップ</h2>
-						<p className="text-lg text-muted-foreground mx-auto w-full">
-							様々なジャンルから選べる人気タイトルをご用意しています
-						</p>
-					</div>
-				</div>
-				<GamesSection />
-				<StepsSection />
-
-				{/* スペック紹介セクション */}
+				<HeroSection/>
+				<FeaturesSection/>
+				<GamesSection/>
+				<StepsSection/>
 				<SpecsSection />
-
-				{/* 予約カレンダーセクション (新規追加) */}
 				<AvailabilitySection />
-
-				{/* よくある質問セクション */}
 				<FaqSection />
-
-				{/* アクセス・料金セクション */}
 				<AccessSection />
-
-				{/* 最終CTAセクション */}
 				<CtaSection />
 			</div>
-
-			{/* LP専用フッター */}
 			<LpFooter />
 		</main>
 	);

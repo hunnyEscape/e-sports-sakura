@@ -5,7 +5,7 @@ import AvailabilityCalendar from './availability-calendar';
 
 const AvailabilitySection: React.FC = () => {
 	return (
-		<section className="py-20 bg-background/50">
+		<section className="py-20 bg-background/70">
 			<div className="container mx-auto px-4">
 				{/* Section header */}
 				<div className="text-center mb-12">

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import GameSection from './GameSession';
 import AudioPermissionModal from './AudioPermissionModal';
 import { useAudio } from '@/context/AudioContext';
-import {Game} from '../../lib/gameData';
+import { Game } from '../../lib/gameData';
 interface GameCategoryLayoutProps {
 	games: Game[];
 	onActiveIndexChange?: (index: number) => void;
@@ -53,14 +53,37 @@ export default function GameCategoryLayout({
 	return (
 		<>
 			{gamesWithFullUrls.map((game, index) => (
-				<GameSection
-					key={game.id}
-					game={game}
-					isActive={index === activeGameIndex}
-					onVisibilityChange={(isVisible) => handleVisibilityChange(index, isVisible)}
-					globalAudioEnabled={globalAudioEnabled}
-				/>
+				<React.Fragment key={game.id}>
+					{index === 0 && (
+						<div className="h-[50vh] flex items-center justify-center w-full">
+							<div className="text-center pb-20">
+								<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">マルチプレイで笑い飛ばすｗｗ</h2>
+								<p className="text-lg text-muted-foreground mx-auto w-full">
+									Youtube実況で大人気のワイワイ系タイトル
+								</p>
+							</div>
+						</div>
+					)}
+					{index === 3 && (
+						<div className="h-[50vh] flex items-center justify-center w-full">
+							<div className="text-center pb-20">
+								<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">本格協力プレイ</h2>
+								<p className="text-lg text-muted-foreground mx-auto w-full">
+									密に協力するディープな達成感
+								</p>
+							</div>
+						</div>
+					)}
+
+					<GameSection
+						game={game}
+						isActive={index === activeGameIndex}
+						onVisibilityChange={(isVisible) => handleVisibilityChange(index, isVisible)}
+						globalAudioEnabled={globalAudioEnabled}
+					/>
+				</React.Fragment>
 			))}
+
 		</>
 	);
 }

@@ -13,7 +13,8 @@ import CalendarView from '@/components/reservation/calendar-view';
 import TimeGrid from '@/components/reservation/time-grid';
 import ReservationForm from '@/components/reservation/reservation-form';
 import LoginPrompt from '@/components/reservation/login-prompt';
-
+import Link from 'next/link';
+import Image from 'next/image';
 enum ReservationStep {
 	SELECT_BRANCH,
 	SELECT_DATE,
@@ -22,9 +23,10 @@ enum ReservationStep {
 }
 
 const ReservationPageContent: React.FC = () => {
-	const { user, loading } = useAuth();
-	const { setSelectedBranch, selectedTimeSlots, clearSelectedTimeSlots } = useReservation();
+	const [isLoggingOut, setIsLoggingOut] = useState(false);
 	const router = useRouter();
+	const { user, loading, signOut } = useAuth();
+	const { setSelectedBranch, selectedTimeSlots, clearSelectedTimeSlots } = useReservation();
 
 	const [currentStep, setCurrentStep] = useState<ReservationStep>(ReservationStep.SELECT_BRANCH);
 	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -155,8 +157,46 @@ const ReservationPageContent: React.FC = () => {
 		}
 	};
 
+	const handleSignOut = async () => {
+		try {
+			setIsLoggingOut(true);
+			await signOut();
+			router.push('/');
+		} catch (error) {
+			console.error('Logout error:', error);
+			setIsLoggingOut(false);
+		}
+	};
+
 	return (
-		<div className="min-h-screen bg-background py-12 px-4">
+		<div className="min-h-screen bg-background px-4">
+			<header className="relative bg-background/80 backdrop-blur-sm border-b border-border sticky top-0 z-10 mb-10">
+				<div className="container mx-auto px-4">
+					<div className="flex items-center justify-between h-16">
+						<Link href="/lp" className="flex items-center">
+							<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
+						</Link>
+						<div className="flex items-center space-x-4">
+							{user?.photoURL && (
+								<Image
+									src={user.photoURL}
+									alt={user.displayName || 'ユーザー'}
+									width={32}
+									height={32}
+									className="rounded-full"
+								/>
+							)}
+							<button
+								onClick={handleSignOut}
+								disabled={isLoggingOut}
+								className="text-foreground/70 hover:text-accent"
+							>
+								{isLoggingOut ? <LoadingSpinner size="small" /> : 'ログアウト'}
+							</button>
+						</div>
+					</div>
+				</div>
+			</header>
 			<motion.div
 				initial={{ opacity: 0, y: 20 }}
 				animate={{ opacity: 1, y: 0 }}

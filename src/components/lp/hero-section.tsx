@@ -15,7 +15,7 @@ export default function HeroSection() {
 
 	return (
 		<section className="relative min-h-screen flex items-center overflow-hidden">
-			<div className="absolute inset-0 z-0">
+			<div className="fixed inset-0 z-[-1]">
 				<Image
 					src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/hero-bg.webp`}
 					alt="深夜のゲーミングスペース"
@@ -26,6 +26,7 @@ export default function HeroSection() {
 					className="brightness-50"
 				/>
 			</div>
+
 
 			{/* コンテンツオーバーレイ */}
 			<div className="container mx-auto px-4 relative z-10">

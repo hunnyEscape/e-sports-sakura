@@ -118,7 +118,7 @@ export default function GameSection({
 	return (
 		<div
 			ref={sectionRef}
-			className={`relative min-h-screen py-0 md:py-0 transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-50'}`}
+			className={`relative min-h-screen py-5 transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-50'}`}
 		>
 			<div className="container mx-auto px-4">
 				<div className="md:hidden flex flex-col">

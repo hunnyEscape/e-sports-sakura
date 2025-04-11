@@ -13,20 +13,20 @@ const specs = [
 			{ label: "CPU", value: "AMD Ryzen 7 7800X3D" },
 			{ label: "メモリ", value: "32GB DDR5" },
 			{ label: "ストレージ", value: "1TB NVMe SSD" },
-			{ label: "モニター", value: "34インチ ウルトラワイド 165Hz" }
+			{ label: "モニター", value: "34インチ 湾曲ウルトラワイド WQHD 120Hz" }
 		],
-		image: "/images/lp/specs/pc.jpg"
+		image: "/images/spec1.png"
 	},
 	{
 		category: "周辺機器",
 		items: [
-			{ label: "ゲーミングチェア", value: "COUGAR Ranger Pro" },
-			{ label: "キーボード", value: "Razer BlackWidow V3" },
-			{ label: "マウス", value: "Logicool G Pro X Superlight" },
+			{ label: "ゲーミングチェア", value: "社長椅子 レザーリクライニングチェア" },
+			{ label: "キーボード", value: "Logicool K835GPR メカニカルキーボード 赤軸" },
+			{ label: "マウス", value: "Xiaomi 72g 6200調節可能DPI" },
 			{ label: "ヘッドセット", value: "HyperX Cloud III" },
 			{ label: "コントローラー", value: "Xbox / Switch Proコン対応" }
 		],
-		image: "/images/lp/specs/peripherals.jpg"
+		image: "/images/spec2.png"
 	},
 	{
 		category: "設備・サービス",
@@ -34,10 +34,8 @@ const specs = [
 			{ label: "ネット回線", value: "有線LAN 1Gbps (Ping 6ms以下)" },
 			{ label: "ドリンク", value: "フリードリンク (コーヒー、お茶など)" },
 			{ label: "スナック", value: "お菓子付き (補充は定期的)" },
-			{ label: "冷蔵庫", value: "フリースペース利用可能" },
-			{ label: "空調", value: "個別調整可能" }
 		],
-		image: "/images/lp/specs/amenities.jpg"
+		image: "/images/spec3.png"
 	}
 ];
 
@@ -48,7 +46,7 @@ export default function SpecsSection() {
 	return (
 		<section
 			id="specs"
-			className="py-20 bg-gradient-to-b from-background/90 to-background"
+			className="py-20 bg-gradient-to-b from-background/90 to-background/70"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
@@ -63,8 +61,7 @@ export default function SpecsSection() {
 						<span className="text-accent">本格</span>スペック＆設備
 					</h2>
 					<p className="text-foreground/70 max-w-2xl mx-auto">
-						ただのネットカフェじゃない。ゲームを本気で楽しむための
-						ハイスペックPCと快適な環境をご用意しています。
+						ゲームを本気で楽しむために十分快適な環境をご用意しています。
 					</p>
 				</motion.div>
 

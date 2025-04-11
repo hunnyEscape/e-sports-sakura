@@ -69,7 +69,17 @@ export default function QrCodeDisplay() {
 						/>
 					</div>
 					<p className="text-sm text-foreground/70 mb-4">
-						店舗の入口リーダーにかざして入室できます。<br/>席のリーダーにかざすとPCを起動できます。
+						店舗の入口リーダーにかざして入室できます。<br/>
+						席のリーダーにかざすとPCを起動できます。<br/>
+					</p>
+					<Button
+						variant="outline"
+						className="opacity-50 pointer-events-auto cursor-pointer"
+					>
+						会員QRの更新手続き（未実装）
+					</Button>
+					<p className="text-sm text-foreground/70 mt-2">
+						セキュリティの関係上、会員QRが紛失したり他人に漏洩した場合は更新手続きをお願いします。
 					</p>
 				</>
 			) : (
