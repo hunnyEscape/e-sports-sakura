@@ -40,13 +40,6 @@ export default function DashboardPage() {
 						<div className="container mx-auto px-4">
 							<div className="flex items-center justify-between h-16">
 								<Link href="/lp" className="flex items-center">
-									<Image
-										src="/images/logo.svg"
-										alt="E-Sports Sakura"
-										width={40}
-										height={40}
-										className="mr-2"
-									/>
 									<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 								</Link>
 
@@ -92,11 +85,11 @@ export default function DashboardPage() {
 							<div className="bg-accent/10 border border-accent/20 rounded-xl p-6 mb-8">
 								<h2 className="text-lg font-semibold mb-2">会員登録を完了させましょう</h2>
 								<p className="mb-4">
-									サービスを利用するには、追加情報の入力とeKYC認証が必要です。
-									数分で完了します。
+									身分証明と支払い方法の登録が必要です。2分で完了します。
+
 								</p>
 								<Button
-									href="/register/personal-info"
+									href="/register/verification"
 									variant="primary"
 								>
 									登録を続ける

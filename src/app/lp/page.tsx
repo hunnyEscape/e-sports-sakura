@@ -19,7 +19,6 @@ export default function LandingPage() {
 			<LpHeader />
 			<div className="pt-16">
 				<HeroSection />
-				<SeatInitializer/>
 				<FeaturesSection />
 				<div className="h-[50vh] flex items-center justify-center mb-12">
 					<div className="text-center">

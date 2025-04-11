@@ -52,7 +52,6 @@ export default function GameCategoryLayout({
 
 	return (
 		<>
-			<AudioPermissionModal />
 			{gamesWithFullUrls.map((game, index) => (
 				<GameSection
 					key={game.id}

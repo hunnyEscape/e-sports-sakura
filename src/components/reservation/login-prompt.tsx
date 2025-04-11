@@ -63,7 +63,7 @@ const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }
 					</p>
 
 					{/* 予約情報のサマリー */}
-					<div className="mt-2 space-y-1 text-sm">
+					<div className="mt-2 space-y-1 text-sm text-foreground/70">
 						{reservationDetails.map((item, index) => (
 							<div key={index} className="flex justify-between">
 								<span>{item.seatName || `座席 #${index + 1}`}</span>

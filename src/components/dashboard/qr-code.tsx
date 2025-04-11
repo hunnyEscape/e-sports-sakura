@@ -68,16 +68,9 @@ export default function QrCodeDisplay() {
 							className="w-full h-full object-contain"
 						/>
 					</div>
-
 					<p className="text-sm text-foreground/70 mb-4">
-						このQRコードを店舗の入口リーダーにかざして入室できます。
+						店舗の入口リーダーにかざして入室できます。<br/>席のリーダーにかざすとPCを起動できます。
 					</p>
-
-					<div className="text-center text-sm">
-						<span className="bg-gray-800 text-white p-2 rounded-md">
-							{user?.uid}
-						</span>
-					</div>
 				</>
 			) : (
 				<div className="bg-orange-500/10 text-orange-500 p-4 rounded-lg mb-4">

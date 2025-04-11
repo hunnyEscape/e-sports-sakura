@@ -46,19 +46,9 @@ export default function LoginPage() {
 				<div className="container mx-auto px-4">
 					<div className="flex items-center justify-between h-16">
 						<Link href="/" className="flex items-center">
-							<Image
-								src="/images/logo.svg"
-								alt="E-Sports Sakura"
-								width={40}
-								height={40}
-								className="mr-2"
-							/>
 							<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 						</Link>
 
-						<Link href="/lp" className="text-foreground/70 hover:text-accent">
-							サービスについて
-						</Link>
 					</div>
 				</div>
 			</header>

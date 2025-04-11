@@ -1,11 +1,8 @@
 -e 
 ### FILE: ./src/types/firebase.ts
 
-// src/types/firebase.ts
-
 import { Timestamp } from './index';
 // src/types/firebase.ts に追加
-
 // 支店情報
 export interface BranchDocument {
 	branchId: string;
@@ -15,9 +12,9 @@ export interface BranchDocument {
 	phoneNumber?: string;
 	email?: string;
 	businessHours: {
-	  open: string;  // "10:00" のような形式
-	  close: string; // "22:00" のような形式
-	  dayOff?: string[]; // 定休日（"sunday", "monday" など）
+		open: string;  // "10:00" のような形式
+		close: string; // "22:00" のような形式
+		dayOff?: string[]; // 定休日（"sunday", "monday" など）
 	};
 	totalSeats: number;
 	description?: string;
@@ -25,12 +22,12 @@ export interface BranchDocument {
 	layoutImagePath?: string;
 	mapImagePath?: string;
 	location?: {
-	  latitude: number;
-	  longitude: number;
+		latitude: number;
+		longitude: number;
 	};
 	createdAt: Timestamp | string;
 	updatedAt: Timestamp | string;
-  }
+}
 
 // Firestore User ドキュメントのインターフェース
 export interface UserDocument {
@@ -77,7 +74,7 @@ export interface SessionDocument {
 	endTime: Timestamp | string;
 	durationMinutes: number;
 	amount: number;
-	pricePerMinute: number;
+	pricePerHour: number;
 	active: boolean;
 }
 
@@ -115,6 +112,20 @@ export interface ReservationDocument {
 	notes?: string;
 	createdAt: Timestamp | string;
 	updatedAt: Timestamp | string;
+}
+
+// 利用履歴情報
+export interface UsageHistoryDocument {
+	id?: string;            // ドキュメントID
+	userId: string;         // ユーザーID
+	amount: number;         // 金額
+	description: string;    // 説明（例：「テスト利用 (60分)」）
+	durationMinutes: number; // 利用時間（分）
+	invoiceId?: string;     // 請求ID
+	isTest?: boolean;       // テスト利用フラグ
+	status: string;         // 状態（"paid", "pending"など）
+	timestamp: Timestamp | string; // 利用日時
+	seatId?: string;        // 座席ID（あれば）
 }-e 
 ### FILE: ./src/types/api.ts
 
@@ -1283,19 +1294,9 @@ export default function LoginPage() {
 				<div className="container mx-auto px-4">
 					<div className="flex items-center justify-between h-16">
 						<Link href="/" className="flex items-center">
-							<Image
-								src="/images/logo.svg"
-								alt="E-Sports Sakura"
-								width={40}
-								height={40}
-								className="mr-2"
-							/>
 							<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 						</Link>
 
-						<Link href="/lp" className="text-foreground/70 hover:text-accent">
-							サービスについて
-						</Link>
 					</div>
 				</div>
 			</header>
@@ -1414,17 +1415,11 @@ export default function DashboardPage() {
 		<ProtectedRoute>
 			<ReservationProvider>
 				<div className="min-h-screen bg-background text-foreground">
+					{/* ヘッダー */}
 					<header className="bg-background/80 backdrop-blur-sm border-b border-border sticky top-0 z-10">
 						<div className="container mx-auto px-4">
 							<div className="flex items-center justify-between h-16">
 								<Link href="/lp" className="flex items-center">
-									<Image
-										src="/images/logo.svg"
-										alt="E-Sports Sakura"
-										width={40}
-										height={40}
-										className="mr-2"
-									/>
 									<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 								</Link>
 
@@ -1916,7 +1911,6 @@ export default function LandingPage() {
 			<LpHeader />
 			<div className="pt-16">
 				<HeroSection />
-				<SeatInitializer/>
 				<FeaturesSection />
 				<div className="h-[50vh] flex items-center justify-center mb-12">
 					<div className="text-center">
@@ -2208,27 +2202,8 @@ export default function HomePage() {
 				<div className="container mx-auto px-4">
 					<div className="flex items-center justify-between h-16">
 						<Link href="/lp" className="flex items-center">
-							<Image
-								src="/images/logo.svg"
-								alt="E-Sports Sakura"
-								width={40}
-								height={40}
-								className="mr-2"
-							/>
 							<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 						</Link>
-
-						<div className="flex items-center space-x-4">
-							<Link href="/lp" className="text-foreground/70 hover:text-accent">
-								サービス詳細
-							</Link>
-							<Button
-								href="/login"
-								variant="primary"
-							>
-								ログイン
-							</Button>
-						</div>
 					</div>
 				</div>
 			</header>
@@ -2249,13 +2224,7 @@ export default function HomePage() {
 						>
 							ログイン / 会員登録
 						</Button>
-						<Button
-							href="/lp"
-							variant="outline"
-							size="lg"
-						>
-							サービスについて
-						</Button>
+
 					</div>
 				</div>
 			</main>
@@ -6121,7 +6090,6 @@ export default function GameCategoryLayout({
 
 	return (
 		<>
-			<AudioPermissionModal />
 			{gamesWithFullUrls.map((game, index) => (
 				<GameSection
 					key={game.id}
@@ -6597,10 +6565,6 @@ export default function StickyGameVideo({
 			{hasError && (
 				<div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-background/80 p-4 text-center">
 					<p className="text-lg mb-2">動画をロードできませんでした</p>
-					<p className="text-sm text-foreground/70 mb-4">
-						ゲームプレイ映像は現在準備中です。後ほどお試しください。
-					</p>
-
 					{thumbnailSrc && (
 						<div className="mt-2 relative w-full max-w-md h-32 bg-border/30 rounded overflow-hidden">
 							<Image
@@ -6881,68 +6845,213 @@ export default function LoadingSpinner({ size = 'default' }: { size?: 'small' | 
 }-e 
 ### FILE: ./src/components/dashboard/usage-history.tsx
 
-// src/components/dashboard/usage-history.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/auth-context';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
+import { collection, query, where, orderBy, limit, getDocs, startAfter, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { SessionDocument, SeatDocument } from '@/types/firebase';
+import { Timestamp } from '@/types/index';
 
+// 表示用の履歴アイテム
 interface HistoryItem {
 	id: string;
 	amount: number;
-	durationMinutes?: number;
+	durationMinutes: number;
 	description: string;
 	timestamp: string;
 	status: string;
-	invoiceId: string;
-	isTest?: boolean;
-}
-
-interface Pagination {
-	total: number;
-	page: number;
-	limit: number;
-	pages: number;
+	seatId: string;
+	seatName?: string;
+	branchName?: string;
+	invoiceId?: string;
+	isActive: boolean; // アクティブセッションかどうかのフラグを追加
+	startTime?: string; // アクティブセッションの開始時間を追加
 }
 
 export default function UsageHistory() {
 	const { user } = useAuth();
 	const [history, setHistory] = useState<HistoryItem[]>([]);
-	const [pagination, setPagination] = useState<Pagination>({
-		total: 0,
-		page: 1,
-		limit: 5,
-		pages: 0
-	});
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+	const [hasMore, setHasMore] = useState(true);
+	const itemsPerPage = 5;
+	const [activeSession, setActiveSession] = useState<HistoryItem | null>(null); // アクティブなセッションを保存
+	const [seats, setSeats] = useState<{ [key: string]: SeatDocument }>({});
 
-	const fetchHistory = async (page = 1) => {
+	// 座席情報を取得
+	const fetchSeats = async () => {
+		try {
+			const seatsSnapshot = await getDocs(collection(db, 'seats'));
+			const seatsData: { [key: string]: SeatDocument } = {};
+
+			seatsSnapshot.docs.forEach(doc => {
+				const seatData = doc.data() as SeatDocument;
+				seatsData[seatData.seatId] = seatData;
+			});
+
+			setSeats(seatsData);
+		} catch (err) {
+			console.error('Error fetching seats:', err);
+		}
+	};
+
+	const fetchHistory = async (isLoadMore = false) => {
 		if (!user) return;
 
 		try {
 			setLoading(true);
 			setError(null);
 
-			const idToken = await user.getIdToken();
-			const response = await fetch(`/api/billing/history?page=${page}&limit=${pagination.limit}`, {
-				headers: {
-					'Authorization': `Bearer ${idToken}`
-				}
-			});
-
-			if (!response.ok) {
-				throw new Error('履歴データの取得に失敗しました');
+			// 初回読み込み時に座席情報を取得
+			if (!isLoadMore && Object.keys(seats).length === 0) {
+				await fetchSeats();
 			}
 
-			const data = await response.json();
-			setHistory(data.history);
-			setPagination(data.pagination);
+			// アクティブなセッションを先に取得する
+			const activeSessionQuery = query(
+				collection(db, 'sessions'),
+				where('userId', '==', user.uid),
+				where('active', '==', true),
+				orderBy('startTime', 'desc')
+			);
+
+			const activeSessionSnapshot = await getDocs(activeSessionQuery);
+
+			if (!activeSessionSnapshot.empty) {
+				const activeData = activeSessionSnapshot.docs[0].data() as SessionDocument;
+
+				// Firestoreのタイムスタンプをフォーマット
+				const startTimeDate = activeData.startTime instanceof Date
+					? activeData.startTime
+					: activeData.startTime?.toDate?.()
+					|| (typeof activeData.startTime === 'object' && 'seconds' in activeData.startTime
+						? new Date((activeData.startTime as Timestamp).seconds * 1000)
+						: new Date(activeData.startTime as string));
+
+				const now = new Date();
+				// 現在の時点での利用時間（分）を計算
+				const currentDurationMinutes = Math.floor((now.getTime() - startTimeDate.getTime()) / (1000 * 60));
+				// 現在の時点での料金を計算（時間単位の料金を分単位に変換）
+				const currentAmount = Math.ceil(currentDurationMinutes * (activeData.pricePerHour / 60));
+
+				// 座席情報を取得
+				const seatInfo = seats[activeData.seatId];
+				const seatName = seatInfo?.name || `座席 ${activeData.seatId}`;
+				const branchName = seatInfo?.branchName || '';
+
+				const activeItem: HistoryItem = {
+					id: activeSessionSnapshot.docs[0].id,
+					amount: currentAmount,
+					durationMinutes: currentDurationMinutes,
+					description: `${branchName ? branchName + 'の' : ''}${seatName}の利用`,
+					timestamp: startTimeDate.toISOString(),
+					startTime: startTimeDate.toISOString(),
+					status: 'in-progress',
+					seatId: activeData.seatId,
+					seatName: seatName,
+					branchName: branchName,
+					invoiceId: activeData.billingId || '',
+					isActive: true,
+				};
+
+				setActiveSession(activeItem);
+			} else {
+				setActiveSession(null);
+			}
+
+			// 過去の利用履歴（非アクティブなセッション）を取得
+			let sessionsQuery = query(
+				collection(db, 'sessions'),
+				where('userId', '==', user.uid),
+				where('active', '==', false),
+				orderBy('endTime', 'desc'),
+				limit(itemsPerPage)
+			);
+
+			// 続きを読み込む場合は前回の最後の項目から開始
+			if (isLoadMore && lastVisible) {
+				sessionsQuery = query(
+					collection(db, 'sessions'),
+					where('userId', '==', user.uid),
+					where('active', '==', false),
+					orderBy('endTime', 'desc'),
+					startAfter(lastVisible),
+					limit(itemsPerPage)
+				);
+			}
+
+			const sessionsSnapshot = await getDocs(sessionsQuery);
+
+			// 続きがあるかどうかを確認
+			if (sessionsSnapshot.docs.length < itemsPerPage) {
+				setHasMore(false);
+			} else {
+				setHasMore(true);
+			}
+
+			// 最後の見えるドキュメントを保存
+			const lastVisibleDoc = sessionsSnapshot.docs[sessionsSnapshot.docs.length - 1];
+			if (lastVisibleDoc) {
+				setLastVisible(lastVisibleDoc);
+			}
+
+			// 結果をマッピング
+			const newHistoryItems = sessionsSnapshot.docs.map(doc => {
+				const data = doc.data() as SessionDocument;
+
+				// Firestoreのタイムスタンプをフォーマット
+				const endTimeDate = data.endTime instanceof Date
+					? data.endTime
+					: data.endTime?.toDate?.()
+					|| (typeof data.endTime === 'object' && 'seconds' in data.endTime
+						? new Date((data.endTime as Timestamp).seconds * 1000)
+						: new Date(data.endTime as string));
+
+				const startTimeDate = data.startTime instanceof Date
+					? data.startTime
+					: data.startTime?.toDate?.()
+					|| (typeof data.startTime === 'object' && 'seconds' in data.startTime
+						? new Date((data.startTime as Timestamp).seconds * 1000)
+						: new Date(data.startTime as string));
+
+				// 座席情報を取得
+				const seatInfo = seats[data.seatId];
+				const seatName = seatInfo?.name || `座席 ${data.seatId}`;
+				const branchName = seatInfo?.branchName || '';
+
+				// 座席情報から説明を作成
+				const description = `${branchName ? branchName + 'の' : ''}${seatName}の利用`;
+
+				return {
+					id: doc.id,
+					amount: data.amount || Math.ceil(data.durationMinutes * (data.pricePerHour / 60)), // 金額計算 (時間単位の料金を分単位に変換)
+					durationMinutes: data.durationMinutes,
+					description,
+					timestamp: endTimeDate.toISOString(),
+					startTime: startTimeDate.toISOString(),
+					status: 'paid', // 完了したセッションは支払い済みとみなす
+					seatId: data.seatId,
+					seatName: seatName,
+					branchName: branchName,
+					invoiceId: data.billingId || '',
+					isActive: false,
+				};
+			});
+
+			// 既存の履歴と新しい履歴を結合（続きを読み込む場合）
+			if (isLoadMore) {
+				setHistory(prev => [...prev, ...newHistoryItems]);
+			} else {
+				setHistory(newHistoryItems);
+			}
 		} catch (err) {
-			console.error('Error fetching history:', err);
-			setError(err instanceof Error ? err.message : '履歴の取得中にエラーが発生しました');
+			console.error('Error fetching history from Firestore:', err);
+			setError(err instanceof Error ? err.message : 'Firestoreからの履歴の取得中にエラーが発生しました');
 		} finally {
 			setLoading(false);
 		}
@@ -6955,45 +7064,21 @@ export default function UsageHistory() {
 		}
 	}, [user]);
 
-	// ページネーション
-	const handlePageChange = (newPage: number) => {
-		if (newPage < 1 || newPage > pagination.pages) return;
-		fetchHistory(newPage);
-	};
+	// 定期的にアクティブセッションの情報を更新
+	useEffect(() => {
+		if (!user || !activeSession) return;
 
-	// テスト決済のシミュレーション (開発環境のみ)
-	const simulatePayment = async (minutes: number) => {
-		if (!user || process.env.NODE_ENV === 'production') return;
+		const intervalId = setInterval(() => {
+			fetchHistory();
+		}, 60000); // 1分ごとに更新
 
-		try {
-			setLoading(true);
-			const idToken = await user.getIdToken();
+		return () => clearInterval(intervalId);
+	}, [user, activeSession]);
 
-			const response = await fetch('/api/billing/mock-charge', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${idToken}`
-				},
-				body: JSON.stringify({
-					durationMinutes: minutes,
-					description: `テスト利用 (${minutes}分)`
-				})
-			});
-
-			if (!response.ok) {
-				const errorData = await response.json();
-				throw new Error(errorData.error || 'テスト決済に失敗しました');
-			}
-
-			// 履歴を再読み込み
-			await fetchHistory();
-
-		} catch (err) {
-			console.error('Error simulating payment:', err);
-			setError(err instanceof Error ? err.message : 'テスト決済中にエラーが発生しました');
-		} finally {
-			setLoading(false);
+	// 続きを読み込む
+	const handleLoadMore = () => {
+		if (hasMore && !loading) {
+			fetchHistory(true);
 		}
 	};
 
@@ -7021,6 +7106,18 @@ export default function UsageHistory() {
 		}).format(amount);
 	};
 
+	// 経過時間計算（アクティブセッション用）
+	const getElapsedTime = (startTimeString: string) => {
+		const startTime = new Date(startTimeString);
+		const now = new Date();
+		const elapsedMs = now.getTime() - startTime.getTime();
+
+		const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
+		const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+
+		return `${hours}時間${minutes}分`;
+	};
+
 	return (
 		<div className="bg-border/5 rounded-2xl shadow-soft p-6">
 			<h2 className="text-lg font-semibold mb-4">利用履歴</h2>
@@ -7031,55 +7128,55 @@ export default function UsageHistory() {
 				</div>
 			)}
 
-			{/* テスト決済ボタン (開発環境のみ) */}
-			{process.env.NODE_ENV === 'development' && (
-				<div className="mb-6 p-4 bg-orange-500/10 text-orange-600 rounded-lg">
-					<p className="text-sm mb-2">開発環境: テスト決済をシミュレート</p>
-					<div className="flex flex-wrap gap-2">
-						<Button
-							onClick={() => simulatePayment(30)}
-							disabled={loading}
-							variant="outline"
-							size="sm"
-						>
-							30分利用 (¥360)
-						</Button>
-						<Button
-							onClick={() => simulatePayment(60)}
-							disabled={loading}
-							variant="outline"
-							size="sm"
-						>
-							1時間利用 (¥700)
-						</Button>
-						<Button
-							onClick={() => simulatePayment(120)}
-							disabled={loading}
-							variant="outline"
-							size="sm"
-						>
-							2時間利用 (¥1,400)
-						</Button>
+			{/* アクティブセッションの表示 */}
+			{activeSession && (
+				<div className="mb-6">
+					<h3 className="text-md font-medium mb-3">現在利用中のセッション</h3>
+					<div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+						<div className="flex justify-between items-start">
+							<div>
+								<p className="font-medium">{activeSession.description}</p>
+								{activeSession.branchName && (
+									<p className="text-sm text-foreground/70">{activeSession.branchName}</p>
+								)}
+								<p className="text-sm text-foreground/70">開始時間: {formatDate(activeSession.timestamp)}</p>
+								<p className="text-sm text-foreground/70">
+									現在の利用時間: {getElapsedTime(activeSession.startTime || '')}
+								</p>
+							</div>
+							<div className="text-right">
+								<p className="text-lg font-semibold">{formatCurrency(activeSession.amount)}</p>
+								<span className="inline-block bg-blue-500/10 text-blue-500 text-xs px-2 py-0.5 rounded">
+									利用中
+								</span>
+							</div>
+						</div>
 					</div>
 				</div>
 			)}
 
-			{loading ? (
+			{/* 過去の利用履歴 */}
+			{loading && history.length === 0 && !activeSession ? (
 				<div className="flex justify-center items-center py-12">
 					<LoadingSpinner size="large" />
 				</div>
-			) : history.length === 0 ? (
+			) : history.length === 0 && !activeSession ? (
 				<div className="text-center py-8 text-foreground/70">
 					<p>まだ利用履歴はありません。</p>
 				</div>
 			) : (
 				<>
+					{history.length > 0 && (
+						<h3 className="text-md font-medium mb-3">過去の利用履歴</h3>
+					)}
 					<div className="overflow-x-auto">
 						<table className="w-full">
 							<thead>
 								<tr className="text-left text-foreground/70 border-b border-border">
 									<th className="pb-2">日時</th>
 									<th className="pb-2">内容</th>
+									<th className="pb-2">店舗</th>
+									<th className="pb-2 text-right">利用時間</th>
 									<th className="pb-2 text-right">料金</th>
 									<th className="pb-2 text-right">ステータス</th>
 								</tr>
@@ -7089,17 +7186,13 @@ export default function UsageHistory() {
 									<tr key={item.id} className="border-b border-border/20">
 										<td className="py-3">{formatDate(item.timestamp)}</td>
 										<td className="py-3">
-											{item.description}
-											{item.durationMinutes && (
-												<span className="text-foreground/60 text-sm block">
-													{item.durationMinutes}分間の利用
-												</span>
-											)}
-											{item.isTest && (
-												<span className="inline-block bg-blue-500/10 text-blue-500 text-xs px-2 py-0.5 rounded">
-													テスト
-												</span>
-											)}
+											{item.seatName || item.description}
+										</td>
+										<td className="py-3">
+											{item.branchName || '-'}
+										</td>
+										<td className="py-3 text-right">
+											{item.durationMinutes}分
 										</td>
 										<td className="py-3 text-right font-medium">
 											{formatCurrency(item.amount)}
@@ -7121,32 +7214,17 @@ export default function UsageHistory() {
 						</table>
 					</div>
 
-					{/* ページネーション */}
-					{pagination.pages > 1 && (
+					{/* 続きを読み込むボタン */}
+					{hasMore && (
 						<div className="flex justify-center mt-6">
-							<div className="flex space-x-1">
-								<Button
-									onClick={() => handlePageChange(pagination.page - 1)}
-									disabled={pagination.page === 1 || loading}
-									variant="outline"
-									size="sm"
-								>
-									前へ
-								</Button>
-
-								<div className="flex items-center px-3 py-2 text-sm">
-									{pagination.page} / {pagination.pages}
-								</div>
-
-								<Button
-									onClick={() => handlePageChange(pagination.page + 1)}
-									disabled={pagination.page === pagination.pages || loading}
-									variant="outline"
-									size="sm"
-								>
-									次へ
-								</Button>
-							</div>
+							<Button
+								onClick={handleLoadMore}
+								disabled={loading}
+								variant="outline"
+								size="sm"
+							>
+								{loading ? <LoadingSpinner size="small" /> : 'さらに読み込む'}
+							</Button>
 						</div>
 					)}
 				</>
@@ -7226,16 +7304,9 @@ export default function QrCodeDisplay() {
 							className="w-full h-full object-contain"
 						/>
 					</div>
-
 					<p className="text-sm text-foreground/70 mb-4">
-						このQRコードを店舗の入口リーダーにかざして入室できます。
+						店舗の入口リーダーにかざして入室できます。<br/>席のリーダーにかざすとPCを起動できます。
 					</p>
-
-					<div className="text-center text-sm">
-						<span className="bg-gray-800 text-white p-2 rounded-md">
-							{user?.uid}
-						</span>
-					</div>
 				</>
 			) : (
 				<div className="bg-orange-500/10 text-orange-500 p-4 rounded-lg mb-4">
@@ -8336,7 +8407,7 @@ const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }
 					</p>
 
 					{/* 予約情報のサマリー */}
-					<div className="mt-2 space-y-1 text-sm">
+					<div className="mt-2 space-y-1 text-sm text-foreground/70">
 						{reservationDetails.map((item, index) => (
 							<div key={index} className="flex justify-between">
 								<span>{item.seatName || `座席 #${index + 1}`}</span>
@@ -10332,12 +10403,16 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
+import { useAuth } from '@/context/auth-context';
 
 export default function LpHeader() {
 	const [isVisible, setIsVisible] = useState(true);
 	const [lastScrollY, setLastScrollY] = useState(0);
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
+	
+	// 認証状態を取得
+	const { user, userData } = useAuth();
+	
 	// スクロール処理
 	const controlHeader = () => {
 		const currentScrollY = window.scrollY;
@@ -10371,13 +10446,6 @@ export default function LpHeader() {
 			<div className="container mx-auto px-4">
 				<div className="flex items-center justify-between h-16">
 					<Link href="/" className="flex items-center">
-						<Image
-							src="/images/logo.svg"
-							alt="E-Sports Sakura"
-							width={40}
-							height={40}
-							className="mr-2"
-						/>
 						<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 					</Link>
 
@@ -10435,18 +10503,34 @@ export default function LpHeader() {
 						</button>
 					</div>
 
-					<Link
-						href="/login"
-						className="
-              hidden md:block
-              px-4 py-2 rounded-xl 
-              border border-accent text-accent 
-              hover:bg-accent hover:text-white 
-              transition-colors duration-300
-            "
-					>
-						ログイン
-					</Link>
+					{/* ログイン状態に応じてボタンを表示 */}
+					{user ? (
+						<Link
+							href="/dashboard"
+							className="
+								hidden md:block
+								px-4 py-2 rounded-xl 
+								border border-accent text-accent 
+								hover:bg-accent hover:text-white 
+								transition-colors duration-300
+							"
+						>
+							マイページ
+						</Link>
+					) : (
+						<Link
+							href="/login"
+							className="
+								hidden md:block
+								px-4 py-2 rounded-xl 
+								border border-accent text-accent 
+								hover:bg-accent hover:text-white 
+								transition-colors duration-300
+							"
+						>
+							ログイン
+						</Link>
+					)}
 				</div>
 
 				{/* モバイルナビゲーション */}
@@ -10514,13 +10598,24 @@ export default function LpHeader() {
 								</Link>
 							</li>
 							<li className="pt-2">
-								<Link
-									href="/login"
-									className="block py-2 text-accent hover:underline"
-									onClick={() => setIsMobileMenuOpen(false)}
-								>
-									ログイン
-								</Link>
+								{/* モバイルメニューでもログイン状態に応じて表示変更 */}
+								{user ? (
+									<Link
+										href="/dashboard"
+										className="block py-2 text-accent hover:underline"
+										onClick={() => setIsMobileMenuOpen(false)}
+									>
+										マイページ
+									</Link>
+								) : (
+									<Link
+										href="/login"
+										className="block py-2 text-accent hover:underline"
+										onClick={() => setIsMobileMenuOpen(false)}
+									>
+										ログイン
+									</Link>
+								)}
 							</li>
 						</ul>
 					</motion.div>

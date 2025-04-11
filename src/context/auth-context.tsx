@@ -5,7 +5,7 @@ import {
 	User,
 	GoogleAuthProvider,
 	signInWithPopup,
-	createUserWithEmailAndPassword,
+	createUserWithEmailAndPassword as firebaseCreateUserWithEmailAndPassword,
 	signInWithEmailAndPassword as firebaseSignInWithEmailAndPassword,
 	sendPasswordResetEmail,
 	signOut as firebaseSignOut,
@@ -13,11 +13,12 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider } from '@/lib/firebase';
+import { UserDocument } from '@/types/firebase';
 
 // コンテキストの型定義
 interface AuthContextType {
 	user: User | null;
-	userData: any | null;
+	userData: UserDocument | null;
 	loading: boolean;
 	signInWithGoogle: () => Promise<void>;
 	signInWithEmailAndPassword: (email: string, password: string) => Promise<void>;
@@ -48,7 +49,7 @@ const AuthContext = createContext<AuthContextType>(defaultContextValue);
 // コンテキストプロバイダーコンポーネント
 export function AuthProvider({ children }: { children: ReactNode }) {
 	const [user, setUser] = useState<User | null>(null);
-	const [userData, setUserData] = useState<any | null>(null);
+	const [userData, setUserData] = useState<UserDocument | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -68,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 					if (userDoc.exists()) {
 						// 既存ユーザー - 最終ログイン時間を更新
-						const userData = userDoc.data();
+						const userData = userDoc.data() as UserDocument;
 						await setDoc(userDocRef, {
 							...userData,
 							lastLogin: serverTimestamp()
@@ -76,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 						setUserData(userData);
 					} else {
 						// 新規ユーザー
-						const newUserData = {
+						const newUserData: UserDocument = {
 							uid: user.uid,
 							email: user.email,
 							displayName: user.displayName,
@@ -145,7 +146,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	const createUserWithEmailAndPassword = async (email: string, password: string) => {
 		try {
 			setError(null);
-			await createUserWithEmailAndPassword(auth, email, password);
+			// ここが問題: 自分自身を呼び出して無限再帰になっています
+			// 修正: firebaseCreateUserWithEmailAndPasswordを使用
+			await firebaseCreateUserWithEmailAndPassword(auth, email, password);
 		} catch (err: any) {
 			console.error('Create user error:', err);
 

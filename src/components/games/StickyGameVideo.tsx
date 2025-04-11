@@ -235,10 +235,6 @@ export default function StickyGameVideo({
 			{hasError && (
 				<div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-background/80 p-4 text-center">
 					<p className="text-lg mb-2">動画をロードできませんでした</p>
-					<p className="text-sm text-foreground/70 mb-4">
-						ゲームプレイ映像は現在準備中です。後ほどお試しください。
-					</p>
-
 					{thumbnailSrc && (
 						<div className="mt-2 relative w-full max-w-md h-32 bg-border/30 rounded overflow-hidden">
 							<Image

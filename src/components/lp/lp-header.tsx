@@ -4,12 +4,16 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
+import { useAuth } from '@/context/auth-context';
 
 export default function LpHeader() {
 	const [isVisible, setIsVisible] = useState(true);
 	const [lastScrollY, setLastScrollY] = useState(0);
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
+	
+	// 認証状態を取得
+	const { user, userData } = useAuth();
+	
 	// スクロール処理
 	const controlHeader = () => {
 		const currentScrollY = window.scrollY;
@@ -43,13 +47,6 @@ export default function LpHeader() {
 			<div className="container mx-auto px-4">
 				<div className="flex items-center justify-between h-16">
 					<Link href="/" className="flex items-center">
-						<Image
-							src="/images/logo.svg"
-							alt="E-Sports Sakura"
-							width={40}
-							height={40}
-							className="mr-2"
-						/>
 						<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 					</Link>
 
@@ -107,18 +104,34 @@ export default function LpHeader() {
 						</button>
 					</div>
 
-					<Link
-						href="/login"
-						className="
-              hidden md:block
-              px-4 py-2 rounded-xl 
-              border border-accent text-accent 
-              hover:bg-accent hover:text-white 
-              transition-colors duration-300
-            "
-					>
-						ログイン
-					</Link>
+					{/* ログイン状態に応じてボタンを表示 */}
+					{user ? (
+						<Link
+							href="/dashboard"
+							className="
+								hidden md:block
+								px-4 py-2 rounded-xl 
+								border border-accent text-accent 
+								hover:bg-accent hover:text-white 
+								transition-colors duration-300
+							"
+						>
+							マイページ
+						</Link>
+					) : (
+						<Link
+							href="/login"
+							className="
+								hidden md:block
+								px-4 py-2 rounded-xl 
+								border border-accent text-accent 
+								hover:bg-accent hover:text-white 
+								transition-colors duration-300
+							"
+						>
+							ログイン
+						</Link>
+					)}
 				</div>
 
 				{/* モバイルナビゲーション */}
@@ -186,13 +199,24 @@ export default function LpHeader() {
 								</Link>
 							</li>
 							<li className="pt-2">
-								<Link
-									href="/login"
-									className="block py-2 text-accent hover:underline"
-									onClick={() => setIsMobileMenuOpen(false)}
-								>
-									ログイン
-								</Link>
+								{/* モバイルメニューでもログイン状態に応じて表示変更 */}
+								{user ? (
+									<Link
+										href="/dashboard"
+										className="block py-2 text-accent hover:underline"
+										onClick={() => setIsMobileMenuOpen(false)}
+									>
+										マイページ
+									</Link>
+								) : (
+									<Link
+										href="/login"
+										className="block py-2 text-accent hover:underline"
+										onClick={() => setIsMobileMenuOpen(false)}
+									>
+										ログイン
+									</Link>
+								)}
 							</li>
 						</ul>
 					</motion.div>
