@@ -19,7 +19,7 @@ export default function LpHeader() {
 		const currentScrollY = window.scrollY;
 
 		if (currentScrollY > lastScrollY && currentScrollY > 100) {
-			// 下にスクロール中かつ100px以上スクロール済み → 非表示
+			// 下にスクロール中かつ100px以上スクロール済み → 非表
 			setIsVisible(false);
 		} else {
 			// 上にスクロール中 → 表示
