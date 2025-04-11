@@ -199,7 +199,8 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 
 		// コンテキストを更新
 		setSelectedTimeSlots(newSelectedTimeSlots);
-	}, [seatRanges, selectedSeatIds, setSelectedTimeSlots, filteredSeats]);
+		//}, [seatRanges, selectedSeatIds, setSelectedTimeSlots, filteredSeats]);
+	}, [seatRanges,selectedSeatIds,setSelectedTimeSlots]);
 
 	// Handle continue to confirmation
 	const handleContinue = () => {
