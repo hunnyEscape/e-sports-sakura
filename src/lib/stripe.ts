@@ -10,7 +10,7 @@ export const stripePromise = loadStripe(
 // バックエンド用のStripeインスタンス（API Routes内で使用）
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY || '';
 export const stripe = new Stripe(stripeSecretKey, {
-	apiVersion: '2023-10-16', // Stripeの最新APIバージョンに適宜更新
+	apiVersion: '2025-03-31.basil', // Stripeの最新APIバージョンに適宜更新
 });
 
 // StripeのSetup Intentを作成する関数

@@ -322,7 +322,6 @@ export default function EnhancedCardForm({ onSuccess }: { onSuccess?: () => void
 			<div className="flex flex-col">
 				{selectedMethod === 'card' && (
 					<Button
-						type="submit"
 						disabled={processing || !cardComplete || !stripe || !clientSecret || succeeded}
 						className={`w-full ${succeeded ? 'bg-green-600' : ''}`}
 					>
@@ -342,7 +341,6 @@ export default function EnhancedCardForm({ onSuccess }: { onSuccess?: () => void
 				{/* 開発環境のみ表示するモックボタン */}
 				{process.env.NODE_ENV === 'development' && !succeeded && (
 					<Button
-						type="button"
 						onClick={handleMockPayment}
 						disabled={processing || succeeded}
 						className="mt-4 bg-gray-500 hover:bg-gray-600"

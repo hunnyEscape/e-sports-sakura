@@ -79,6 +79,7 @@ export interface SessionDocument {
 	amount: number;
 	pricePerHour: number;
 	active: boolean;
+	billingId?: string; 
 }
 
 // 座席情報

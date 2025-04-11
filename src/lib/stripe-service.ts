@@ -122,9 +122,11 @@ export async function createInvoiceForUsage(
 		});
 
 		// 請求書の確定
+		if (!invoice.id) throw new Error('invoice.id is undefined');
 		const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
 
 		// 支払い処理
+		if (!finalizedInvoice.id) throw new Error('finalizedInvoice.id is undefined');
 		return await stripe.invoices.pay(finalizedInvoice.id);
 	} catch (error) {
 		console.error('Error creating invoice for usage:', error);

@@ -2,6 +2,15 @@
 import { loadStripe, Stripe } from '@stripe/stripe-js';
 import { PaymentMethodType } from '@/types';
 
+declare global {
+	interface Window {
+		ApplePaySession?: {
+			canMakePayments: () => boolean;
+		};
+	}
+}
+
+
 // Google Pay関連の定数
 export const GOOGLE_PAY_CONFIG = {
 	apiVersion: 2,
@@ -77,7 +86,12 @@ export async function checkAvailablePaymentMethods(stripe: Stripe | null): Promi
 	}
 
 	// Apple Payの利用可能性をチェック
-	if (stripe && window?.ApplePaySession && typeof window.ApplePaySession.canMakePayments === 'function') {
+	if (
+		stripe &&
+		typeof window !== 'undefined' &&
+		'ApplePaySession' in window &&
+		typeof window.ApplePaySession?.canMakePayments === 'function'
+	) {
 		try {
 			result.applePay = window.ApplePaySession.canMakePayments();
 		} catch (e) {

@@ -79,12 +79,13 @@ export default function UsageHistory() {
 				const activeData = activeSessionSnapshot.docs[0].data() as SessionDocument;
 
 				// Firestoreのタイムスタンプをフォーマット
-				const startTimeDate = activeData.startTime instanceof Date
-					? activeData.startTime
-					: activeData.startTime?.toDate?.()
-					|| (typeof activeData.startTime === 'object' && 'seconds' in activeData.startTime
-						? new Date((activeData.startTime as Timestamp).seconds * 1000)
-						: new Date(activeData.startTime as string));
+				const startTimeDate =
+					typeof activeData.startTime === 'string'
+						? new Date(activeData.startTime)
+						: 'toDate' in activeData.startTime
+							? activeData.startTime.toDate()
+							: new Date();
+
 
 				const now = new Date();
 				// 現在の時点での利用時間（分）を計算
@@ -158,19 +159,20 @@ export default function UsageHistory() {
 				const data = doc.data() as SessionDocument;
 
 				// Firestoreのタイムスタンプをフォーマット
-				const endTimeDate = data.endTime instanceof Date
-					? data.endTime
-					: data.endTime?.toDate?.()
-					|| (typeof data.endTime === 'object' && 'seconds' in data.endTime
-						? new Date((data.endTime as Timestamp).seconds * 1000)
-						: new Date(data.endTime as string));
+				const endTimeDate =
+					typeof data.endTime === 'string'
+						? new Date(data.endTime)
+						: 'toDate' in data.endTime
+							? data.endTime.toDate()
+							: new Date();
 
-				const startTimeDate = data.startTime instanceof Date
-					? data.startTime
-					: data.startTime?.toDate?.()
-					|| (typeof data.startTime === 'object' && 'seconds' in data.startTime
-						? new Date((data.startTime as Timestamp).seconds * 1000)
-						: new Date(data.startTime as string));
+				const startTimeDate =
+					typeof data.startTime === 'string'
+						? new Date(data.startTime)
+						: 'toDate' in data.startTime
+							? data.startTime.toDate()
+							: new Date();
+
 
 				// 座席情報を取得
 				const seatInfo = seats[data.seatId];

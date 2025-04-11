@@ -444,7 +444,7 @@ const FaceVideoCapture: React.FC<FaceVideoCaptureProps> = ({ onComplete, onError
 					{hasPermission === true && !cameraReady && (
 						<div className="absolute inset-0 flex items-center justify-center bg-black/50">
 							<div className="text-center">
-								<LoadingSpinner size="medium" />
+								<LoadingSpinner/>
 								<p className="text-white mt-2">カメラを準備中...</p>
 							</div>
 						</div>

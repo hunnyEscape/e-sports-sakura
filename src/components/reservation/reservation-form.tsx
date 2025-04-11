@@ -82,7 +82,7 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 				startTime: slot.startTime,
 				endTime: slot.endTime,
 				duration: calculateDuration(slot.startTime, slot.endTime),
-				status: 'confirmed',
+				status: 'confirmed' as const,
 				notes
 			}));
 
@@ -191,7 +191,7 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 										{detail?.slot.startTime} - {detail?.slot.endTime} ({detail?.duration}分)
 									</div>
 									<div className="text-xs text-foreground/50 mt-1">
-										単価: ¥{Math.round(detail?.seat.ratePerHour / 60)}円/分 × {detail?.duration}分
+										単価: ¥{Math.round(detail?.seat.ratePerHour||400 / 60)}円/分 × {detail?.duration}分
 									</div>
 								</div>
 							))}

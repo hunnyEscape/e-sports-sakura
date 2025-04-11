@@ -20,7 +20,7 @@ const FaceVerificationSection: React.FC<FaceVerificationSectionProps> = ({ onCom
 	if (loading) {
 		return (
 			<div className="flex justify-center items-center py-6">
-				<LoadingSpinner size="medium" />
+				<LoadingSpinner/>
 			</div>
 		);
 	}
