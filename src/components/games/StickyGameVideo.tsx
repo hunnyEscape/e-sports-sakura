@@ -209,7 +209,7 @@ export default function StickyGameVideo({
 	};
 
 	return (
-		<div className="relative w-full h-full bg-black/40 rounded-xl overflow-hidden">
+		<div className="relative w-full h-full bg-black/40 md:rounded-xl overflow-hidden">
 			{/* Loading indicator */}
 			{isLoading && (
 				<div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-background/50">

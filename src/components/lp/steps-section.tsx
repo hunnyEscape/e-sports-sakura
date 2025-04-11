@@ -44,14 +44,14 @@ export default function StepsSection() {
 					transition={{ duration: 0.5 }}
 				>
 					<h2 className="text-3xl md:text-4xl font-bold mb-4">
-						利用は<span className="text-accent">めちゃ簡単</span>、3ステップで
+						利用は<span className="text-accent">めちゃ簡単</span><br/>3ステップで
 					</h2>
 					<p className="text-foreground/70 max-w-3xl mx-auto">
 						面倒な手続きも、スタッフ対応も必要ありません。
 						24時間いつでも、スマホ1つで完結します。
 					</p>
 				</motion.div>
-				<div className="flex flex-col md:flex-row gap-8 justify-between max-w-4xl mx-auto">
+				<div className="flex flex-col md:flex-row gap-8 justify-between max-w-4xl mx-auto p-4">
 					{usageSteps.map((step, index) => (
 						<motion.div
 							key={step.number}

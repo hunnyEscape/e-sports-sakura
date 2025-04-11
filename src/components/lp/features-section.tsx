@@ -89,10 +89,10 @@ export default function FeaturesSection() {
 						<motion.div
 							key={scene.id}
 							className="
-                bg-border/10 rounded-2xl overflow-hidden 
-                shadow-soft hover:shadow-lg transition-all 
-                duration-300 hover:translate-y-[-5px]
-              "
+								bg-background/60 rounded-2xl overflow-hidden 
+								shadow-soft hover:shadow-lg transition-all 
+								duration-300 hover:translate-y-[-5px]
+							"
 							variants={cardVariants}
 							custom={index}
 						>
@@ -107,7 +107,7 @@ export default function FeaturesSection() {
 							</div>
 							<div className="p-6">
 								<h3 className="text-xl font-semibold mb-3">{scene.title}</h3>
-								<p className="text-foreground/70">{scene.description}</p>
+								<p className="text-foreground/60">{scene.description}</p>
 							</div>
 						</motion.div>
 					))}

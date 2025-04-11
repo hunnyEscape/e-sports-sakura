@@ -16,7 +16,7 @@ import SeatInitializer from '@/components/ini/create-seat-documents';
 export default function LandingPage() {
 	return (
 		<main className="landing-page text-foreground">
-			<LpHeader />
+			<LpHeader/>
 			<div className="pt-16">
 				<HeroSection/>
 				<FeaturesSection/>

@@ -29,6 +29,7 @@ export default function LpHeader() {
 		setLastScrollY(currentScrollY);
 	};
 
+	/*
 	useEffect(() => {
 		window.addEventListener('scroll', controlHeader);
 
@@ -36,10 +37,10 @@ export default function LpHeader() {
 			window.removeEventListener('scroll', controlHeader);
 		};
 	}, [lastScrollY]);
-
+*/
 	return (
 		<motion.header
-			className={`fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-sm border-b border-border transition-transform duration-300`}
+			className={`relative top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-sm border-b border-border transition-transform duration-300`}
 			initial={{ translateY: 0 }}
 			animate={{ translateY: isVisible ? 0 : '-100%' }}
 			transition={{ duration: 0.3 }}

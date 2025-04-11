@@ -1,16 +1,20 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 
 export default function HeroSection() {
-	const title = "疲れたから「ゆるゲー気分」";
-	const [titleChars, setTitleChars] = useState<string[]>([]);
+	// タイトルを2つのパートに分ける
+	const titlePart1 = "疲れたから";
+	const titlePart2 = "ゆるゲー気分";
+	const [titleChars1, setTitleChars1] = useState<string[]>([]);
+	const [titleChars2, setTitleChars2] = useState<string[]>([]);
 
 	useEffect(() => {
-		setTitleChars(title.split(''));
+		// 文字を個別に分割
+		setTitleChars1(titlePart1.split(''));
+		setTitleChars2(titlePart2.split(''));
 	}, []);
 
 	return (
@@ -27,26 +31,60 @@ export default function HeroSection() {
 				/>
 			</div>
 
-
 			{/* コンテンツオーバーレイ */}
 			<div className="container mx-auto px-4 relative z-10">
 				<div className="max-w-4xl">
 					{/* タイトル文字ごとのアニメーション */}
-					<h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6 flex flex-wrap">
-						{titleChars.map((char, index) => (
+					<h1 className="text-5xl md:text-6xl font-bold text-foreground mb-2">
+						<div className="flex flex-wrap">
+							{/* 「疲れたから」の部分 */}
+							<span className="md:inline block w-full">
+								{titleChars1.map((char, index) => (
+									<motion.span
+										key={`part1-${index}`}
+										initial={{ opacity: 0, y: 20 }}
+										animate={{ opacity: 1, y: 0 }}
+										transition={{
+											duration: 0.5,
+											delay: 0.1 + index * 0.04,
+											ease: "easeOut"
+										}}
+									>
+										{char}
+									</motion.span>
+								))}
+							</span>
+
+							{/* スペース（デスクトップのみ表示） - 完全に非表示にして問題を解決 */}
+							{/* 必要な場合だけコメントを外してください
 							<motion.span
-								key={index}
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{
-									duration: 0.5,
-									delay: 0.1 + index * 0.04,
-									ease: "easeOut"
-								}}
+								className="hidden md:inline"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+								transition={{ duration: 0.5, delay: 0.1 + titleChars1.length * 0.04 }}
 							>
-								{char === " " ? "\u00A0" : char}
+								{"\u00A0"}
 							</motion.span>
-						))}
+							*/}
+
+							{/* 「ゆるゲー気分」の部分 (強調色) */}
+							<span className="md:inline text-accent">
+								{titleChars2.map((char, index) => (
+									<motion.span
+										key={`part2-${index}`}
+										initial={{ opacity: 0, y: 20 }}
+										animate={{ opacity: 1, y: 0 }}
+										transition={{
+											duration: 0.5,
+											delay: 0.1 + (titleChars1.length + index) * 0.04, // 中間スペースの遅延を削除
+											ease: "easeOut"
+										}}
+									>
+										{char}
+									</motion.span>
+								))}
+							</span>
+						</div>
 					</h1>
 
 					{/* サブキャッチコピー */}
@@ -56,7 +94,7 @@ export default function HeroSection() {
 						animate={{ opacity: 1, scale: 1 }}
 						transition={{ duration: 0.7, delay: 0.5 }}
 					>
-						コスパもいいし。～ふらっと寄れるゲームカフェ～
+						コスパもいいし。ふらっと寄れるゲームカフェ
 					</motion.p>
 
 					{/* CTAボタン */}
@@ -68,9 +106,9 @@ export default function HeroSection() {
 						<Link
 							href="/register"
 							className="
-                inline-block bg-accent hover:bg-accent/90 
-                text-white font-semibold py-3 px-8 
-                rounded-2xl shadow-soft 
+                inline-block bg-accent hover:bg-accent/90
+                text-white font-semibold py-3 px-8
+                rounded-2xl shadow-soft
                 transition-all duration-300 hover:translate-y-[-2px]
               "
 						>

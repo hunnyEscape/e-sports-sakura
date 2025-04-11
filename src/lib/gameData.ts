@@ -62,7 +62,7 @@ export const GAME_DATA: Record<string, CategoryData> = {
 					見た目は可愛らしく、ファンタジックで親しみやすいデザインですが、ゲームとしての深みや**駆け引き**の面白さは非常に高く、友人同士の対戦や配信・実況などにもぴったりのタイトルです。
 					魔女として隠れる楽しさと、ハンターとして暴くスリル――この両方を体験できる、独特の魅力を持った作品と言えるでしょう。
 				`,
-				playerCount: '2人チーム制　4〜8人程度でも十分楽しめるが多人数ほど盛り上がる。最大16人',
+				playerCount: '2人チーム制　最大16人',
 				recommendedTime: '30分-2時間',
 				difficulty: '初心者向け',
 				videoSrc: '/WitchIt.mp4',
@@ -168,7 +168,7 @@ export const GAME_DATA: Record<string, CategoryData> = {
 				銀行への潜入、空港でのハッキング、仮想空間への侵入など、スパイ映画のようなミッションが続々と登場します。
 				`,
 				playerCount: '2人',
-				recommendedTime: '4-6時間(役割交代すればもう一周楽しめる)',
+				recommendedTime: '4-6時間',
 				difficulty: '中級者向け',
 				videoSrc: '/Tango.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/Tango.webp`,
