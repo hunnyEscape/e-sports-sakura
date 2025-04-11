@@ -1,5 +1,8 @@
-import { Timestamp } from './index';
-// src/types/firebase.ts に追加
+import { Timestamp, FieldValue } from 'firebase/firestore';
+
+// Custom type to handle both Timestamp and string
+export type TimestampOrString = Timestamp | string | FieldValue;
+
 // 支店情報
 export interface BranchDocument {
 	branchId: string;
@@ -22,8 +25,8 @@ export interface BranchDocument {
 		latitude: number;
 		longitude: number;
 	};
-	createdAt: Timestamp | string;
-	updatedAt: Timestamp | string;
+	createdAt: TimestampOrString;
+	updatedAt: TimestampOrString;
 }
 
 // Firestore User ドキュメントのインターフェース
@@ -32,8 +35,8 @@ export interface UserDocument {
 	email: string | null;
 	displayName: string | null;
 	photoURL: string | null;
-	createdAt: Timestamp | string;
-	lastLogin: Timestamp | string;
+	createdAt: TimestampOrString;
+	lastLogin: TimestampOrString;
 	registrationCompleted: boolean;
 	registrationCompletedAt?: string;
 	registrationStep?: number;
@@ -70,8 +73,8 @@ export interface SessionDocument {
 	sessionId: string;
 	userId: string;
 	seatId: string;
-	startTime: Timestamp | string;
-	endTime: Timestamp | string;
+	startTime: TimestampOrString;
+	endTime: TimestampOrString;
 	durationMinutes: number;
 	amount: number;
 	pricePerHour: number;
@@ -93,8 +96,8 @@ export interface SeatDocument {
 		[key: string]: string;
 	};
 	maxAdvanceBookingDays?: number;
-	createdAt: Timestamp | string;
-	updatedAt: Timestamp | string;
+	createdAt: TimestampOrString;
+	updatedAt: TimestampOrString;
 }
 
 // 予約情報
@@ -110,8 +113,8 @@ export interface ReservationDocument {
 	duration: number;
 	status: 'confirmed' | 'cancelled' | 'completed';
 	notes?: string;
-	createdAt: Timestamp | string;
-	updatedAt: Timestamp | string;
+	createdAt: TimestampOrString;
+	updatedAt: TimestampOrString;
 }
 
 // 利用履歴情報
@@ -124,6 +127,6 @@ export interface UsageHistoryDocument {
 	invoiceId?: string;     // 請求ID
 	isTest?: boolean;       // テスト利用フラグ
 	status: string;         // 状態（"paid", "pending"など）
-	timestamp: Timestamp | string; // 利用日時
+	timestamp: TimestampOrString; // 利用日時
 	seatId?: string;        // 座席ID（あれば）
 }

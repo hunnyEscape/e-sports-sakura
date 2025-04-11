@@ -63,7 +63,7 @@ export const GAME_DATA: Record<string, CategoryData> = {
 					魔女として隠れる楽しさと、ハンターとして暴くスリル――この両方を体験できる、独特の魅力を持った作品と言えるでしょう。
 				`,
 				playerCount: '2人チーム制　4〜8人程度でも十分楽しめるが多人数ほど盛り上がる。最大16人',
-				recommendedTime: '1試合：約5〜10分前後、30分-1時間',
+				recommendedTime: '30分-2時間',
 				difficulty: '初心者向け',
 				videoSrc: '/WitchIt.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/WitchIt.webp`,
@@ -86,7 +86,7 @@ export const GAME_DATA: Record<string, CategoryData> = {
 					しかも、ユーザーが自作したコースを公開・プレイすることができるため、コンテンツは常に増え続けており、飽きが来にくいという点も魅力のひとつです。
 				`,
 				playerCount: '1-4人',
-				recommendedTime: '20-40分',
+				recommendedTime: '30分-3時間',
 				difficulty: '初心者向け',
 				videoSrc: '/GolfIt.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/GolfIt.webp`,
@@ -119,9 +119,9 @@ export const GAME_DATA: Record<string, CategoryData> = {
 					「2人でしか体験できない特別なゲーム」を探している方に、心からおすすめできる一本です。
 				`,
 				playerCount: '2人',
-				recommendedTime: '1-2時間',
+				recommendedTime: '12時間～',
 				difficulty: '中級者向け',
-				videoSrc: '/WeWereHereForever.mp4',
+				videoSrc: '/WeWereHereForever2.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/WeWereHereForever.webp`,
 				rule: `
 				無線のようなボイスチャットを使ってコミュニケーションを取りながら、片方が見ているシンボルや仕掛けのヒントをもう一方に伝え、それぞれの部屋で謎を解いていきます。
@@ -142,7 +142,7 @@ export const GAME_DATA: Record<string, CategoryData> = {
 				プレイヤーは、「ポータルガン」という特殊な装置を使って空間に二つのポータルを開き、それを活用してステージを突破していくという、独自のゲームプレイを体験します。
 				`,
 				playerCount: '1-2人',
-				recommendedTime: '1-2時間',
+				recommendedTime: '6時間～',
 				difficulty: '中級者向け',
 				videoSrc: '/portal.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/portal.webp`,
@@ -192,7 +192,7 @@ export const GAME_DATA: Record<string, CategoryData> = {
 				『Counter-Strike 2』は、世界中のプレイヤーたちにとって、長年の経験がそのまま蓄積される「知のFPS」でありながら、今この瞬間から誰でも始められる、極めてフェアな設計のゲームです。もしあなたが、頭を使いながらチームと連携し、一発一発に意味のある対戦ゲームを探しているなら、このゲームはまさにうってつけだと言えるでしょう。試しに1ラウンドでもプレイしてみれば、きっとその緊張感と達成感に引き込まれるはずです。			
 				`,
 				playerCount: '5v5',
-				recommendedTime: '∞',
+				recommendedTime: '20時間～',
 				difficulty: '上級者向け',
 				videoSrc: '/CS2.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/CS2.webp`,

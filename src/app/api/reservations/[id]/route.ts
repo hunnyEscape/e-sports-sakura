@@ -56,7 +56,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 		};
 
 		// Check if the user is authorized to access this reservation
-		if (reservation.userId !== user.uid) {
+		if (reservation.id !== user.uid) {
 			return NextResponse.json(
 				{ error: 'この予約にアクセスする権限がありません' },
 				{ status: 403 }

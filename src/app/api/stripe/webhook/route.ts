@@ -1,9 +1,12 @@
 // src/app/api/stripe/webhook/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { initAdminApp } from '@/lib/firebase-admin';
-import { getFirestore } from 'firebase-admin/firestore';
-import { stripe } from '@/lib/stripe';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import Stripe from 'stripe'; // ✅ デフォルトインポートで型利用もOK
+
+import { stripe } from '@/lib/stripe'; // これはインスタンス（secretキーで生成済）想定
 
 // Firebase Admin初期化
 initAdminApp();
@@ -13,12 +16,11 @@ const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 
 export async function POST(request: NextRequest) {
 	try {
-		// リクエストのRawボディを取得
 		const payload = await request.text();
 		const headersList = headers();
 		const sig = headersList.get('stripe-signature') || '';
 
-		let event;
+		let event: Stripe.Event;
 
 		// シグネチャの検証
 		try {
@@ -28,27 +30,22 @@ export async function POST(request: NextRequest) {
 			return NextResponse.json({ error: 'Webhook signature verification failed' }, { status: 400 });
 		}
 
-		// Firestore参照
 		const db = getFirestore();
 
-		// イベントタイプに基づいて処理
 		switch (event.type) {
-			// 支払い方法が追加された時
-			case 'payment_method.attached':
-				const paymentMethod = event.data.object;
-				// 顧客IDを取得
+			case 'payment_method.attached': {
+				const paymentMethod = event.data.object as Stripe.PaymentMethod;
 				const customerId = paymentMethod.customer;
 
 				if (customerId) {
-					// 顧客IDに基づいてユーザーを検索
-					const usersSnapshot = await db.collection('users')
+					const usersSnapshot = await db
+						.collection('users')
 						.where('stripe.customerId', '==', customerId)
 						.limit(1)
 						.get();
 
 					if (!usersSnapshot.empty) {
 						const userDoc = usersSnapshot.docs[0];
-						// ユーザーのStripe情報を更新
 						await userDoc.ref.update({
 							'stripe.paymentMethodId': paymentMethod.id,
 							'stripe.updatedAt': new Date().toISOString(),
@@ -60,85 +57,91 @@ export async function POST(request: NextRequest) {
 					}
 				}
 				break;
+			}
 
-			// 請求書の支払いが成功した時
-			case 'invoice.paid':
-				const invoice = event.data.object;
-				// 利用履歴に記録
+			case 'invoice.paid': {
+				const invoice = event.data.object as Stripe.Invoice & { last_payment_error?: any };
+
 				if (invoice.customer) {
-					const usersSnapshot = await db.collection('users')
+					const usersSnapshot = await db
+						.collection('users')
 						.where('stripe.customerId', '==', invoice.customer)
 						.limit(1)
 						.get();
 
 					if (!usersSnapshot.empty) {
 						const userDoc = usersSnapshot.docs[0];
-						const userId = userDoc.id;
 
-						// 利用履歴に追加
+						// default_payment_method の ID 抽出
+						let defaultPaymentMethodId = '';
+						if (invoice.default_payment_method) {
+							defaultPaymentMethodId =
+								typeof invoice.default_payment_method === 'string'
+									? invoice.default_payment_method
+									: invoice.default_payment_method.id;
+						}
+
 						await db.collection('usageHistory').add({
-							userId,
+							userId: userDoc.id,
 							invoiceId: invoice.id,
-							amount: invoice.amount_paid / 100, // セントから円に変換
+							amount: invoice.amount_paid / 100,
 							status: 'paid',
 							timestamp: new Date().toISOString(),
 							description: invoice.description || '利用料金',
 							metadata: invoice.metadata || {},
-							paymentMethodType: invoice.default_payment_method
-								? await getPaymentMethodType(invoice.default_payment_method)
+							paymentMethodType: defaultPaymentMethodId
+								? await getPaymentMethodType(defaultPaymentMethodId)
 								: 'unknown',
 							durationMinutes: invoice.metadata?.durationMinutes
 								? parseInt(invoice.metadata.durationMinutes)
-								: undefined
+								: undefined,
 						});
 
-						// ユーザーの請求履歴にも追加
 						await userDoc.ref.update({
-							'billingHistory': db.FieldValue.arrayUnion({
+							billingHistory: FieldValue.arrayUnion({
 								invoiceId: invoice.id,
 								amount: invoice.amount_paid / 100,
 								date: new Date().toISOString(),
-								status: 'paid'
-							})
+								status: 'paid',
+							}),
 						});
 					}
 				}
 				break;
+			}
 
-			// 請求書の支払いが失敗した時
-			case 'invoice.payment_failed':
-				const failedInvoice = event.data.object;
-				// 支払い失敗を記録
+			case 'invoice.payment_failed': {
+				const failedInvoice = event.data.object as Stripe.Invoice & { last_payment_error?: any };
+
 				if (failedInvoice.customer) {
-					const usersSnapshot = await db.collection('users')
+					const usersSnapshot = await db
+						.collection('users')
 						.where('stripe.customerId', '==', failedInvoice.customer)
 						.limit(1)
 						.get();
 
 					if (!usersSnapshot.empty) {
 						const userDoc = usersSnapshot.docs[0];
-						const userId = userDoc.id;
+						const errorMessage = (failedInvoice as any).last_payment_error?.message || '不明なエラー';
 
-						// 失敗記録を追加
 						await db.collection('paymentFailures').add({
-							userId,
+							userId: userDoc.id,
 							invoiceId: failedInvoice.id,
-							amount: failedInvoice.amount_due / 100, // セントから円に変換
+							amount: failedInvoice.amount_due / 100,
 							timestamp: new Date().toISOString(),
-							reason: failedInvoice.last_payment_error?.message || '不明なエラー'
+							reason: errorMessage,
 						});
 
-						// ユーザーの支払い状態を更新
 						await userDoc.ref.update({
 							'stripe.paymentStatus': 'failed',
-							'stripe.lastPaymentError': failedInvoice.last_payment_error?.message,
-							'stripe.lastPaymentErrorAt': new Date().toISOString()
+							'stripe.lastPaymentError': errorMessage,
+							'stripe.lastPaymentErrorAt': new Date().toISOString(),
 						});
 					}
 				}
 				break;
+			}
 
-			// その他のイベント
 			default:
 				console.log(`Unhandled event type: ${event.type}`);
 		}

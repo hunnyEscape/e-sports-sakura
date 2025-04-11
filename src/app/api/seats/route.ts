@@ -1,5 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getFirestore, collection, getDocs, query, where } from 'firebase/firestore';
+import {
+	NextRequest,
+	NextResponse
+} from 'next/server';
+import {
+	getFirestore,
+	collection,
+	getDocs,
+	query,
+	where,
+	CollectionReference,
+	Query
+} from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { firebaseConfig } from '@/lib/firebase';
 import { SeatDocument, ReservationDocument } from '@/types/firebase';
@@ -14,22 +25,27 @@ export async function GET(req: NextRequest) {
 		const url = new URL(req.url);
 		const status = url.searchParams.get('status');
 
-		// Build query for seats collection
-		let seatsQuery = collection(db, 'seats');
+		// FirestoreのseatsコレクションをSeatDocument型として取得
+		const seatsCollection = collection(db, 'seats') as CollectionReference<SeatDocument>;
+
+		// 初めはコレクション参照として、Query型で扱う
+		let seatsQuery: Query<SeatDocument> = seatsCollection;
 
 		// If status filter is provided, apply it
 		if (status) {
-			seatsQuery = query(seatsQuery, where('status', '==', status));
+			seatsQuery = query(seatsCollection, where('status', '==', status));
 		}
 
 		// Execute query
 		const querySnapshot = await getDocs(seatsQuery);
-
-		// Convert snapshot to data array
-		const seats = querySnapshot.docs.map(doc => ({
-			id: doc.id,
-			...doc.data()
-		})) as SeatDocument[];
+		// 以下で各ドキュメントからseatIdを明示的にセットすることで、SeatDocumentの必須フィールドと合致させる
+		const seats = querySnapshot.docs.map(doc => {
+			const data = doc.data() as Omit<SeatDocument, 'seatId'>;
+			return {
+				...data,
+				seatId: doc.id // FirestoreのドキュメントIDをseatIdとして代入
+			};
+		});
 
 		// Get date param for availability check
 		const date = url.searchParams.get('date');
@@ -41,7 +57,6 @@ export async function GET(req: NextRequest) {
 				where('date', '==', date),
 				where('status', '==', 'confirmed')
 			);
-
 			const reservationsSnapshot = await getDocs(reservationsQuery);
 			const reservations = reservationsSnapshot.docs.map(doc => doc.data()) as ReservationDocument[];
 
@@ -77,8 +92,6 @@ export async function GET(req: NextRequest) {
 		);
 	}
 }
-
-// This endpoint can be used to check availability for a specific date and time
 export async function POST(req: NextRequest) {
 	try {
 		const { date, startTime, endTime } = await req.json();
@@ -92,11 +105,14 @@ export async function POST(req: NextRequest) {
 		}
 
 		// Query seats
-		const seatsSnapshot = await getDocs(collection(db, 'seats'));
-		const seats = seatsSnapshot.docs.map(doc => ({
-			id: doc.id,
-			...doc.data()
-		})) as SeatDocument[];
+		const seatsSnapshot = await getDocs(collection(db, 'seats') as CollectionReference<SeatDocument>);
+		const seats = seatsSnapshot.docs.map(doc => {
+			const data = doc.data() as Omit<SeatDocument, 'seatId'>;
+			return {
+				...data,
+				seatId: doc.id
+			};
+		});
 
 		// Query reservations for the specified date
 		const reservationsQuery = query(
@@ -131,7 +147,7 @@ export async function POST(req: NextRequest) {
 				seatId: seat.seatId,
 				name: seat.name,
 				isAvailable: !hasConflict && seat.status === 'available',
-				ratePerMinute: seat.ratePerMinute || 0
+				ratePerMinute: seat.ratePerHour || 0
 			};
 		});
 

@@ -177,7 +177,7 @@ export default function DashboardPage() {
 														</div>
 														<div className="text-sm text-foreground/70">
 															<p>••••••••••••{userData.stripe.paymentMethodId.slice(-4)}</p>
-															<p className="mt-1">更新日: {new Date(userData.stripe.updatedAt).toLocaleDateString('ja-JP')}</p>
+															{/*<p className="mt-1">更新日: {new Date(userData.stripe.updatedAt).toLocaleDateString('ja-JP')}</p>*/}
 														</div>
 													</div>
 

@@ -43,7 +43,6 @@ export async function POST(request: NextRequest) {
 			// eKYCが既に完了している場合
 			if (userData?.eKYC?.status === 'completed') {
 				const response: VeriffSessionResponse = {
-					message: 'Verification already completed',
 					status: 'completed',
 					sessionId: userData.eKYC.sessionId || '',
 					sessionUrl: ''

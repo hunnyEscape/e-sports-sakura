@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
-import Link from 'next/link';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/auth-context';
@@ -29,8 +27,11 @@ export default function CompletePage() {
 			}
 
 			// 決済設定が完了している場合のみ、登録完了処理を行う
-			if (userData?.stripe?.paymentSetupCompleted ||
-				userData?.registrationStep >= 1) {
+			if (
+				userData?.stripe?.paymentSetupCompleted ||
+				(typeof userData?.registrationStep === 'number' && userData.registrationStep >= 1)
+			  ) {
+			  
 				try {
 					setCompleting(true);
 

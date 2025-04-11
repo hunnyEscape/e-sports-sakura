@@ -15,6 +15,7 @@ import ReservationForm from '@/components/reservation/reservation-form';
 import LoginPrompt from '@/components/reservation/login-prompt';
 import Link from 'next/link';
 import Image from 'next/image';
+import LoadingSpinner from '@/components/ui/loading-spinner';
 enum ReservationStep {
 	SELECT_BRANCH,
 	SELECT_DATE,

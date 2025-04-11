@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
 		// Create new reservation
 		const newReservation: Omit<ReservationDocument, 'id'> = {
 			userId: user.uid,
-			userEmail: user.email,
+			userEmail: user.email||'',
 			seatId,
 			seatName,
 			date,
