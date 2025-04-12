@@ -65,7 +65,7 @@ export default function QrCodeDisplay() {
 						<img
 							src={qrCodeDataUrl}
 							alt="QRコード"
-							className="w-full h-full object-contain"
+							className="w-full max-w-[150px] h-full object-contain"
 						/>
 					</div>
 					<p className="text-sm text-foreground/70 mb-4">
