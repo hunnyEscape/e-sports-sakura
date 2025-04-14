@@ -30,15 +30,37 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		addSelectedTimeSlot,
 		removeSelectedTimeSlot,
 		clearSelectedTimeSlots,
-		selectedBranch
+		selectedBranch,
+		timeSlotAvailability,
+		fetchAllSeatsTimeSlotAvailability,
+		isLoading,
+		error
 	} = useReservation();
+
 	const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
 	const [seatRanges, setSeatRanges] = useState<Record<string, RangeSelection>>({});
+	const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
 
 	// Filter seats by the selected branch
 	const filteredSeats = seats.filter(seat =>
 		selectedBranch && seat.branchCode === selectedBranch.branchCode
 	);
+
+	// 座席の時間枠データを取得
+	useEffect(() => {
+		const loadTimeSlotData = async () => {
+			if (!date || !selectedBranch) return;
+
+			try {
+				await fetchAllSeatsTimeSlotAvailability(date, selectedBranch.branchId);
+				setIsDataLoaded(true);
+			} catch (err) {
+				console.error('Failed to load time slot data:', err);
+			}
+		};
+
+		loadTimeSlotData();
+	}, [date, selectedBranch, fetchAllSeatsTimeSlotAvailability]);
 
 	const generateTimeSlots = (): TimeSlot[] => {
 		const slots: TimeSlot[] = [];
@@ -67,18 +89,12 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 
 	const timeSlots = generateTimeSlots();
 
-	// Check if a time slot is already reserved
+	// Check if a time slot is already reserved using the timeSlotAvailability data
 	const isReserved = (seatId: string, timeSlot: string): boolean => {
-		if (!date) return false;
+		if (!date || !timeSlotAvailability || !timeSlotAvailability[seatId]) return false;
 
-		const dateStr = date.toISOString().split('T')[0];
-
-		return reservations.some(reservation =>
-			reservation.seatId === seatId &&
-			reservation.date === dateStr &&
-			reservation.startTime <= timeSlot &&
-			reservation.endTime > timeSlot
-		);
+		// timeSlotAvailability[seatId][timeSlot] が false なら予約済み
+		return timeSlotAvailability[seatId][timeSlot] === false;
 	};
 
 	// Handle slot click for range selection
@@ -122,20 +138,26 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 			return;
 		}
 
-		// Second click sets end time
-		if (currentRange.rangeEnd === null) {
-			// Ensure start is before end
-			if (time < currentRange.rangeStart) {
-				setSeatRanges(prev => ({
-					...prev,
-					[seatId]: { rangeStart: time, rangeEnd: currentRange.rangeStart }
-				}));
-			} else {
-				setSeatRanges(prev => ({
-					...prev,
-					[seatId]: { ...prev[seatId], rangeEnd: time }
-				}));
+		// 選択範囲内に予約済み時間枠がないか確認
+		if (isValidTimeRange(seatId, currentRange.rangeStart, time)) {
+			// Second click sets end time
+			if (currentRange.rangeEnd === null) {
+				// Ensure start is before end
+				if (time < currentRange.rangeStart) {
+					setSeatRanges(prev => ({
+						...prev,
+						[seatId]: { rangeStart: time, rangeEnd: currentRange.rangeStart }
+					}));
+				} else {
+					setSeatRanges(prev => ({
+						...prev,
+						[seatId]: { ...prev[seatId], rangeEnd: time }
+					}));
+				}
+				return;
 			}
+		} else {
+			alert('選択範囲内に予約済みの時間枠が含まれています。別の範囲を選択してください。');
 			return;
 		}
 
@@ -144,6 +166,22 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 			...prev,
 			[seatId]: { rangeStart: time, rangeEnd: null }
 		}));
+	};
+
+	// 選択範囲内に予約済み時間枠がないか確認する関数
+	const isValidTimeRange = (seatId: string, startTime: string, endTime: string): boolean => {
+		if (!timeSlotAvailability || !timeSlotAvailability[seatId]) return true;
+
+		// 時間の大小関係を調整
+		const start = startTime < endTime ? startTime : endTime;
+		const end = startTime < endTime ? endTime : startTime;
+
+		// 時間スロットを取得
+		const slots = Object.keys(timeSlotAvailability[seatId])
+			.filter(time => time >= start && time < end);
+
+		// すべてのスロットが利用可能か確認
+		return slots.every(slot => timeSlotAvailability[seatId][slot] === true);
 	};
 
 	// Check if a slot is within the selected range
@@ -156,8 +194,12 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		// If only start is selected, highlight just that slot
 		if (!range.rangeEnd) return time === range.rangeStart;
 
+		// 時間の大小関係を調整
+		const start = range.rangeStart < range.rangeEnd ? range.rangeStart : range.rangeEnd;
+		const end = range.rangeStart < range.rangeEnd ? range.rangeEnd : range.rangeStart;
+
 		// Check if time is within range
-		return time >= range.rangeStart && time <= range.rangeEnd;
+		return time >= start && time <= end;
 	};
 
 	// Calculate end time (30 minutes after the last slot)
@@ -174,6 +216,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		setSelectedSeatIds([]);
 		setSeatRanges({});
 		clearSelectedTimeSlots();
+		setIsDataLoaded(false);
 	}, [date, clearSelectedTimeSlots]);
 
 	// Update selected time slots when selections change
@@ -186,21 +229,32 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 			const seat = filteredSeats.find(s => s.seatId === seatId);
 
 			if (range && range.rangeStart && seat) {
+				// 開始・終了時間の順序を正しく調整
+				let startTime = range.rangeStart;
+				let endTime = range.rangeEnd
+					? range.rangeEnd
+					: range.rangeStart;
+
+				// 時間の大小関係を調整
+				if (startTime > endTime) {
+					[startTime, endTime] = [endTime, startTime];
+				}
+
+				// 終了時間は次の30分枠に
+				const actualEndTime = calculateEndTime(endTime);
+
 				newSelectedTimeSlots.push({
 					seatId,
 					seatName: seat.name,
-					startTime: range.rangeStart,
-					endTime: range.rangeEnd
-						? calculateEndTime(range.rangeEnd)
-						: calculateEndTime(range.rangeStart)
+					startTime,
+					endTime: actualEndTime
 				});
 			}
 		});
 
 		// コンテキストを更新
 		setSelectedTimeSlots(newSelectedTimeSlots);
-		//}, [seatRanges, selectedSeatIds, setSelectedTimeSlots, filteredSeats]);
-	}, [seatRanges,selectedSeatIds,setSelectedTimeSlots]);
+	}, [seatRanges, selectedSeatIds, setSelectedTimeSlots, filteredSeats]);
 
 	// Handle continue to confirmation
 	const handleContinue = () => {
@@ -238,19 +292,29 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 
 			if (!seat || !range || !range.rangeStart) return null;
 
-			const endTime = range.rangeEnd
-				? calculateEndTime(range.rangeEnd)
-				: calculateEndTime(range.rangeStart);
+			// 開始・終了時間の順序を正しく調整
+			let startTime = range.rangeStart;
+			let endTime = range.rangeEnd
+				? range.rangeEnd
+				: range.rangeStart;
 
-			const duration = calculateDuration(range.rangeStart, endTime);
+			// 時間の大小関係を調整
+			if (startTime > endTime) {
+				[startTime, endTime] = [endTime, startTime];
+			}
+
+			// 終了時間は次の30分枠に
+			const actualEndTime = calculateEndTime(endTime);
+
+			const duration = calculateDuration(startTime, actualEndTime);
 
 			// Calculate rate per minute from ratePerHour
 			const ratePerMinute = seat.ratePerHour ? seat.ratePerHour / 60 : 0;
 
 			return {
 				seat,
-				startTime: range.rangeStart,
-				endTime,
+				startTime,
+				endTime: actualEndTime,
 				duration,
 				ratePerMinute,
 				cost: Math.round(ratePerMinute * duration)
@@ -314,7 +378,24 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 	}
 
 	return (
-		<div className="space-y-6">
+		<div className="space-y-6 relative">
+			{/* Loading overlay */}
+			{(isLoading || !isDataLoaded) && (
+				<div className="absolute inset-0 bg-background/70 flex items-center justify-center z-10 rounded-lg">
+					<div className="flex flex-col items-center">
+						<div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+						<p className="mt-2 text-sm text-foreground">時間枠の予約状況を取得中...</p>
+					</div>
+				</div>
+			)}
+
+			{/* Error message */}
+			{error && (
+				<div className="p-4 bg-red-50 border border-red-200 rounded-md text-red-800 mb-4">
+					<p>{error}</p>
+				</div>
+			)}
+
 			<div
 				className="w-full overflow-x-auto border border-border/20 rounded-lg bg-background/30"
 			>
@@ -374,6 +455,10 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 										whileTap={!isSlotReserved ? { scale: 0.95 } : {}}
 										onClick={() => !isSlotReserved && handleSlotClick(seat.seatId, slot.time)}
 									>
+										{isSlotReserved && (
+											<div className="w-8 h-1 bg-border rounded-full"></div>
+										)}
+
 										{(isRangeStart || isRangeEnd) && (
 											<div className="w-2 h-2 bg-white rounded-full"></div>
 										)}
@@ -384,6 +469,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 					))}
 				</div>
 			</div>
+
 			{hasSelection ? (
 				<motion.div
 					initial={{ opacity: 0, y: 10 }}

@@ -1,15 +1,20 @@
 // src/context/reservation-context.tsx
+"use client";
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './auth-context';
 import { SeatDocument, ReservationDocument, BranchDocument } from '@/types/firebase';
-import { 
-	collection, 
-	doc, 
-	getDocs, 
-	query, 
-	where, 
-	writeBatch
-  } from 'firebase/firestore';
+import {
+	collection,
+	doc,
+	getDocs,
+	query,
+	where,
+	writeBatch,
+	Timestamp,
+	addDoc,
+	deleteDoc,
+	updateDoc
+} from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 // 座席予約の時間枠情報を複数管理できるように修正
@@ -31,7 +36,6 @@ interface ReservationContextType {
 	reservations: ReservationDocument[];
 	selectedDate: Date | null;
 	setSelectedDate: (date: Date | null) => void;
-	// 複数の座席予約を管理するために配列に変更
 	selectedTimeSlots: SelectedTimeSlotsItem[];
 	setSelectedTimeSlots: (slots: SelectedTimeSlotsItem[]) => void;
 	addSelectedTimeSlot: (slot: SelectedTimeSlotsItem) => void;
@@ -44,6 +48,15 @@ interface ReservationContextType {
 	cancelReservation: (reservationId: string) => Promise<void>;
 	isLoading: boolean;
 	error: string | null;
+
+	// 新しく追加するプロパティとメソッド
+	timeSlotAvailability: Record<string, Record<string, boolean>>;
+	updateDateAvailability: (branchId?: string, forceRefresh?: boolean) => Promise<void>;
+	updateAvailabilityForMonth: (date: Date, branchId?: string) => Promise<void>;
+	getTimeSlotAvailability: (date: Date, seatId: string) => Promise<Record<string, boolean>>;
+	fetchAllSeatsTimeSlotAvailability: (date: Date, branchId?: string) => Promise<Record<string, Record<string, boolean>>>;
+	checkReservationOverlap: (newReservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>) => Promise<boolean>;
+	refreshReservationData: () => Promise<void>;
 }
 
 // Create the context
@@ -53,17 +66,71 @@ const ReservationContext = createContext<ReservationContextType | undefined>(und
 export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 	const { user } = useAuth();
 
+	// 基本状態変数
 	const [branches, setBranches] = useState<BranchDocument[]>([]);
 	const [selectedBranch, setSelectedBranch] = useState<BranchDocument | null>(null);
 	const [seats, setSeats] = useState<SeatDocument[]>([]);
 	const [reservations, setReservations] = useState<ReservationDocument[]>([]);
 	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-	// 複数の座席予約を管理するために配列に変更
 	const [selectedTimeSlots, setSelectedTimeSlots] = useState<SelectedTimeSlotsItem[]>([]);
 	const [dateAvailability, setDateAvailability] = useState<DateAvailability>({});
 	const [isLoading, setIsLoading] = useState<boolean>(false);
 	const [error, setError] = useState<string | null>(null);
 	const [fetchCount, setFetchCount] = useState<number>(0); // APIコール回数を追跡
+
+	// 新しい状態変数
+	const [timeSlotAvailability, setTimeSlotAvailability] = useState<Record<string, Record<string, boolean>>>({});
+	const [availabilityCache, setAvailabilityCache] = useState<Record<string, DateAvailability>>({});
+	const [lastFetchTime, setLastFetchTime] = useState<Record<string, number>>({});
+
+	// ヘルパー関数
+
+	// キャッシュのキーを生成するヘルパー関数
+	const generateCacheKey = (branchId: string, yearMonth: string): string => {
+		return `${branchId}-${yearMonth}`;
+	};
+
+	// 指定した日付が現在のキャッシュ期間内かチェックするヘルパー関数
+	const isDateInCachePeriod = (date: Date, cacheKey: string): boolean => {
+		if (!availabilityCache[cacheKey]) return false;
+
+		const [branchId, yearMonth] = cacheKey.split('-');
+		const [year, month] = yearMonth.split('-').map(Number);
+
+		const startOfMonth = new Date(year, month - 1, 1);
+		const endOfMonth = new Date(year, month, 0);
+
+		return date >= startOfMonth && date <= endOfMonth;
+	};
+
+	// キャッシュの有効期限をチェックするヘルパー関数（例: 5分間有効）
+	const isCacheValid = (cacheKey: string): boolean => {
+		const now = Date.now();
+		const lastFetch = lastFetchTime[cacheKey] || 0;
+
+		// 5分（300,000ミリ秒）以内のキャッシュは有効とみなす
+		return now - lastFetch < 300000;
+	};
+
+	// 日付文字列をYYYY-MM-DD形式に変換するヘルパー関数
+	const formatDateToString = (date: Date): string => {
+		return date.toISOString().split('T')[0];
+	};
+
+	// 時刻文字列を分単位に変換するヘルパー関数
+	const timeStringToMinutes = (timeStr: string): number => {
+		const [hours, minutes] = timeStr.split(':').map(Number);
+		return hours * 60 + minutes;
+	};
+
+	// 分単位を時刻文字列に変換するヘルパー関数
+	const minutesToTimeString = (minutes: number): string => {
+		const hours = Math.floor(minutes / 60);
+		const mins = minutes % 60;
+		return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+	};
+
+	// 座席選択関連の関数
 
 	// 個別の座席予約を追加するヘルパー関数
 	const addSelectedTimeSlot = useCallback((slot: SelectedTimeSlotsItem) => {
@@ -90,7 +157,9 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		setSelectedTimeSlots([]);
 	}, []);
 
-	// 支店一覧を取得 - useCallbackでメモ化して無限ループを防止
+	// データ取得関連の関数
+
+	// 支店一覧を取得
 	const fetchBranches = useCallback(async (): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
@@ -122,7 +191,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		}
 	}, [branches.length, fetchCount]);
 
-	// 座席情報を取得 - useCallbackでメモ化
+	// 座席情報を取得
 	const fetchSeats = useCallback(async (branchId?: string): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
@@ -176,7 +245,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		}
 	}, [branches, selectedBranch]);
 
-	// 予約情報を取得 - useCallbackでメモ化
+	// 予約情報を取得（Firestoreからの実データ取得を追加）
 	const fetchReservations = useCallback(async (date?: Date, branchId?: string): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
@@ -186,45 +255,43 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 			const targetBranchId = branchId || selectedBranch?.branchId;
 
 			if (!targetDate || !targetBranchId) {
+				setIsLoading(false);
 				return;
 			}
 
-			const dateStr = targetDate.toISOString().split('T')[0];
-			const branchCode = branches.find(b => b.branchId === targetBranchId)?.branchCode || 'UNKNOWN';
+			const dateStr = formatDateToString(targetDate);
 
-			// This will be replaced by an actual API call later
-			// For now, we'll use mock data
-			const mockReservations: ReservationDocument[] = [
-				{
-					id: `res-${branchCode}-001`,
-					userId: 'user1',
-					seatId: `${branchCode}-01`,
-					seatName: `Gaming PC #1 (High-Spec)`,
-					date: dateStr,
-					startTime: '14:00',
-					endTime: '16:00',
-					duration: 120,
-					status: 'confirmed',
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				},
-				{
-					id: `res-${branchCode}-002`,
-					userId: 'user2',
-					seatId: `${branchCode}-02`,
-					seatName: `Gaming PC #2 (High-Spec)`,
-					date: dateStr,
-					startTime: '18:00',
-					endTime: '20:00',
-					duration: 120,
-					status: 'confirmed',
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString()
-				}
-			];
+			// 支店情報を取得
+			const targetBranch = branches.find(b => b.branchId === targetBranchId);
+			if (!targetBranch) {
+				throw new Error('支店情報が見つかりません');
+			}
 
-			setReservations(mockReservations);
-			updateDateAvailability(targetBranchId);
+			// Firestoreから実データを取得
+			const reservationsQuery = query(
+				collection(db, 'reservations'),
+				where('branchId', '==', targetBranchId),
+				where('date', '==', dateStr),
+				where('status', '==', 'confirmed')
+			);
+
+			const reservationsSnapshot = await getDocs(reservationsQuery);
+
+			if (reservationsSnapshot.empty) {
+				// 予約データがない場合は空配列を設定
+				setReservations([]);
+			} else {
+				// 予約データを処理
+				const reservationsData: ReservationDocument[] = [];
+				reservationsSnapshot.forEach((doc) => {
+					reservationsData.push({
+						id: doc.id,
+						...doc.data()
+					} as ReservationDocument);
+				});
+
+				setReservations(reservationsData);
+			}
 		} catch (err) {
 			console.error('Error fetching reservations:', err);
 			setError('予約情報の取得に失敗しました。もう一度お試しください。');
@@ -233,42 +300,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		}
 	}, [branches, selectedBranch, selectedDate]);
 
-	// 日付ごとの空き状況を更新 - useCallbackでメモ化
-	const updateDateAvailability = useCallback((branchId?: string) => {
-		const availability: DateAvailability = {};
-		const targetBranchId = branchId || selectedBranch?.branchId;
-
-		if (!targetBranchId) return;
-
-		// 支店によって空き状況のパターンを変える
-		const availabilityPattern = targetBranchId === 'tachikawa' ? 0.3 :
-			targetBranchId === 'shinjuku' ? 0.2 :
-				targetBranchId === 'akihabara' ? 0.4 : 0.3;
-
-		// Get the current date
-		const now = new Date();
-
-		// Generate availability data for the next 30 days
-		for (let i = 0; i < 30; i++) {
-			const date = new Date(now);
-			date.setDate(now.getDate() + i);
-			const dateStr = date.toISOString().split('T')[0];
-
-			// 支店ごとに異なる空き状況のパターンを生成
-			const rand = Math.random();
-			if (rand < availabilityPattern) {
-				availability[dateStr] = 'booked';
-			} else if (rand < availabilityPattern * 2) {
-				availability[dateStr] = 'limited';
-			} else {
-				availability[dateStr] = 'available';
-			}
-		}
-
-		setDateAvailability(availability);
-	}, [selectedBranch]);
-
-	// 予約を作成 - useCallbackでメモ化（複数予約対応＋Firebase書き込み）
+	// 予約を作成
 	const createReservation = useCallback(async (reservationsData: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>[]): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
@@ -284,6 +316,14 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 
 			if (reservationsData.length === 0) {
 				throw new Error('予約データがありません');
+			}
+
+			// 予約の重複チェック
+			for (const reservation of reservationsData) {
+				const hasOverlap = await checkReservationOverlap(reservation);
+				if (hasOverlap) {
+					throw new Error(`座席「${reservation.seatName}」の時間帯「${reservation.startTime}〜${reservation.endTime}」は既に予約されています`);
+				}
 			}
 
 			// Firestoreに書き込むデータを準備
@@ -311,17 +351,20 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 			await batch.commit();
 			console.log(`${reservationsData.length}件の予約をFirestoreに保存しました`);
 
-			setIsLoading(false);
-			clearSelectedTimeSlots(); // すべての選択をクリア
-			fetchReservations();
+			// 予約データを更新
+			await refreshReservationData();
+
+			// 選択をクリア
+			clearSelectedTimeSlots();
 		} catch (err) {
 			console.error('Error creating reservations:', err);
-			setError('予約の作成に失敗しました。もう一度お試しください。');
+			setError(err instanceof Error ? err.message : '予約の作成に失敗しました。もう一度お試しください。');
+		} finally {
 			setIsLoading(false);
 		}
-	}, [fetchReservations, selectedBranch, user, clearSelectedTimeSlots]);
+	}, [user, selectedBranch, clearSelectedTimeSlots]);
 
-	// 予約をキャンセル - useCallbackでメモ化
+	// 予約をキャンセル
 	const cancelReservation = useCallback(async (reservationId: string): Promise<void> => {
 		setIsLoading(true);
 		setError(null);
@@ -331,25 +374,491 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				throw new Error('予約をキャンセルするにはログインが必要です');
 			}
 
-			// API呼び出しをシミュレート
-			console.log('Cancelling reservation:', reservationId);
+			// 予約ドキュメントの参照を取得
+			const reservationRef = doc(db, 'reservations', reservationId);
 
-			// 成功をシミュレート
-			setTimeout(() => {
-				setIsLoading(false);
-				fetchReservations();
-			}, 1000);
+			// ステータスを 'cancelled' に更新
+			await updateDoc(reservationRef, {
+				status: 'cancelled',
+				updatedAt: new Date().toISOString()
+			});
+
+			console.log(`予約 ${reservationId} をキャンセルしました`);
+
+			// 予約データを更新
+			await refreshReservationData();
 		} catch (err) {
 			console.error('Error cancelling reservation:', err);
 			setError('予約のキャンセルに失敗しました。もう一度お試しください。');
+		} finally {
 			setIsLoading(false);
 		}
-	}, [fetchReservations, user]);
+	}, [user]);
 
-	// 初期化時に支店一覧を取得 - 依存配列を修正
+	// 日付ごとの空き状況を更新（Firestoreデータを使用）
+	const updateDateAvailability = useCallback(async (branchId?: string, forceRefresh = false) => {
+		setIsLoading(true);
+		setError(null);
+
+		try {
+			const targetBranchId = branchId || selectedBranch?.branchId;
+
+			if (!targetBranchId) {
+				setIsLoading(false);
+				return;
+			}
+
+			// 現在の年月をキーとして使用
+			const now = new Date();
+			const yearMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+			const cacheKey = generateCacheKey(targetBranchId, yearMonth);
+
+			// キャッシュがあり、強制更新でなければキャッシュを使用
+			if (!forceRefresh && isCacheValid(cacheKey) && availabilityCache[cacheKey]) {
+				setDateAvailability(availabilityCache[cacheKey]);
+				setIsLoading(false);
+				return;
+			}
+
+			// 支店情報を取得
+			const targetBranch = branches.find(b => b.branchId === targetBranchId);
+			if (!targetBranch) {
+				throw new Error('支店情報が見つかりません');
+			}
+
+			// 座席情報取得
+			const seatsQuery = query(
+				collection(db, 'seats'),
+				where('branchCode', '==', targetBranch.branchCode),
+				where('status', '==', 'available')
+			);
+
+			const seatsSnapshot = await getDocs(seatsQuery);
+			const totalSeats = seatsSnapshot.size;
+
+			if (totalSeats === 0) {
+				throw new Error('利用可能な座席がありません');
+			}
+
+			// 日付範囲の計算
+			const startDate = new Date(now);
+			startDate.setHours(0, 0, 0, 0);
+
+			const endDate = new Date(startDate);
+			endDate.setDate(startDate.getDate() + 30);
+
+			const startDateStr = formatDateToString(startDate);
+			const endDateStr = formatDateToString(endDate);
+
+			// 日付範囲の予約をまとめて取得
+			const reservationsQuery = query(
+				collection(db, 'reservations'),
+				where('branchId', '==', targetBranchId),
+				where('date', '>=', startDateStr),
+				where('date', '<=', endDateStr),
+				where('status', '==', 'confirmed')
+			);
+
+			const reservationsSnapshot = await getDocs(reservationsQuery);
+
+			// 日付ごとに予約をカウント
+			const reservationCountByDate: Record<string, { total: number, uniqueSeats: Set<string> }> = {};
+
+			// 初期化
+			for (let i = 0; i < 30; i++) {
+				const date = new Date(startDate);
+				date.setDate(startDate.getDate() + i);
+				const dateStr = formatDateToString(date);
+				reservationCountByDate[dateStr] = { total: 0, uniqueSeats: new Set() };
+			}
+
+			// 予約を日付ごとに集計
+			reservationsSnapshot.forEach(doc => {
+				const reservation = doc.data() as ReservationDocument;
+				if (reservationCountByDate[reservation.date]) {
+					reservationCountByDate[reservation.date].total++;
+					reservationCountByDate[reservation.date].uniqueSeats.add(reservation.seatId);
+				}
+			});
+
+			// 空き状況を計算
+			const availability: DateAvailability = {};
+
+			for (const dateStr in reservationCountByDate) {
+				const uniqueSeatsBooked = reservationCountByDate[dateStr].uniqueSeats.size;
+
+				// 閾値の設定（調整可能）
+				if (uniqueSeatsBooked >= totalSeats * 0.9) {
+					availability[dateStr] = 'booked';      // 90%以上予約済み: 満席
+				} else if (uniqueSeatsBooked >= totalSeats * 0.6) {
+					availability[dateStr] = 'limited';     // 60%以上予約済み: 残りわずか
+				} else {
+					availability[dateStr] = 'available';   // それ以外: 予約可能
+				}
+			}
+
+			// キャッシュを更新
+			setAvailabilityCache(prev => ({
+				...prev,
+				[cacheKey]: availability
+			}));
+
+			// 最終取得時刻を更新
+			setLastFetchTime(prev => ({
+				...prev,
+				[cacheKey]: Date.now()
+			}));
+
+			// 状態を更新
+			setDateAvailability(availability);
+		} catch (err) {
+			console.error('Error updating date availability:', err);
+			setError('空き状況の更新に失敗しました');
+		} finally {
+			setIsLoading(false);
+		}
+	}, [branches, selectedBranch, availabilityCache, lastFetchTime]);
+
+	// 表示月に基づいて日付範囲の予約状況を更新する関数
+	const updateAvailabilityForMonth = useCallback(async (date: Date, branchId?: string) => {
+		setIsLoading(true);
+
+		try {
+			const targetBranchId = branchId || selectedBranch?.branchId;
+			if (!targetBranchId) {
+				setIsLoading(false);
+				return;
+			}
+
+			const year = date.getFullYear();
+			const month = date.getMonth() + 1;
+			const yearMonth = `${year}-${month.toString().padStart(2, '0')}`;
+			const cacheKey = generateCacheKey(targetBranchId, yearMonth);
+
+			// キャッシュが有効なら使用
+			if (isCacheValid(cacheKey) && availabilityCache[cacheKey]) {
+				setDateAvailability(availabilityCache[cacheKey]);
+				setIsLoading(false);
+				return;
+			}
+
+			// 月の最初と最後の日を計算
+			const startOfMonth = new Date(year, month - 1, 1);
+			const endOfMonth = new Date(year, month, 0);
+
+			// 支店情報を取得
+			const targetBranch = branches.find(b => b.branchId === targetBranchId);
+			if (!targetBranch) {
+				throw new Error('支店情報が見つかりません');
+			}
+
+			// 座席情報取得
+			const seatsQuery = query(
+				collection(db, 'seats'),
+				where('branchCode', '==', targetBranch.branchCode),
+				where('status', '==', 'available')
+			);
+
+			const seatsSnapshot = await getDocs(seatsQuery);
+			const totalSeats = seatsSnapshot.size;
+
+			if (totalSeats === 0) {
+				throw new Error('利用可能な座席がありません');
+			}
+
+			// 日付範囲文字列
+			const startDateStr = formatDateToString(startOfMonth);
+			const endDateStr = formatDateToString(endOfMonth);
+
+			// 予約データ取得
+			const reservationsQuery = query(
+				collection(db, 'reservations'),
+				where('branchId', '==', targetBranchId),
+				where('date', '>=', startDateStr),
+				where('date', '<=', endDateStr),
+				where('status', '==', 'confirmed')
+			);
+
+			const reservationsSnapshot = await getDocs(reservationsQuery);
+
+			// 集計用マップの初期化
+			const reservationCountByDate: Record<string, { total: number, uniqueSeats: Set<string> }> = {};
+
+			// 月内の全日付を初期化
+			for (let i = 1; i <= endOfMonth.getDate(); i++) {
+				const date = new Date(year, month - 1, i);
+				const dateStr = formatDateToString(date);
+				reservationCountByDate[dateStr] = { total: 0, uniqueSeats: new Set() };
+			}
+
+			// 予約を集計
+			reservationsSnapshot.forEach(doc => {
+				const reservation = doc.data() as ReservationDocument;
+				if (reservationCountByDate[reservation.date]) {
+					reservationCountByDate[reservation.date].total++;
+					reservationCountByDate[reservation.date].uniqueSeats.add(reservation.seatId);
+				}
+			});
+
+			// 空き状況を計算
+			const availability: DateAvailability = {};
+
+			for (const dateStr in reservationCountByDate) {
+				const uniqueSeatsBooked = reservationCountByDate[dateStr].uniqueSeats.size;
+
+				if (uniqueSeatsBooked >= totalSeats * 0.9) {
+					availability[dateStr] = 'booked';
+				} else if (uniqueSeatsBooked >= totalSeats * 0.6) {
+					availability[dateStr] = 'limited';
+				} else {
+					availability[dateStr] = 'available';
+				}
+			}
+
+			// キャッシュを更新
+			setAvailabilityCache(prev => ({
+				...prev,
+				[cacheKey]: availability
+			}));
+
+			// 最終取得時刻を更新
+			setLastFetchTime(prev => ({
+				...prev,
+				[cacheKey]: Date.now()
+			}));
+
+			// 状態を更新
+			setDateAvailability(availability);
+		} catch (err) {
+			console.error('Error updating month availability:', err);
+			setError('月間予約状況の取得に失敗しました');
+		} finally {
+			setIsLoading(false);
+		}
+	}, [branches, selectedBranch, availabilityCache, lastFetchTime]);
+
+	// 特定の日付と座席IDに対する時間枠の予約状況を取得する関数
+	const getTimeSlotAvailability = useCallback(async (
+		date: Date,
+		seatId: string
+	): Promise<Record<string, boolean>> => {
+		const result: Record<string, boolean> = {};
+
+		if (!date || !seatId) return result;
+
+		try {
+			const dateStr = formatDateToString(date);
+
+			// 座席情報の取得
+			const seat = seats.find(s => s.seatId === seatId);
+			if (!seat) {
+				throw new Error('座席情報が見つかりません');
+			}
+
+			// 支店情報の取得
+			const branch = branches.find(b => b.branchCode === seat.branchCode);
+			if (!branch) {
+				throw new Error('支店情報が見つかりません');
+			}
+
+			// 営業時間の取得（デフォルト値も設定）
+			const openTime = branch.businessHours?.open || '10:00';
+			const closeTime = branch.businessHours?.close || '22:00';
+
+			// 営業時間を分単位に変換
+			const openMinutes = timeStringToMinutes(openTime);
+			const closeMinutes = timeStringToMinutes(closeTime);
+
+			// 30分単位で時間枠を生成（デフォルトですべて利用可能と設定）
+			for (let minutes = openMinutes; minutes < closeMinutes; minutes += 30) {
+				const timeSlot = minutesToTimeString(minutes);
+				result[timeSlot] = true; // true = 予約可能
+			}
+
+			// 座席の特定の日付の予約を取得
+			const reservationsQuery = query(
+				collection(db, 'reservations'),
+				where('seatId', '==', seatId),
+				where('date', '==', dateStr),
+				where('status', '==', 'confirmed')
+			);
+
+			const reservationsSnapshot = await getDocs(reservationsQuery);
+
+			// 予約済み時間枠を処理
+			reservationsSnapshot.forEach(doc => {
+				const reservation = doc.data() as ReservationDocument;
+				const startMinutes = timeStringToMinutes(reservation.startTime);
+				const endMinutes = timeStringToMinutes(reservation.endTime);
+
+				// 予約時間内の各時間枠を予約済みとしてマーク（続き）
+				for (let minutes = startMinutes; minutes < endMinutes; minutes += 30) {
+					// 営業時間内の時間枠のみを処理
+					if (minutes >= openMinutes && minutes < closeMinutes) {
+						const timeSlot = minutesToTimeString(minutes);
+						result[timeSlot] = false; // false = 予約済み
+					}
+				}
+			});
+
+			return result;
+		} catch (err) {
+			console.error('Error getting time slot availability:', err);
+			setError('時間枠の予約状況取得に失敗しました');
+			return result;
+		}
+	}, [branches, seats]);
+
+	// 特定の日付の全座席の時間枠予約状況を一括取得する関数
+	const fetchAllSeatsTimeSlotAvailability = useCallback(async (
+		date: Date,
+		branchId?: string
+	): Promise<Record<string, Record<string, boolean>>> => {
+		if (!date) return {};
+
+		try {
+			const targetBranchId = branchId || selectedBranch?.branchId;
+			if (!targetBranchId) return {};
+
+			// 座席一覧を取得
+			const targetSeats = seats.filter(seat => {
+				const seatBranch = branches.find(b => b.branchCode === seat.branchCode);
+				return seatBranch && seatBranch.branchId === targetBranchId;
+			});
+
+			if (targetSeats.length === 0) return {};
+
+			const dateStr = formatDateToString(date);
+
+			// 支店情報の取得
+			const branch = branches.find(b => b.branchId === targetBranchId);
+			if (!branch) return {};
+
+			// 営業時間の取得
+			const openTime = branch.businessHours?.open || '10:00';
+			const closeTime = branch.businessHours?.close || '22:00';
+
+			// 営業時間を分単位に変換
+			const openMinutes = timeStringToMinutes(openTime);
+			const closeMinutes = timeStringToMinutes(closeTime);
+
+			// 結果格納用オブジェクト（各座席IDをキーとする）
+			const result: Record<string, Record<string, boolean>> = {};
+
+			// 各座席の時間枠を初期化（すべて予約可能と設定）
+			for (const seat of targetSeats) {
+				result[seat.seatId] = {};
+
+				for (let minutes = openMinutes; minutes < closeMinutes; minutes += 30) {
+					const timeSlot = minutesToTimeString(minutes);
+					result[seat.seatId][timeSlot] = true; // true = 予約可能
+				}
+			}
+
+			// 指定日付の全予約を一度に取得（より効率的）
+			const reservationsQuery = query(
+				collection(db, 'reservations'),
+				where('branchId', '==', targetBranchId),
+				where('date', '==', dateStr),
+				where('status', '==', 'confirmed')
+			);
+
+			const reservationsSnapshot = await getDocs(reservationsQuery);
+
+			// 各予約に対応する時間枠を予約済みとしてマーク
+			reservationsSnapshot.forEach(doc => {
+				const reservation = doc.data() as ReservationDocument;
+				const { seatId, startTime, endTime } = reservation;
+
+				// 結果オブジェクトに対象の座席があるか確認
+				if (result[seatId]) {
+					const startMinutes = timeStringToMinutes(startTime);
+					const endMinutes = timeStringToMinutes(endTime);
+
+					// 予約時間内の各時間枠を予約済みとしてマーク
+					for (let minutes = startMinutes; minutes < endMinutes; minutes += 30) {
+						// 営業時間内の時間枠のみを処理
+						if (minutes >= openMinutes && minutes < closeMinutes) {
+							const timeSlot = minutesToTimeString(minutes);
+							result[seatId][timeSlot] = false; // false = 予約済み
+						}
+					}
+				}
+			});
+
+			// 時間枠の可用性データを状態に保存
+			setTimeSlotAvailability(result);
+
+			return result;
+		} catch (err) {
+			console.error('Error fetching all seats time slot availability:', err);
+			setError('座席の時間枠予約状況取得に失敗しました');
+			return {};
+		}
+	}, [branches, seats, selectedBranch]);
+
+	// 新規予約が既存の予約と重複するかチェックする関数
+	const checkReservationOverlap = useCallback(async (
+		newReservation: Omit<ReservationDocument, 'id' | 'createdAt' | 'updatedAt'>
+	): Promise<boolean> => {
+		try {
+			const { seatId, date, startTime, endTime } = newReservation;
+
+			// 既存の予約を取得
+			const reservationsQuery = query(
+				collection(db, 'reservations'),
+				where('seatId', '==', seatId),
+				where('date', '==', date),
+				where('status', '==', 'confirmed')
+			);
+
+			const reservationsSnapshot = await getDocs(reservationsQuery);
+
+			// 予約時間を分に変換
+			const newStartMinutes = timeStringToMinutes(startTime);
+			const newEndMinutes = timeStringToMinutes(endTime);
+
+			// 各既存予約との重複をチェック
+			for (const doc of reservationsSnapshot.docs) {
+				const existingReservation = doc.data() as ReservationDocument;
+				const existingStartMinutes = timeStringToMinutes(existingReservation.startTime);
+				const existingEndMinutes = timeStringToMinutes(existingReservation.endTime);
+
+				// 予約時間の重複チェック
+				// 重複条件: 新予約の開始時間が既存予約の終了時間より前 かつ 新予約の終了時間が既存予約の開始時間より後
+				if (newStartMinutes < existingEndMinutes && newEndMinutes > existingStartMinutes) {
+					return true; // 重複あり
+				}
+			}
+
+			return false; // 重複なし
+		} catch (err) {
+			console.error('Error checking reservation overlap:', err);
+			setError('予約の重複チェックに失敗しました');
+			return true; // エラー時は安全のため重複ありとして扱う
+		}
+	}, []);
+
+	// 予約データを更新する関数（カレンダーと時間枠の両方を更新）
+	const refreshReservationData = useCallback(async () => {
+		if (!selectedBranch || !selectedDate) return;
+
+		// 日付ごとの予約状況を更新
+		await updateDateAvailability(selectedBranch.branchId, true);
+
+		// 選択日の時間枠予約状況を更新
+		await fetchAllSeatsTimeSlotAvailability(selectedDate, selectedBranch.branchId);
+
+		// 選択日の予約一覧を更新
+		await fetchReservations(selectedDate, selectedBranch.branchId);
+	}, [selectedBranch, selectedDate, updateDateAvailability, fetchAllSeatsTimeSlotAvailability, fetchReservations]);
+
+	// useEffect関連
+
+	// 初期化時に支店一覧を取得
 	useEffect(() => {
 		fetchBranches();
-	}, [fetchBranches]); // useCallbackでメモ化したので依存配列にfetchBranchesを含めても問題ない
+	}, [fetchBranches]);
 
 	// 支店が選択されたら座席一覧を取得
 	useEffect(() => {
@@ -361,15 +870,17 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		}
 	}, [selectedBranch, fetchSeats, updateDateAvailability, clearSelectedTimeSlots]);
 
-	// 日付が選択された時に予約情報を取得
+	// 日付が選択された時に予約情報と時間枠可用性を取得
 	useEffect(() => {
 		if (selectedDate && selectedBranch) {
 			fetchReservations(selectedDate, selectedBranch.branchId);
+			fetchAllSeatsTimeSlotAvailability(selectedDate, selectedBranch.branchId);
 			// 日付が変わったら選択済みの座席をクリア
 			clearSelectedTimeSlots();
 		}
-	}, [selectedDate, selectedBranch, fetchReservations, clearSelectedTimeSlots]);
+	}, [selectedDate, selectedBranch, fetchReservations, fetchAllSeatsTimeSlotAvailability, clearSelectedTimeSlots]);
 
+	// コンテキスト値の作成
 	const value = {
 		branches,
 		selectedBranch,
@@ -390,7 +901,14 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		createReservation,
 		cancelReservation,
 		isLoading,
-		error
+		error,
+		timeSlotAvailability,
+		updateDateAvailability,
+		updateAvailabilityForMonth,
+		getTimeSlotAvailability,
+		fetchAllSeatsTimeSlotAvailability,
+		checkReservationOverlap,
+		refreshReservationData
 	};
 
 	return (

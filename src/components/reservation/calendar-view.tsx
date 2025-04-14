@@ -1,15 +1,26 @@
+// src/components/reservation/calendar-view.tsx
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useReservation } from '@/context/reservation-context';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Info } from 'lucide-react';
 
 interface CalendarViewProps {
 	onDateSelect?: (date: Date) => void;
 }
 
 const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
-	const { selectedDate, setSelectedDate, dateAvailability } = useReservation();
+	const {
+		selectedDate,
+		setSelectedDate,
+		dateAvailability,
+		updateAvailabilityForMonth,
+		selectedBranch,
+		isLoading,
+		error
+	} = useReservation();
+
 	const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+	const [hoveredDate, setHoveredDate] = useState<Date | null>(null);
 
 	// Calendar grid setup
 	const daysOfWeek = ['日', '月', '火', '水', '木', '金', '土'];
@@ -58,9 +69,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 
 	const [days, setDays] = useState(getDaysInMonth(currentMonth.getFullYear(), currentMonth.getMonth()));
 
+	// Update days when current month changes
 	useEffect(() => {
 		setDays(getDaysInMonth(currentMonth.getFullYear(), currentMonth.getMonth()));
-	}, [currentMonth]);
+
+		// 表示月が変わったらその月の予約状況を取得
+		if (selectedBranch) {
+			updateAvailabilityForMonth(currentMonth, selectedBranch.branchId);
+		}
+	}, [currentMonth, selectedBranch, updateAvailabilityForMonth]);
 
 	const goToPreviousMonth = () => {
 		setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
@@ -72,12 +89,18 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 
 	const handleDateClick = (day: { date: Date, isCurrentMonth: boolean, isPast: boolean }) => {
 		if (day.isPast) return; // Prevent selecting past dates
+
+		// 当月以外の日付は選択しない追加チェック
+		if (!day.isCurrentMonth) return;
+
 		setSelectedDate(day.date);
 		if (onDateSelect) onDateSelect(day.date);
 	};
 
 	// Get availability status for a day
 	const getAvailabilityStatus = (date: Date) => {
+		if (!date) return 'unknown';
+
 		const dateString = date.toISOString().split('T')[0];
 		return dateAvailability[dateString] || 'unknown';
 	};
@@ -97,11 +120,47 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 		}
 	};
 
+	// Get availability tooltip text
+	const getAvailabilityTooltip = (date: Date) => {
+		const status = getAvailabilityStatus(date);
+		switch (status) {
+			case 'available':
+				return '予約可能';
+			case 'limited':
+				return '残り僅か';
+			case 'booked':
+				return '満席';
+			default:
+				return '情報取得中';
+		}
+	};
+
+	// Calculate today's date at midnight for comparison
+	const today = new Date();
+	today.setHours(0, 0, 0, 0);
+
 	return (
 		<div className="w-full">
+			{/* Calendar Legend */}
+			<div className="flex items-center justify-center mb-6 gap-6 text-sm">
+				<div className="flex items-center">
+					<div className="w-3 h-3 rounded-full bg-highlight mr-2"></div>
+					<span className="text-foreground/70">予約可能</span>
+				</div>
+				<div className="flex items-center">
+					<div className="w-3 h-3 rounded-full bg-accent mr-2"></div>
+					<span className="text-foreground/70">残り僅か</span>
+				</div>
+				<div className="flex items-center">
+					<div className="w-3 h-3 rounded-full bg-red-400 mr-2"></div>
+					<span className="text-foreground/70">満席</span>
+				</div>
+			</div>
+
 			{/* Calendar header */}
 			<div className="flex items-center justify-between mb-4">
-				<h2 className="text-lg font-medium text-foreground">
+				<h2 className="text-lg font-medium text-foreground flex items-center">
+					<CalendarIcon size={18} className="mr-2" />
 					{currentMonth.getFullYear()}年{currentMonth.getMonth() + 1}月
 				</h2>
 				<div className="flex space-x-2">
@@ -109,6 +168,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 						onClick={goToPreviousMonth}
 						className="p-2 rounded-full hover:bg-border text-foreground"
 						aria-label="前の月"
+						disabled={isLoading}
 					>
 						<ChevronLeft size={18} />
 					</button>
@@ -116,14 +176,29 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 						onClick={goToNextMonth}
 						className="p-2 rounded-full hover:bg-border text-foreground"
 						aria-label="次の月"
+						disabled={isLoading}
 					>
 						<ChevronRight size={18} />
 					</button>
 				</div>
 			</div>
 
+			{/* Loading indicator */}
+			{isLoading && (
+				<div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10 rounded-md">
+					<div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+				</div>
+			)}
+
+			{/* Error message */}
+			{error && (
+				<div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-sm">
+					<p>{error}</p>
+				</div>
+			)}
+
 			{/* Calendar grid */}
-			<div className="grid grid-cols-7 gap-1">
+			<div className="grid grid-cols-7 gap-1 relative">
 				{/* Days of week header */}
 				{daysOfWeek.map(day => (
 					<div key={day} className="text-center py-2 text-sm font-medium text-foreground/70">
@@ -148,6 +223,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
                 ${day.isCurrentMonth && !day.isPast ? getAvailabilityColorClass(day.date) : ''}
               `}
 							onClick={() => !day.isPast && handleDateClick(day)}
+							onMouseEnter={() => setHoveredDate(day.date)}
+							onMouseLeave={() => setHoveredDate(null)}
 						>
 							<div className="absolute top-1 right-1 text-xs">
 								{day.date.getDate()}
@@ -172,9 +249,24 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 									)}
 								</div>
 							)}
+
+							{/* Tooltip on hover */}
+							{hoveredDate && day.date.getTime() === hoveredDate.getTime() && !day.isPast && day.isCurrentMonth && (
+								<div className="absolute z-10 bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-background text-foreground text-xs rounded border border-border shadow-soft whitespace-nowrap">
+									{getAvailabilityTooltip(day.date)}
+								</div>
+							)}
 						</motion.div>
 					);
 				})}
+			</div>
+
+			{/* Info message */}
+			<div className="mt-6 flex items-start text-sm text-foreground/70">
+				<Info size={16} className="mr-2 flex-shrink-0 mt-0.5" />
+				<p>
+					カレンダーの日付をクリックすると、その日の予約状況と空き枠を確認できます。実際に予約するには会員登録が必要です。
+				</p>
 			</div>
 		</div>
 	);
