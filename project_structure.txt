@@ -1,5 +1,6 @@
 .
 ├── README.md
+├── auth_files.md
 ├── next-env.d.ts
 ├── next.config.js
 ├── package-lock.json
@@ -30,6 +31,8 @@
 │   │   │   │   ├── create-setup-intent
 │   │   │   │   │   └── route.ts
 │   │   │   │   ├── mock-payment-setup
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── register-payment-method
 │   │   │   │   │   └── route.ts
 │   │   │   │   └── webhook
 │   │   │   │       └── route.ts
@@ -118,16 +121,11 @@
 │   │   │   ├── button.tsx
 │   │   │   └── loading-spinner.tsx
 │   │   └── verification
-│   │       ├── camera-test.tsx
-│   │       ├── face-verification-section.tsx
-│   │       ├── face-video-capture.tsx
 │   │       ├── verification-complete.tsx
-│   │       ├── verification-status-v2.tsx
-│   │       └── verification-status.tsx
+│   │       └── verification-status-v2.tsx
 │   ├── context
 │   │   ├── AudioContext.tsx
 │   │   ├── auth-context.tsx
-│   │   ├── ekyc-context.tsx
 │   │   ├── registration-context.tsx
 │   │   └── reservation-context.tsx
 │   ├── hooks
@@ -150,4 +148,4 @@
 ├── tailwind.config.js
 └── tsconfig.json
 
-46 directories, 104 files
+47 directories, 101 files

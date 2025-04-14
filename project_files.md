@@ -38,36 +38,18 @@ export interface UserDocument {
 	email: string | null;
 	displayName: string | null;
 	photoURL: string | null;
-	createdAt: TimestampOrString;
-	lastLogin: TimestampOrString;
+	createdAt: Timestamp | string;
+	lastLogin: Timestamp | string;
 	registrationCompleted: boolean;
 	registrationCompletedAt?: string;
 	registrationStep?: number;
-
-	// eKYC情報
-	faceVideo?: {
-		storagePath: string;      // 例: users/{uid}/face.mp4
-		downloadURL?: string;     // 署名付きURLまたは管理者用URL
-		confirmed: boolean;       // 判定結果（初期値: true）
-		checkedAt?: string;       // 判定実行日（ISO形式）
-		rejectionReason?: string; // 拒否理由（"too_dark"|"masked"|"duplicate"など）
-		flagged?: boolean;        // 確認要/BAN対象フラグ
-		similarityCheckCompleted?: boolean; // 顔照合済みフラグ
-	};
-
-	// Stripe情報
 	stripe?: {
 		customerId?: string;
 		paymentMethodId?: string;
+		cardFingerprint?: string; // 追加: カードの一意識別子
+		last4?: string;           // オプション: 下4桁（表示用）
+		brand?: string;           // オプション: カードブランド（表示用）
 		paymentSetupCompleted?: boolean;
-		createdAt?: string;
-		updatedAt?: string;
-		paymentMethodType?: string;
-		paymentMethodBrand?: string;
-		paymentMethodLast4?: string;
-		paymentStatus?: string;
-		lastPaymentError?: string;
-		lastPaymentErrorAt?: string;
 	};
 }
 
@@ -82,7 +64,7 @@ export interface SessionDocument {
 	amount: number;
 	pricePerHour: number;
 	active: boolean;
-	billingId?: string; 
+	billingId?: string;
 }
 
 // 座席情報
@@ -333,7 +315,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 							createdAt: serverTimestamp(),
 							lastLogin: serverTimestamp(),
 							registrationCompleted: false,
-							registrationStep: 2,
+							registrationStep: 1,
 						};
 
 						await setDoc(userDocRef, newUserData);
@@ -893,154 +875,229 @@ export function verifyVeriffCallback(signature: string, payload: any): boolean {
 import Stripe from 'stripe';
 import { stripe } from '@/lib/stripe';
 import { PaymentMethodType } from '@/types';
+import { doc, setDoc, getDoc, query, collection, where, getDocs } from 'firebase/firestore';
+import { db } from './firebase';
 
 // 顧客情報のインターフェース
 interface CustomerData {
-	userId: string;
-	email: string;
-	name?: string;
+    userId: string;
+    email: string;
+    name?: string;
+}
+
+/**
+ * カードfingerprintによる重複チェック
+ * 既存ユーザーが存在する場合はそのUIDを返す、存在しない場合はnullを返す
+ */
+export async function checkCardFingerprintDuplicate(fingerprint: string): Promise<string | null> {
+    try {
+        // fingerprintが一致するユーザーを検索
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('stripe.cardFingerprint', '==', fingerprint));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+            // 重複するユーザーがいる場合は最初のユーザーのUIDを返す
+            return querySnapshot.docs[0].id;
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Error checking card fingerprint duplicate:', error);
+        throw error;
+    }
+}
+
+/**
+ * 支払い方法からカードfingerprintを取得
+ */
+export async function getCardFingerprint(paymentMethodId: string): Promise<string | null> {
+    try {
+        const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+        
+        // カード支払いの場合のみfingerprintが存在
+        if (paymentMethod.type === 'card' && paymentMethod.card) {
+            return paymentMethod.card.fingerprint;
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Error retrieving card fingerprint:', error);
+        throw error;
+    }
+}
+
+/**
+ * ユーザーにカード情報を保存
+ */
+export async function saveCardInfoToUser(
+    userId: string, 
+    paymentMethodId: string,
+    fingerprint: string,
+    last4?: string,
+    brand?: string
+): Promise<void> {
+    try {
+        const userDocRef = doc(db, 'users', userId);
+        
+        await setDoc(userDocRef, {
+            stripe: {
+                paymentMethodId,
+                cardFingerprint: fingerprint,
+                last4,
+                brand,
+                paymentSetupCompleted: true
+            }
+        }, { merge: true });
+        
+    } catch (error) {
+        console.error('Error saving card info to user:', error);
+        throw error;
+    }
 }
 
 /**
  * Stripe顧客を作成または取得する
  */
 export async function getOrCreateCustomer(userId: string, email: string, name?: string): Promise<Stripe.Customer> {
-	try {
-		// 既存の顧客を検索
-		const customers = await stripe.customers.list({
-			email: email,
-			limit: 1,
-		});
+    try {
+        // 既存の顧客を検索
+        const customers = await stripe.customers.list({
+            email: email,
+            limit: 1,
+        });
 
-		if (customers.data.length > 0) {
-			// 既存顧客が見つかった場合、metadataを更新
-			const customer = customers.data[0];
-			await stripe.customers.update(customer.id, {
-				metadata: {
-					...customer.metadata,
-					userId: userId
-				}
-			});
-			return customer;
-		}
+        if (customers.data.length > 0) {
+            // 既存顧客が見つかった場合、metadataを更新
+            const customer = customers.data[0];
+            await stripe.customers.update(customer.id, {
+                metadata: {
+                    ...customer.metadata,
+                    userId: userId
+                }
+            });
+            return customer;
+        }
 
-		// 新規顧客を作成
-		const newCustomer = await stripe.customers.create({
-			email: email,
-			name: name,
-			metadata: {
-				userId: userId,
-			},
-		});
+        // 新規顧客を作成
+        const newCustomer = await stripe.customers.create({
+            email: email,
+            name: name,
+            metadata: {
+                userId: userId,
+            },
+        });
 
-		return newCustomer;
-	} catch (error) {
-		console.error('Error in getOrCreateCustomer:', error);
-		throw error;
-	}
+        return newCustomer;
+    } catch (error) {
+        console.error('Error in getOrCreateCustomer:', error);
+        throw error;
+    }
 }
+
+// 以下、既存の関数はそのまま...
 
 /**
  * Setup Intentを作成する
  */
 export async function createSetupIntent(
-	customerId: string,
-	paymentMethods: PaymentMethodType[] = ['card']
+    customerId: string,
+    paymentMethods: PaymentMethodType[] = ['card']
 ): Promise<Stripe.SetupIntent> {
-	try {
-		const setupIntent = await stripe.setupIntents.create({
-			customer: customerId,
-			payment_method_types: paymentMethods,
-		});
-		return setupIntent;
-	} catch (error) {
-		console.error('Error creating Setup Intent:', error);
-		throw error;
-	}
+    try {
+        const setupIntent = await stripe.setupIntents.create({
+            customer: customerId,
+            payment_method_types: paymentMethods,
+        });
+        return setupIntent;
+    } catch (error) {
+        console.error('Error creating Setup Intent:', error);
+        throw error;
+    }
 }
 
 /**
  * 支払い方法をデフォルトとして設定
  */
 export async function setDefaultPaymentMethod(
-	customerId: string,
-	paymentMethodId: string
+    customerId: string,
+    paymentMethodId: string
 ): Promise<Stripe.Customer> {
-	try {
-		const customer = await stripe.customers.update(customerId, {
-			invoice_settings: {
-				default_payment_method: paymentMethodId,
-			},
-		});
-		return customer;
-	} catch (error) {
-		console.error('Error setting default payment method:', error);
-		throw error;
-	}
+    try {
+        const customer = await stripe.customers.update(customerId, {
+            invoice_settings: {
+                default_payment_method: paymentMethodId,
+            },
+        });
+        return customer;
+    } catch (error) {
+        console.error('Error setting default payment method:', error);
+        throw error;
+    }
 }
 
 /**
  * 利用に基づく請求書を作成
  */
 export async function createInvoiceForUsage(
-	customerId: string,
-	durationMinutes: number,
-	description: string = 'E-Sports Sakura利用料金'
+    customerId: string,
+    durationMinutes: number,
+    description: string = 'E-Sports Sakura利用料金'
 ): Promise<Stripe.Invoice> {
-	try {
-		// 10分単位で料金計算（10分あたり120円）
-		const units = Math.ceil(durationMinutes / 10);
-		const amountYen = units * 120;
+    try {
+        // 10分単位で料金計算（10分あたり120円）
+        const units = Math.ceil(durationMinutes / 10);
+        const amountYen = units * 120;
 
-		// 請求書の作成
-		const invoice = await stripe.invoices.create({
-			customer: customerId,
-			auto_advance: true, // 自動的に確定・支払い
-			description: description,
-			metadata: {
-				durationMinutes: String(durationMinutes),
-				units: String(units),
-			},
-		});
+        // 請求書の作成
+        const invoice = await stripe.invoices.create({
+            customer: customerId,
+            auto_advance: true, // 自動的に確定・支払い
+            description: description,
+            metadata: {
+                durationMinutes: String(durationMinutes),
+                units: String(units),
+            },
+        });
 
-		// 請求項目の追加
-		await stripe.invoiceItems.create({
-			customer: customerId,
-			amount: amountYen * 100, // 日本円をセントに変換
-			currency: 'jpy',
-			description: `利用時間: ${durationMinutes}分（${units}単位）`,
-			invoice: invoice.id,
-		});
+        // 請求項目の追加
+        await stripe.invoiceItems.create({
+            customer: customerId,
+            amount: amountYen * 100, // 日本円をセントに変換
+            currency: 'jpy',
+            description: `利用時間: ${durationMinutes}分（${units}単位）`,
+            invoice: invoice.id,
+        });
 
-		// 請求書の確定
-		if (!invoice.id) throw new Error('invoice.id is undefined');
-		const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
+        // 請求書の確定
+        if (!invoice.id) throw new Error('invoice.id is undefined');
+        const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
 
-		// 支払い処理
-		if (!finalizedInvoice.id) throw new Error('finalizedInvoice.id is undefined');
-		return await stripe.invoices.pay(finalizedInvoice.id);
-	} catch (error) {
-		console.error('Error creating invoice for usage:', error);
-		throw error;
-	}
+        // 支払い処理
+        if (!finalizedInvoice.id) throw new Error('finalizedInvoice.id is undefined');
+        return await stripe.invoices.pay(finalizedInvoice.id);
+    } catch (error) {
+        console.error('Error creating invoice for usage:', error);
+        throw error;
+    }
 }
 
 /**
  * 顧客の支払い方法一覧を取得
  */
 export async function getCustomerPaymentMethods(
-	customerId: string
+    customerId: string
 ): Promise<Stripe.PaymentMethod[]> {
-	try {
-		const paymentMethods = await stripe.paymentMethods.list({
-			customer: customerId,
-			type: 'card',
-		});
-		return paymentMethods.data;
-	} catch (error) {
-		console.error('Error getting customer payment methods:', error);
-		throw error;
-	}
+    try {
+        const paymentMethods = await stripe.paymentMethods.list({
+            customer: customerId,
+            type: 'card',
+        });
+        return paymentMethods.data;
+    } catch (error) {
+        console.error('Error getting customer payment methods:', error);
+        throw error;
+    }
 }-e 
 ### FILE: ./src/lib/gameData.ts
 
@@ -1706,9 +1763,12 @@ export default function DashboardPage() {
 						</div>
 					</header>
 
-					{/* メインコンテンツ */}
 					<main className="container mx-auto px-4 py-8">
-						<h1 className="text-2xl font-bold mb-6">マイダッシュボード</h1>
+						<h1 className="text-2xl font-bold mb-6">マイページ</h1>
+						<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+							<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>
+							<QrCodeDisplay />
+						</div>
 						<div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-8">
 							<Link
 								href="/reservation"
@@ -1718,7 +1778,6 @@ export default function DashboardPage() {
 								<span className="font-medium text-foreground">新規予約</span>
 								<span className="text-sm text-foreground/60">座席を予約する</span>
 							</Link>
-
 						</div>
 
 						{/* 会員登録が完了していない場合は登録フローに誘導 */}
@@ -1726,7 +1785,7 @@ export default function DashboardPage() {
 							<div className="bg-accent/10 border border-accent/20 rounded-xl p-6 mb-8">
 								<h2 className="text-lg font-semibold mb-2">会員登録を完了させましょう</h2>
 								<p className="mb-4">
-									身分証明と支払い方法の登録が必要です。2分で完了します。
+									支払い方法の登録が必要です。1分で完了します。
 
 								</p>
 								<Button
@@ -1743,15 +1802,6 @@ export default function DashboardPage() {
 							<>
 								{/* タブナビゲーション */}
 								<div className="flex border-b border-border mb-6">
-									<button
-										onClick={() => setActiveTab('qr')}
-										className={`py-2 px-4 font-medium ${activeTab === 'qr'
-											? 'text-accent border-b-2 border-accent'
-											: 'text-foreground/70 hover:text-foreground'
-											}`}
-									>
-										会員QRコード
-									</button>
 									<button
 										onClick={() => setActiveTab('reservations')}
 										className={`py-2 px-4 font-medium ${activeTab === 'reservations'
@@ -2426,7 +2476,6 @@ export default function PaymentPage() {
 ### FILE: ./src/app/layout.tsx
 
 import { AuthProvider } from '@/context/auth-context';
-import { EkycProvider } from '@/context/ekyc-context';
 import { AudioProvider } from '@/context/AudioContext';
 import './globals.css';
 import type { Metadata } from 'next';
@@ -2446,9 +2495,7 @@ export default function RootLayout({
 			<body>
 				<AudioProvider>
 					<AuthProvider>
-						<EkycProvider>
 							{children}
-						</EkycProvider>
 					</AuthProvider>
 				</AudioProvider>
 			</body>
@@ -3520,8 +3567,79 @@ export async function POST(request: NextRequest) {
 		);
 	}
 }-e 
+### FILE: ./src/app/api/stripe/register-payment-method/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/firebase-admin';
+import * as stripeService from '@/lib/stripe-service';
+import { stripe } from '@/lib/stripe';
+
+export async function POST(request: NextRequest) {
+	try {
+		// ユーザー認証
+		const authHeader = request.headers.get('authorization');
+		if (!authHeader || !authHeader.startsWith('Bearer ')) {
+			return NextResponse.json({ error: '認証エラー' }, { status: 401 });
+		}
+
+		const token = authHeader.split('Bearer ')[1];
+		const decodedToken = await auth.verifyIdToken(token);
+		const userId = decodedToken.uid;
+
+		// リクエストボディを取得
+		const body = await request.json();
+		const { paymentMethodId } = body;
+
+		if (!paymentMethodId) {
+			return NextResponse.json({ error: '支払い方法IDが必要です' }, { status: 400 });
+		}
+
+		// Stripeから支払い方法の詳細を取得
+		const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+		// カード支払いの場合
+		if (paymentMethod.type === 'card' && paymentMethod.card) {
+			const fingerprint = paymentMethod.card.fingerprint;
+			const last4 = paymentMethod.card.last4;
+			const brand = paymentMethod.card.brand;
+
+			// 重複チェック
+			const existingUserId = await stripeService.checkCardFingerprintDuplicate(fingerprint);
+
+			if (existingUserId && existingUserId !== userId) {
+				// 別のユーザーが同じカードを使用している場合
+				return NextResponse.json({
+					error: 'duplicate_card',
+					message: 'この支払い方法は既に別のアカウントで使用されています。ご自身の既存アカウントにログインするか、別の支払い方法をご利用ください。'
+				}, { status: 409 });
+			}
+
+			// ユーザーにカード情報を保存
+			await stripeService.saveCardInfoToUser(userId, paymentMethodId, fingerprint, last4, brand);
+
+			return NextResponse.json({
+				success: true,
+				paymentMethod: {
+					id: paymentMethodId,
+					last4,
+					brand
+				}
+			});
+		}
+
+		return NextResponse.json({ error: '対応していない支払い方法です' }, { status: 400 });
+
+	} catch (error: any) {
+		console.error('Error registering payment method:', error);
+		return NextResponse.json({
+			error: 'server_error',
+			message: 'サーバーエラーが発生しました。時間をおいて再度お試しください。'
+		}, { status: 500 });
+	}
+}-e 
 ### FILE: ./src/app/api/stripe/confirm-payment-setup/route.ts
 
+// src/app/api/stripe/confirm-payment-setup/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -3569,6 +3687,45 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		// PaymentMethodの取得
+		const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+		// カードのfingerprintを取得（カードタイプの場合のみ）
+		let cardFingerprint = null;
+		let last4 = null;
+		let brand = null;
+
+		if (paymentMethod.type === 'card' && paymentMethod.card) {
+			cardFingerprint = paymentMethod.card.fingerprint;
+			last4 = paymentMethod.card.last4;
+			brand = paymentMethod.card.brand;
+
+			// 重複チェック - 同じfingerprint持つ別ユーザーが存在するか確認
+			if (cardFingerprint) {
+				const db = getFirestore();
+				const usersSnapshot = await db.collection('users')
+					.where('stripe.cardFingerprint', '==', cardFingerprint)
+					.get();
+
+				// 重複するユーザーがあり、かつ現在のユーザーと異なる場合はエラー
+				if (!usersSnapshot.empty) {
+					let isDuplicate = false;
+					usersSnapshot.forEach(doc => {
+						if (doc.id !== userId) {
+							isDuplicate = true;
+						}
+					});
+
+					if (isDuplicate) {
+						return NextResponse.json({
+							error: 'duplicate_card',
+							message: 'この支払い方法は既に別のアカウントで使用されています。ご自身の既存アカウントにログインするか、別の支払い方法をご利用ください。'
+						}, { status: 409 });
+					}
+				}
+			}
+		}
+
 		// Firestoreからユーザーデータを取得
 		const db = getFirestore();
 		const userRef = db.collection('users').doc(userId);
@@ -3598,6 +3755,9 @@ export async function POST(request: NextRequest) {
 		// Firestoreにユーザーの支払い状態を更新
 		await userRef.update({
 			'stripe.paymentMethodId': paymentMethodId,
+			'stripe.cardFingerprint': cardFingerprint,
+			'stripe.last4': last4,
+			'stripe.brand': brand,
 			'stripe.paymentSetupCompleted': true,
 			'stripe.updatedAt': new Date().toISOString(),
 			'registrationStep': 1, // 決済情報登録ステップ完了
@@ -4044,65 +4204,20 @@ export default function CompletePage() {
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { useAuth } from '@/context/auth-context';
-import VerificationStatus from '@/components/verification/verification-status';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 
 export default function VerificationPage() {
-	const { user, userData, loading } = useAuth();
 	const router = useRouter();
 
-	// ログイン状態確認中
-	if (loading) {
-		return (
-			<div className="flex justify-center items-center py-10">
-				<LoadingSpinner size="large" />
-			</div>
-		);
-	}
-
-	// ユーザーがログインしていない場合
-	if (!user) {
-		return (
-			<div className="flex flex-col items-center justify-center py-10 text-center">
-				<div className="bg-red-500/10 text-red-500 p-4 rounded-lg mb-4 max-w-md">
-					ログインが必要です。会員登録フローを開始するには、まずログインしてください。
-				</div>
-				<Link
-					href="/login"
-					className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90"
-				>
-					ログインページへ
-				</Link>
-			</div>
-		);
-	}
-
-	// 登録フロー全体が完了している場合
-	if (userData?.registrationCompleted) {
-		router.push('/dashboard');
-		return (
-			<div className="flex justify-center items-center py-10">
-				<LoadingSpinner size="large" />
-				<span className="ml-3">ダッシュボードへリダイレクト中...</span>
-			</div>
-		);
-	}
+	// 本人確認ページは廃止し、決済情報ページへ自動リダイレクト
+	useEffect(() => {
+		router.push('/register/payment');
+	}, [router]);
 
 	return (
-		<div className="max-w-2xl mx-auto">
-			{/* メインコンテンツ */}
-			<VerificationStatus />
-
-			{/* プライバシーポリシーリンク */}
-			<div className="mt-6 text-center text-sm text-foreground/60">
-				本人確認の実施により、
-				<Link href="/privacy" className="text-accent hover:underline">プライバシーポリシー</Link>
-				と
-				<Link href="/terms" className="text-accent hover:underline">利用規約</Link>
-				に同意したものとみなされます。
-			</div>
+		<div className="flex justify-center items-center py-10">
+			<LoadingSpinner size="large" />
+			<span className="ml-3">決済情報登録ページへリダイレクト中...</span>
 		</div>
 	);
 }-e 
@@ -4115,19 +4230,19 @@ import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 
 export default function PersonalInfoRedirectPage() {
-	const router = useRouter();
+  const router = useRouter();
 
-	// 本人確認ページに自動リダイレクト
-	useEffect(() => {
-		router.push('/register/verification');
-	}, [router]);
+  // 決済情報ページに自動リダイレクト（本人確認ページではなく）
+  useEffect(() => {
+    router.push('/register/payment');
+  }, [router]);
 
-	return (
-		<div className="flex items-center justify-center py-12">
-			<LoadingSpinner size="large" />
-			<span className="ml-2">リダイレクト中...</span>
-		</div>
-	);
+  return (
+    <div className="flex items-center justify-center py-12">
+      <LoadingSpinner size="large" />
+      <span className="ml-2">決済情報登録ページへリダイレクト中...</span>
+    </div>
+  );
 }-e 
 ### FILE: ./src/app/register/payment/page.tsx
 
@@ -4180,9 +4295,10 @@ export default function PaymentPage() {
 
 				<div className="bg-border/10 text-white p-4 rounded-lg mb-6">
 					<p>
-						本サービスは月末締めの後払い方式です。<br />
-						毎月末にご利用内容に基づいて請求書（インボイス）を発行し、<br />
-						ご登録のお支払い方法（クレジットカードまたは銀行口座振替）にて自動で決済されます。
+						会費は<span className="text-highlight">無料です</span>。<br/>
+						施設を利用しない限り料金は発生しません。<br/>
+						本サービスは月末締めの<span className="text-highlight">後払い</span>です。<br />
+						毎月末にご利用内容に基づいて請求書を発行し、ご登録のクレジットカードにて自動で決済されます。
 					</p>
 				</div>
 
@@ -4197,7 +4313,7 @@ export default function PaymentPage() {
 							</div>
 							<ul className="text-sm text-foreground/70 space-y-1">
 								<li>• 1分単位での課金</li>
-								<li>• フリードリンク・お菓子込み</li>
+								<li>• ドリンク/お菓子付き</li>
 								<li>• 高性能ゲーミングPC利用可能</li>
 								<li>• 深夜割増なし（24時間同一料金）</li>
 							</ul>
@@ -4271,14 +4387,7 @@ export default function RegisterLayout({
 					<header className="bg-background/80 backdrop-blur-sm border-b border-border">
 						<div className="container mx-auto px-4">
 							<div className="flex items-center justify-between h-16">
-								<Link href="/" className="flex items-center">
-									<Image
-										src="/images/logo.svg"
-										alt="E-Sports Sakura"
-										width={40}
-										height={40}
-										className="mr-2"
-									/>
+								<Link href="/lp" className="flex items-center">
 									<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 								</Link>
 
@@ -4328,6 +4437,8 @@ export default function RegisterIndexPage() {
 	const { user, userData, loading } = useAuth();
 	const router = useRouter();
 
+	// src/app/register/page.tsx の変更箇所
+
 	useEffect(() => {
 		// 認証とデータのロードが完了したら処理
 		if (!loading) {
@@ -4345,18 +4456,17 @@ export default function RegisterIndexPage() {
 				} else if (userData.registrationStep !== undefined) {
 					// 登録途中ならその続きのページへ
 					const steps = [
-						'/register/verification',
-						'/register/payment',
+						'/register/payment', // verification を削除し、最初のステップを payment に
 						'/register/complete'
 					];
-					router.push(steps[userData.registrationStep] || '/register/verification');
+					router.push(steps[userData.registrationStep] || '/register/payment');
 				} else {
-					// 登録開始
-					router.push('/register/verification');
+					// 登録開始 - 直接 payment ページへ
+					router.push('/register/payment');
 				}
 			} else {
-				// userData読込中のエラー
-				router.push('/register/verification');
+				// userData読込中のエラー - 直接 payment ページへ
+				router.push('/register/payment');
 			}
 		}
 	}, [user, userData, loading, router]);
@@ -4935,800 +5045,6 @@ export default function ProtectedRoute({
 
 	return user ? <>{children}</> : null;
 }-e 
-### FILE: ./src/components/verification/face-video-capture.tsx
-
-'use client';
-
-import React, { useRef, useState, useEffect } from 'react';
-import { useAuth } from '@/context/auth-context';
-import LoadingSpinner from '@/components/ui/loading-spinner';
-
-interface FaceVideoCaptureProps {
-	onComplete: (success: boolean) => void;
-	onError: (error: string) => void;
-}
-
-const FaceVideoCapture: React.FC<FaceVideoCaptureProps> = ({ onComplete, onError }) => {
-	const { user } = useAuth();
-	const videoRef = useRef<HTMLVideoElement>(null);
-	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-	const streamRef = useRef<MediaStream | null>(null);
-	const videoContainerRef = useRef<HTMLDivElement>(null);
-
-	// 各種状態管理
-	const [isRecording, setIsRecording] = useState<boolean>(false);
-	const [status, setStatus] = useState<string>('初期化中...');
-	const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-	const [cameraReady, setCameraReady] = useState<boolean>(false);
-	const [debugInfo, setDebugInfo] = useState<string>('');
-	const [showCameraSelector, setShowCameraSelector] = useState<boolean>(false);
-	const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
-	const [selectedCamera, setSelectedCamera] = useState<string>('');
-
-	// 録画結果の Blob を保持（最終的に1つの動画）
-	const [recordedVideoBlob, setRecordedVideoBlob] = useState<Blob | null>(null);
-
-	// 各ポーズ（正面、左、右）ごとのオーバーレイ画像、案内文、録画時間（秒）
-	const poseOverlays = [
-		{
-			src:`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/face1.webp`,
-			alt: "Front Pose Overlay",
-			instructions: "正面",
-			duration: 5
-		},
-		{
-			src:`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/face2.webp`,
-			alt: "Left Pose Overlay",
-			instructions: "左向き",
-			duration: 5
-		},
-		{
-			src:`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/face3.webp`,
-			alt: "Right Pose Overlay",
-			instructions: "右向き",
-			duration: 5
-		},
-	];
-	const totalRecordingDuration = poseOverlays.reduce((acc, curr) => acc + curr.duration, 0); // 合計15秒
-	const [currentPoseIndex, setCurrentPoseIndex] = useState<number>(0);
-
-	// デバッグ情報を追加する関数
-	const addDebugInfo = (info: string) => {
-		setDebugInfo(prev => `${new Date().toLocaleTimeString()}: ${info}\n${prev}`);
-	};
-
-	// 利用可能なカメラデバイスの取得
-	const getAvailableCameras = async () => {
-		try {
-			addDebugInfo("カメラデバイス一覧を取得中");
-			const devices = await navigator.mediaDevices.enumerateDevices();
-			const videoDevices = devices.filter(device => device.kind === 'videoinput');
-
-			addDebugInfo(`検出されたカメラデバイス: ${videoDevices.length}台`);
-			videoDevices.forEach((device, index) => {
-				addDebugInfo(`デバイス ${index + 1}: ID=${device.deviceId}, ラベル=${device.label || '名称なし'}`);
-			});
-
-			setCameraDevices(videoDevices);
-
-			// 初期デバイス設定
-			if (videoDevices.length > 0 && !selectedCamera) {
-				setSelectedCamera(videoDevices[0].deviceId);
-				addDebugInfo(`初期カメラを設定: ${videoDevices[0].label || 'デバイス1'}`);
-			}
-		} catch (err) {
-			addDebugInfo(`カメラデバイス取得エラー: ${err}`);
-		}
-	};
-
-	// コンポーネント初期化時にカメラデバイス取得
-	useEffect(() => {
-		getAvailableCameras();
-	}, []);
-
-	// 選択したカメラでストリームを初期化
-	const initializeCamera = async (deviceId?: string) => {
-		try {
-			setStatus('カメラへのアクセスを要求中...');
-			addDebugInfo(`カメラ初期化: ${deviceId ? `デバイスID=${deviceId}` : '既定デバイス'}`);
-
-			// すでにストリームがある場合は停止
-			if (streamRef.current) {
-				streamRef.current.getTracks().forEach(track => track.stop());
-				addDebugInfo("既存のカメラストリームを停止");
-			}
-
-			const constraints: MediaStreamConstraints = {
-				audio: false,
-				video: deviceId
-					? {
-						deviceId: { exact: deviceId },
-						width: { ideal: 640 },
-						height: { ideal: 480 }
-					}
-					: {
-						width: { ideal: 640 },
-						height: { ideal: 480 }
-					}
-			};
-
-			addDebugInfo(`制約オブジェクト: ${JSON.stringify(constraints)}`);
-
-			const stream = await navigator.mediaDevices.getUserMedia(constraints);
-			addDebugInfo(`ストリーム取得成功: アクティブ=${stream.active}, トラック数=${stream.getTracks().length}`);
-
-			const videoTrack = stream.getVideoTracks()[0];
-			if (videoTrack) {
-				addDebugInfo(`ビデオトラック: ${videoTrack.label}, 有効=${videoTrack.enabled}`);
-				const settings = videoTrack.getSettings();
-				addDebugInfo(`設定: 幅=${settings.width}, 高さ=${settings.height}, フレームレート=${settings.frameRate}`);
-			}
-
-			streamRef.current = stream;
-
-			if (videoRef.current) {
-				addDebugInfo("videoRef存在、ストリームをセット中");
-				videoRef.current.style.width = '100%';
-				videoRef.current.style.height = 'auto';
-				videoRef.current.style.display = 'block';
-				videoRef.current.style.objectFit = 'cover';
-				videoRef.current.srcObject = stream;
-				try {
-					await videoRef.current.play();
-					addDebugInfo("ビデオ再生開始成功");
-					setCameraReady(true);
-				} catch (e) {
-					addDebugInfo(`ビデオ再生エラー: ${e}`);
-					setStatus('カメラ映像の再生に失敗しました。再接続ボタンをクリックしてください。');
-				}
-			} else {
-				addDebugInfo("videoRefが見つかりません");
-			}
-
-			setHasPermission(true);
-			setStatus('');
-			return true;
-		} catch (err) {
-			addDebugInfo(`カメラ初期化エラー: ${err}`);
-			setHasPermission(false);
-			onError(`カメラへのアクセスが許可されていません。ブラウザの設定を確認してください。エラー: ${err}`);
-			setStatus('エラー: カメラへのアクセスが許可されていません');
-			return false;
-		}
-	};
-
-	// カメラ選択時の処理
-	const handleCameraChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-		const deviceId = e.target.value;
-		addDebugInfo(`カメラ変更: ${deviceId}`);
-		setSelectedCamera(deviceId);
-		setCameraReady(false);
-		await initializeCamera(deviceId);
-	};
-
-	// video タグのイベントリスナー
-	useEffect(() => {
-		if (videoRef.current) {
-			const videoElement = videoRef.current;
-			const handleCanPlay = () => {
-				addDebugInfo("ビデオ再生可能イベント発生");
-				setCameraReady(true);
-			};
-			const handlePlaying = () => {
-				addDebugInfo("ビデオ再生中イベント発生");
-				setCameraReady(true);
-			};
-			const handleError = (e: any) => {
-				addDebugInfo(`ビデオエラー発生: ${e}`);
-			};
-			videoElement.addEventListener('canplay', handleCanPlay);
-			videoElement.addEventListener('playing', handlePlaying);
-			videoElement.addEventListener('error', handleError);
-			return () => {
-				videoElement.removeEventListener('canplay', handleCanPlay);
-				videoElement.removeEventListener('playing', handlePlaying);
-				videoElement.removeEventListener('error', handleError);
-			};
-		}
-	}, [videoRef.current]);
-
-	useEffect(() => {
-		if (selectedCamera) {
-			initializeCamera(selectedCamera);
-		}
-	}, [selectedCamera]);
-
-	useEffect(() => {
-		if (hasPermission === true && videoRef.current) {
-			const checkVideoInterval = setInterval(() => {
-				const video = videoRef.current;
-				if (video) {
-					addDebugInfo(`ビデオ状態: 幅=${video.videoWidth}, 高さ=${video.videoHeight}, 再生中=${!video.paused}, 読込状態=${video.readyState}`);
-					if (video.videoWidth > 0 && video.videoHeight > 0 && !video.paused) {
-						setCameraReady(true);
-					}
-					try {
-						const canvas = document.createElement('canvas');
-						canvas.width = 320;
-						canvas.height = 240;
-						const ctx = canvas.getContext('2d');
-						if (ctx) {
-							ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-							const imageData = ctx.getImageData(0, 0, 10, 10);
-							let isAllZero = true;
-							for (let i = 0; i < 10 * 10 * 4; i += 4) {
-								if (imageData.data[i] > 0 || imageData.data[i + 1] > 0 || imageData.data[i + 2] > 0) {
-									isAllZero = false;
-									break;
-								}
-							}
-							if (isAllZero) {
-								addDebugInfo("警告: ビデオが真っ黒です（ピクセルデータがすべて0）");
-							} else {
-								addDebugInfo("ビデオに画像データあり");
-							}
-						}
-					} catch (e) {
-						addDebugInfo(`ピクセルデータ確認エラー: ${e}`);
-					}
-				}
-			}, 3000);
-			return () => clearInterval(checkVideoInterval);
-		}
-	}, [hasPermission]);
-
-	// ■ 全ステップ録画：すべて一つの動画として15秒間連続で録画し、5秒ごとにオーバーレイ・案内を更新
-	const startMultiStepRecording = () => {
-		if (!cameraReady || !streamRef.current) {
-			addDebugInfo("カメラが準備できていません");
-			return;
-		}
-		// 初期化：最初のポーズを設定
-		setCurrentPoseIndex(0);
-		setStatus(poseOverlays[0].instructions);
-		// 連続録画開始
-		startRecording();
-		setIsRecording(true);
-
-		// 5秒後：左向きに更新
-		setTimeout(() => {
-			setCurrentPoseIndex(1);
-			setStatus(poseOverlays[1].instructions);
-		}, poseOverlays[0].duration * 1000);
-
-		// 10秒後：右向きに更新
-		setTimeout(() => {
-			setCurrentPoseIndex(2);
-			setStatus(poseOverlays[2].instructions);
-		}, (poseOverlays[0].duration + poseOverlays[1].duration) * 1000);
-
-		// 15秒後：録画停止
-		setTimeout(() => {
-			stopRecording(true);
-		}, totalRecordingDuration * 1000);
-	};
-
-	// ■ 連続録画開始（単一の MediaRecorder で録画）
-	const startRecording = () => {
-		if (!streamRef.current) {
-			addDebugInfo("エラー: カメラストリームが見つかりません");
-			onError('カメラストリームが見つかりません。カメラを再接続してください。');
-			return;
-		}
-		setStatus('録画中...');
-		setIsRecording(true);
-
-		const mimeTypes = [
-			'video/webm;codecs=vp9',
-			'video/webm;codecs=vp8',
-			'video/webm',
-			'video/mp4'
-		];
-		let options = {};
-		for (const mimeType of mimeTypes) {
-			if (MediaRecorder.isTypeSupported(mimeType)) {
-				options = { mimeType };
-				addDebugInfo(`サポートされているmimeType: ${mimeType}`);
-				break;
-			}
-		}
-		const recordedChunks: BlobPart[] = [];
-		try {
-			mediaRecorderRef.current = new MediaRecorder(streamRef.current, options);
-			addDebugInfo(`MediaRecorder作成成功: ${mediaRecorderRef.current.state}`);
-		} catch (e) {
-			addDebugInfo(`MediaRecorderの作成に失敗: ${e}`);
-			onError('録画機能の初期化に失敗しました。ブラウザの互換性を確認してください。');
-			return;
-		}
-		mediaRecorderRef.current.ondataavailable = (event) => {
-			addDebugInfo(`データ利用可能: ${event.data.size} bytes`);
-			if (event.data.size > 0) {
-				recordedChunks.push(event.data);
-			}
-		};
-		mediaRecorderRef.current.onstop = async () => {
-			addDebugInfo(`MediaRecorder停止、チャンク数: ${recordedChunks.length}`);
-			if (recordedChunks.length === 0) {
-				addDebugInfo("エラー: 録画データがありません");
-				onError('録画データがありません。もう一度お試しください。');
-				return;
-			}
-			const blob = new Blob(recordedChunks, { type: 'video/webm' });
-			addDebugInfo(`Blob作成: ${blob.size} bytes`);
-			if (blob.size < 1000) {
-				addDebugInfo(`警告: 録画サイズが小さすぎます (${blob.size} bytes)`);
-				onError('録画データが不完全です。もう一度お試しください。');
-				return;
-			}
-			setRecordedVideoBlob(blob);
-			setStatus('録画完了！');
-			setIsRecording(false);
-			onComplete(true);
-		};
-		mediaRecorderRef.current.onerror = (event) => {
-			addDebugInfo(`MediaRecorderエラー: ${event}`);
-			onError('録画中にエラーが発生しました。もう一度お試しください。');
-		};
-		mediaRecorderRef.current.start(1000);
-		addDebugInfo("録画開始");
-	};
-
-	// ■ 連続録画停止（multiStep フラグが true の場合はタイマー経由の自動停止）
-	const stopRecording = (multiStep?: boolean) => {
-		if (mediaRecorderRef.current && (mediaRecorderRef.current.state === 'recording' || mediaRecorderRef.current.state === 'paused')) {
-			addDebugInfo(`録画停止リクエスト。現在の状態: ${mediaRecorderRef.current.state}`);
-			setStatus('録画完了。処理中...');
-			mediaRecorderRef.current.stop();
-			setIsRecording(false);
-		} else {
-			const state = mediaRecorderRef.current ? mediaRecorderRef.current.state : "MediaRecorderなし";
-			addDebugInfo(`録画を停止できません: ${state}`);
-			onError(`録画を停止できません。録画の状態: ${state}`);
-		}
-	};
-
-	// 録画動画をダウンロードするテスト用ボタンの処理
-	const downloadVideo = () => {
-		if (!recordedVideoBlob) return;
-		const url = URL.createObjectURL(recordedVideoBlob);
-		const a = document.createElement('a');
-		a.style.display = 'none';
-		a.href = url;
-		a.download = `face_video.webm`;
-		document.body.appendChild(a);
-		a.click();
-		document.body.removeChild(a);
-		URL.revokeObjectURL(url);
-	};
-
-	if (hasPermission === false) {
-		return (
-			<div className="bg-background/80 p-6 rounded-xl shadow-soft">
-				<div className="flex flex-col items-center justify-center space-y-4 text-center">
-					<div className="bg-red-500/10 text-red-500 p-4 rounded-lg mb-2 max-w-md">
-						<p className="text-lg font-medium">カメラへのアクセスが必要です</p>
-						<p className="mt-2">本人確認のため、カメラの使用を許可してください。</p>
-					</div>
-					<button
-						onClick={() => window.location.reload()}
-						className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90"
-					>
-						再試行
-					</button>
-				</div>
-			</div>
-		);
-	}
-
-	const reconnectCamera = async () => {
-		setStatus('カメラを再接続中...');
-		addDebugInfo("カメラ再接続試行");
-		await getAvailableCameras();
-		if (selectedCamera) {
-			await initializeCamera(selectedCamera);
-		} else {
-			await initializeCamera();
-		}
-	};
-
-	return (
-		<div className="bg-background/80 p-6 rounded-xl shadow-soft">
-			<div className="flex flex-col items-center space-y-4">
-				{/* カメラ選択 */}
-				{cameraDevices.length > 1 && (
-					<div className="w-full max-w-md">
-						<label className="block text-sm font-medium mb-1">カメラを選択:</label>
-						<select
-							value={selectedCamera}
-							onChange={handleCameraChange}
-							className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
-						>
-							{cameraDevices.map((device) => (
-								<option key={device.deviceId} value={device.deviceId}>
-									{device.label || `カメラ ${cameraDevices.indexOf(device) + 1}`}
-								</option>
-							))}
-						</select>
-					</div>
-				)}
-				{/* ビデオプレビュー */}
-				<div
-					ref={videoContainerRef}
-					className="relative w-full max-w-md bg-black rounded-lg overflow-hidden flex justify-center items-center"
-					style={{
-						minHeight: "320px",
-						border: "1px solid #333"
-					}}
-				>
-					<video
-						ref={videoRef}
-						autoPlay
-						playsInline
-						muted
-						style={{
-							display: "block",
-							width: "100%",
-							height: "auto",
-							minHeight: "320px",
-							objectFit: "cover",
-							backgroundColor: "#000",
-						}}
-					/>
-					<img
-						src={poseOverlays[currentPoseIndex].src}
-						alt={poseOverlays[currentPoseIndex].alt}
-						className="absolute top-0 left-0 w-full h-full object-contain pointer-events-none"
-					/>
-					{hasPermission === true && !cameraReady && (
-						<div className="absolute inset-0 flex items-center justify-center bg-black/50">
-							<div className="text-center">
-								<LoadingSpinner/>
-								<p className="text-white mt-2">カメラを準備中...</p>
-							</div>
-						</div>
-					)}
-				</div>
-				{/* ステータス・案内表示 */}
-				<p className="text-foreground/80 text-center">
-					{poseOverlays[currentPoseIndex].instructions || status}
-				</p>
-				{/* 操作ボタン */}
-				<div className="flex space-x-4">
-					{!isRecording && (
-						<>
-							<button
-								onClick={reconnectCamera}
-								className="px-4 py-2 bg-border text-foreground rounded-lg hover:bg-border/80 mr-2"
-							>
-								カメラを再接続
-							</button>
-							<button
-								onClick={startMultiStepRecording}
-								disabled={hasPermission !== true}
-								className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
-							>
-								録画開始
-							</button>
-						</>
-					)}
-					{isRecording && (
-						<button
-							onClick={() => stopRecording()}
-							className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-						>
-							録画停止
-						</button>
-					)}
-				</div>
-				{/* 録画完了後のダウンロードボタン */}
-				{recordedVideoBlob && (
-					<button
-						onClick={downloadVideo}
-						className="px-4 py-2 bg-blue-500 text-white rounded-lg"
-					>
-						動画をダウンロード
-					</button>
-				)}
-			</div>
-		</div>
-	);
-};
-
-export default FaceVideoCapture;
--e 
-### FILE: ./src/components/verification/camera-test.tsx
-
-'use client';
-
-import React, { useRef, useState, useEffect } from 'react';
-
-/**
- * カメラテスト用のシンプルなコンポーネント
- * 撮影・録画・アップロード機能はなく、カメラの表示テストのみを行う
- */
-const CameraTest: React.FC = () => {
-	const videoRef = useRef<HTMLVideoElement>(null);
-	const canvasRef = useRef<HTMLCanvasElement>(null);
-	const streamRef = useRef<MediaStream | null>(null);
-
-	const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
-	const [selectedCamera, setSelectedCamera] = useState<string>('');
-	const [log, setLog] = useState<string>('初期化中...\n');
-	const [showCanvas, setShowCanvas] = useState<boolean>(false);
-	const [cameraReady, setCameraReady] = useState<boolean>(false);
-	const [cameraSize, setCameraSize] = useState<{ width: number, height: number }>({ width: 640, height: 480 });
-
-	// ログを追加する関数
-	const addLog = (message: string) => {
-		setLog(prev => `${new Date().toLocaleTimeString()}: ${message}\n${prev}`);
-	};
-
-	// 利用可能なカメラデバイスを取得
-	const getAvailableCameras = async () => {
-		try {
-			addLog("カメラデバイス一覧を取得中...");
-			const devices = await navigator.mediaDevices.enumerateDevices();
-			const videoDevices = devices.filter(device => device.kind === 'videoinput');
-
-			addLog(`検出されたカメラデバイス: ${videoDevices.length}台`);
-			videoDevices.forEach((device, index) => {
-				addLog(`デバイス ${index + 1}: ${device.label || '名称なし'} (${device.deviceId.substring(0, 10)}...)`);
-			});
-
-			setCameraDevices(videoDevices);
-
-			// 初期デバイスを設定
-			if (videoDevices.length > 0 && !selectedCamera) {
-				setSelectedCamera(videoDevices[0].deviceId);
-				addLog(`初期カメラを設定: ${videoDevices[0].label || 'デバイス1'}`);
-			}
-
-			return videoDevices;
-		} catch (err) {
-			addLog(`カメラデバイス取得エラー: ${err}`);
-			return [];
-		}
-	};
-
-	// 初期化時にカメラデバイスを取得
-	useEffect(() => {
-		getAvailableCameras();
-	}, []);
-
-	// カメラの初期化と開始
-	const startCamera = async (deviceId?: string) => {
-		try {
-			// すでに使用中のカメラがあれば停止
-			if (streamRef.current) {
-				streamRef.current.getTracks().forEach(track => track.stop());
-				addLog("既存のカメラストリームを停止しました");
-			}
-
-			// カメラの制約オブジェクト
-			const constraints: MediaStreamConstraints = {
-				audio: false,
-				video: deviceId
-					? { deviceId: { exact: deviceId } }
-					: true
-			};
-
-			addLog(`カメラに接続を試みます... ${deviceId ? `デバイスID: ${deviceId.substring(0, 10)}...` : '既定のカメラ'}`);
-
-			// カメラへのアクセス要求
-			const stream = await navigator.mediaDevices.getUserMedia(constraints);
-			addLog(`カメラ接続成功: ビデオトラック数=${stream.getVideoTracks().length}`);
-
-			// ビデオトラックの情報を確認
-			const videoTrack = stream.getVideoTracks()[0];
-			if (videoTrack) {
-				addLog(`ビデオトラック情報: ${videoTrack.label}`);
-
-				// 設定を取得
-				const settings = videoTrack.getSettings();
-				addLog(`ビデオ設定: 幅=${settings.width || '不明'}, 高さ=${settings.height || '不明'}, フレームレート=${settings.frameRate || '不明'}`);
-
-				if (settings.width && settings.height) {
-					setCameraSize({ width: settings.width, height: settings.height });
-				}
-			}
-
-			streamRef.current = stream;
-
-			// ビデオ要素にストリームをセット
-			if (videoRef.current) {
-				addLog("ビデオ要素にストリームをセットします");
-				videoRef.current.srcObject = stream;
-				videoRef.current.onloadedmetadata = () => {
-					addLog("ビデオのメタデータを読み込みました");
-
-					if (videoRef.current) {
-						videoRef.current.play()
-							.then(() => {
-								addLog("ビデオの再生を開始しました");
-								setCameraReady(true);
-							})
-							.catch(err => {
-								addLog(`ビデオ再生エラー: ${err}`);
-							});
-					}
-				};
-			} else {
-				addLog("エラー: ビデオ要素が見つかりません");
-			}
-
-			return true;
-		} catch (err) {
-			addLog(`カメラ初期化エラー: ${err}`);
-			return false;
-		}
-	};
-
-	// カメラ選択時の処理
-	const handleCameraChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-		const deviceId = e.target.value;
-		addLog(`カメラ変更: ${deviceId.substring(0, 10)}...`);
-		setSelectedCamera(deviceId);
-		setCameraReady(false);
-		startCamera(deviceId);
-	};
-
-	// キャンバスにビデオフレームをキャプチャ
-	const captureFrame = () => {
-		if (videoRef.current && canvasRef.current) {
-			const video = videoRef.current;
-			const canvas = canvasRef.current;
-
-			// キャンバスサイズをビデオに合わせる
-			canvas.width = video.videoWidth;
-			canvas.height = video.videoHeight;
-
-			const ctx = canvas.getContext('2d');
-			if (ctx) {
-				// ビデオフレームをキャンバスに描画
-				ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-				// 画像データを取得して解析
-				try {
-					const imageData = ctx.getImageData(0, 0, 20, 20);
-					let totalBrightness = 0;
-
-					// 最初の20x20ピクセルの明るさを計算
-					for (let i = 0; i < 20 * 20 * 4; i += 4) {
-						const r = imageData.data[i];
-						const g = imageData.data[i + 1];
-						const b = imageData.data[i + 2];
-						// グレースケール変換（輝度を計算）
-						const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
-						totalBrightness += brightness;
-					}
-
-					const averageBrightness = totalBrightness / (20 * 20);
-					addLog(`フレームキャプチャ: 平均輝度=${averageBrightness.toFixed(2)}`);
-
-					if (averageBrightness < 10) {
-						addLog("警告: 画像が非常に暗いです。カメラが正しく機能していない可能性があります。");
-					}
-				} catch (err) {
-					addLog(`画像解析エラー: ${err}`);
-				}
-
-				setShowCanvas(true);
-			}
-		}
-	};
-
-	return (
-		<div className="p-6 bg-background/80 rounded-xl shadow-soft">
-			<h2 className="text-xl font-medium text-center mb-6">カメラテスト</h2>
-
-			{/* カメラ選択 */}
-			<div className="mb-4">
-				<label className="block text-sm font-medium mb-1">カメラを選択:</label>
-				<div className="flex space-x-2">
-					<select
-						value={selectedCamera}
-						onChange={handleCameraChange}
-						className="flex-1 px-3 py-2 bg-background border border-border rounded-lg"
-					>
-						{cameraDevices.map((device) => (
-							<option key={device.deviceId} value={device.deviceId}>
-								{device.label || `カメラ ${cameraDevices.indexOf(device) + 1}`}
-							</option>
-						))}
-					</select>
-					<button
-						onClick={() => getAvailableCameras()}
-						className="px-3 py-2 bg-border text-foreground rounded-lg hover:bg-border/80"
-					>
-						更新
-					</button>
-				</div>
-			</div>
-
-			{/* カメラ表示エリア */}
-			<div className="mb-4 relative">
-				<div className="w-full bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '4/3' }}>
-					<video
-						ref={videoRef}
-						autoPlay
-						playsInline
-						muted
-						style={{
-							width: '100%',
-							height: 'auto',
-							display: 'block',
-							backgroundColor: '#000',
-						}}
-					/>
-
-					{!cameraReady && (
-						<div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white">
-							カメラの準備中...
-						</div>
-					)}
-				</div>
-
-				{/* カメラ情報 */}
-				<div className="mt-2 text-sm">
-					<p>解像度: {cameraSize.width} x {cameraSize.height}</p>
-				</div>
-			</div>
-
-			{/* 操作ボタン */}
-			<div className="flex flex-wrap gap-2 mb-4">
-				<button
-					onClick={() => startCamera(selectedCamera)}
-					className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90"
-				>
-					カメラを開始
-				</button>
-				<button
-					onClick={captureFrame}
-					disabled={!cameraReady}
-					className="px-4 py-2 bg-highlight text-white rounded-lg hover:bg-highlight/90 disabled:opacity-50"
-				>
-					フレームキャプチャ
-				</button>
-				<button
-					onClick={() => {
-						if (streamRef.current) {
-							streamRef.current.getTracks().forEach(track => track.stop());
-							addLog("カメラを停止しました");
-							setCameraReady(false);
-						}
-					}}
-					disabled={!cameraReady}
-					className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
-				>
-					カメラを停止
-				</button>
-			</div>
-
-			{/* キャプチャしたフレーム表示 */}
-			{showCanvas && (
-				<div className="mb-4">
-					<h3 className="text-sm font-medium mb-1">キャプチャしたフレーム:</h3>
-					<canvas
-						ref={canvasRef}
-						className="border border-border rounded-lg"
-						style={{ maxWidth: '100%', height: 'auto' }}
-					/>
-				</div>
-			)}
-
-			{/* ログ表示 */}
-			<div className="mt-4">
-				<h3 className="text-sm font-medium mb-1">カメラログ:</h3>
-				<pre className="p-3 text-xs bg-background/30 rounded-lg h-40 overflow-auto whitespace-pre-wrap">
-					{log}
-				</pre>
-			</div>
-		</div>
-	);
-};
-
-export default CameraTest;-e 
 ### FILE: ./src/components/verification/verification-status-v2.tsx
 
 'use client';
@@ -5739,14 +5055,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import { useAuth } from '@/context/auth-context';
-import { useEkyc } from '@/context/ekyc-context';
 import {
 	VerifiedIcon,
 	VerificationFailedIcon,
 	VerificationPendingIcon,
 	VerificationBadge
 } from '@/components/icons/verification-icons';
-import { createVeriffSession } from '@/lib/veriff';
 
 export default function VerificationStatusV2() {
 	const router = useRouter();
@@ -6107,299 +5421,6 @@ export default function VerificationStatusV2() {
 		</div>
 	);
 }-e 
-### FILE: ./src/components/verification/verification-status.tsx
-
-'use client';
-
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/auth-context';
-import { doc, updateDoc, getFirestore } from 'firebase/firestore';
-import { VerifiedIcon, VerificationPendingIcon } from '@/components/icons/verification-icons';
-import LoadingSpinner from '@/components/ui/loading-spinner';
-import FaceVideoCapture from './face-video-capture';
-import CameraTest from '@/components/verification/camera-test';
-const VerificationStatus = () => {
-	const { user, userData, loading } = useAuth();
-	const router = useRouter();
-	const [currentStep, setCurrentStep] = useState<number>(1);
-	const [showCamera, setShowCamera] = useState<boolean>(false);
-	const [error, setError] = useState<string | null>(null);
-	const [privacyAgreed, setPrivacyAgreed] = useState<boolean>(false);
-	const [isCompleted, setIsCompleted] = useState<boolean>(false);
-
-	// ユーザーの登録ステップを追跡
-	useEffect(() => {
-		if (!loading && userData) {
-			// faceVideoが存在すれば顔認証ステップは完了
-			const faceVideoCompleted = userData.faceVideo && userData.faceVideo.storagePath;
-
-			// 現在のステップを決定
-			if (!faceVideoCompleted) {
-				setCurrentStep(1); // 顔認証ステップ
-			} else {
-				setCurrentStep(2); // 完了ステップ
-			}
-		}
-	}, [userData, loading]);
-
-	// ローディング状態
-	if (loading) {
-		return (
-			<div className="flex justify-center items-center py-10">
-				<LoadingSpinner size="large" />
-			</div>
-		);
-	}
-
-	// ユーザーがログインしていない場合
-	if (!user) {
-		return (
-			<div className="bg-red-500/10 text-red-500 p-6 rounded-lg max-w-md mx-auto">
-				<p className="font-medium">ログインが必要です</p>
-				<p className="mt-2">本人確認を行うにはログインしてください。</p>
-				<button
-					onClick={() => router.push('/login')}
-					className="mt-4 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90"
-				>
-					ログインページへ
-				</button>
-			</div>
-		);
-	}
-
-	// 登録ステップの完了処理
-	const completeStep = async (step: number) => {
-		if (!user) return;
-
-		try {
-			const db = getFirestore();
-			const userDocRef = doc(db, 'users', user.uid);
-
-			// 現在のステップを更新
-			await updateDoc(userDocRef, {
-				registrationStep: 3 // 本人確認ステップを完了
-			});
-
-			// 次のステップに進む
-			router.push('/register/payment');
-		} catch (error) {
-			console.error('ステップ更新エラー:', error);
-			setError('処理中にエラーが発生しました。もう一度お試しください。');
-		}
-	};
-
-	// 顔認証の完了処理
-	const handleVerificationComplete = (success: boolean) => {
-		if (success) {
-			setIsCompleted(true);
-			// 少し遅延を入れて次のステップに進む
-			setTimeout(() => {
-				completeStep(1);
-			}, 1500);
-		}
-	};
-
-	// エラー処理
-	const handleError = (errorMessage: string) => {
-		setError(errorMessage);
-		setShowCamera(false);
-	};
-
-	// 顔認証が既に完了している場合
-	if (userData?.faceVideo && userData.faceVideo.storagePath) {
-		return (
-			<div className="max-w-md mx-auto">
-				<div className="bg-highlight/10 p-6 rounded-xl shadow-soft mb-8">
-					<div className="flex flex-col items-center text-center space-y-3">
-						<div className="w-12 h-12 bg-highlight/20 text-highlight rounded-full flex items-center justify-center">
-							<VerifiedIcon size={24} />
-						</div>
-						<h3 className="text-lg font-medium">顔認証登録済み</h3>
-						<p className="text-foreground/70">
-							顔認証の登録が完了しています。次のステップに進むことができます。
-							{userData.faceVideo.confirmed === false && (
-								<span className="text-red-500 block mt-2">
-									※システムによる確認中です。問題があれば後ほどご連絡いたします。
-								</span>
-							)}
-						</p>
-						<button
-							onClick={() => completeStep(1)}
-							className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90"
-						>
-							次へ進む
-						</button>
-					</div>
-				</div>
-			</div>
-		);
-	}
-
-	return (
-		<div className="max-w-md mx-auto mt-8">
-			<div className="bg-border/5 p-6 rounded-xl shadow-soft mb-8">
-				<h2 className="text-xl font-medium text-center mb-4">本人確認</h2>
-				{isCompleted ? (
-					<div className="flex flex-col items-center text-center space-y-3 py-4">
-						<div className="w-12 h-12 bg-highlight/20 text-highlight rounded-full flex items-center justify-center">
-							<VerifiedIcon size={24} />
-						</div>
-						<h3 className="text-lg font-medium">顔認証登録完了</h3>
-						<p className="text-foreground/70">顔認証の登録が完了しました。次の手順に進みます...</p>
-						<LoadingSpinner size="small" />
-					</div>
-				) : showCamera ? (
-					<FaceVideoCapture 
-						onComplete={handleVerificationComplete} 
-						onError={handleError} 
-					/>
-				) : (
-					<div className="flex flex-col items-center space-y-6">
-						<div className="text-center">
-							<p className="mb-3 text-foreground/80">
-								本人確認のため、顔認証を行います。顔動画を撮影して登録してください。
-							</p>
-							<div className="flex justify-center">
-								<div className="w-48 h-48 bg-border/10 rounded-full flex items-center justify-center text-foreground/60">
-									<svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-									</svg>
-								</div>
-							</div>
-						</div>
-						
-						{error && (
-							<div className="bg-red-500/10 text-red-500 p-4 rounded-lg w-full max-w-md">
-								{error}
-							</div>
-						)}
-						
-						<div className="w-full max-w-md">
-							<div className="bg-border/5 p-4 rounded-lg text-sm text-foreground/80">
-								<h4 className="font-medium text-foreground">撮影時の注意事項:</h4>
-								<ul className="list-disc pl-5 mt-2 space-y-1">
-									<li>明るい場所で顔が明確に見えるようにしてください</li>
-									<li>録画中は顔を左右にゆっくり動かしてください</li>
-									<li>サングラス、マスク、帽子などを着用しないでください</li>
-									<li>撮影した顔動画は本人確認の目的でのみ使用されます</li>
-								</ul>
-							</div>
-							
-							<div className="mt-4 flex items-start space-x-2">
-								<input
-									type="checkbox"
-									id="privacy-agreement"
-									checked={privacyAgreed}
-									onChange={(e) => setPrivacyAgreed(e.target.checked)}
-									className="mt-1"
-								/>
-								<label htmlFor="privacy-agreement" className="text-sm text-foreground/80">
-									顔動画の撮影・保存に同意します。この情報は本人確認とトラブル時の照合にのみ使用され、
-									プライバシーポリシーに則って管理されます。
-								</label>
-							</div>
-						</div>
-						
-						<button
-							onClick={() => setShowCamera(true)}
-							disabled={!privacyAgreed}
-							className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
-						>
-							顔認証を開始
-						</button>
-					</div>
-				)}
-			</div>
-			
-			{/* FAQ セクション */}
-			<div className="bg-border/5 rounded-xl p-6 shadow-soft">
-				<h3 className="text-lg font-medium mb-4">よくある質問</h3>
-				<div className="space-y-4">
-					<details className="group">
-						<summary className="flex justify-between items-center cursor-pointer list-none">
-							<span className="font-medium">なぜ顔認証が必要なのですか？</span>
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-							</svg>
-						</summary>
-						<div className="mt-2 text-sm text-foreground/70 pl-1">
-							カフェ運営上の不正利用防止のために本人確認を行っています。より良いサービス提供のためご協力お願いいたします。
-						</div>
-					</details>
-					
-					<details className="group">
-						<summary className="flex justify-between items-center cursor-pointer list-none">
-							<span className="font-medium">撮影した顔動画はどのように管理されますか？</span>
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-							</svg>
-						</summary>
-						<div className="mt-2 text-sm text-foreground/70 pl-1">
-							撮影した顔動画は暗号化された形で安全に保管され、厳格なアクセス制限のもとで管理されます。会員様ご本人と当社の管理者のみがアクセスでき、本人確認以外の目的では使用いたしません。
-						</div>
-					</details>
-					
-					<details className="group">
-						<summary className="flex justify-between items-center cursor-pointer list-none">
-							<span className="font-medium">顔認証に失敗した場合はどうすればいいですか？</span>
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-							</svg>
-						</summary>
-						<div className="mt-2 text-sm text-foreground/70 pl-1">
-							顔認証に失敗した場合は、明るい場所で再度撮影をお試しください。何度も失敗する場合は、カスタマーサポートにご連絡いただくか、店舗スタッフにお問い合わせください。
-						</div>
-					</details>
-					<details className="group">
-						<summary className="flex justify-between items-center cursor-pointer list-none">
-							<span className="font-medium">本人確認に失敗した場合はどうなりますか？</span>
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-							</svg>
-						</summary>
-						<div className="mt-2 text-sm text-foreground/70 pl-1">
-							再度お試しいただけます。複数回失敗する場合は、以下をご確認ください：
-							<ul className="list-disc pl-5 mt-1 space-y-1">
-								<li>身分証明書が鮮明に写っているか</li>
-								<li>顔写真と身分証明書の本人が一致しているか</li>
-								<li>身分証明書の有効期限が切れていないか</li>
-								<li>十分な明るさがあるか</li>
-							</ul>
-							何度も失敗する場合は、お問い合わせフォームからサポートにご連絡ください。
-						</div>
-					</details>
-
-					<details className="group">
-						<summary className="flex justify-between items-center cursor-pointer list-none">
-							<span className="font-medium">カメラやマイクへのアクセス許可はなぜ必要ですか？</span>
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-							</svg>
-						</summary>
-						<div className="mt-2 text-sm text-foreground/70 pl-1">
-							本人確認プロセスでは、身分証明書の撮影と顔認証のためにカメラアクセスが必要です。これらの許可は本人確認プロセスのみに使用され、安全に管理されます。許可を拒否すると、本人確認プロセスを完了できません。
-						</div>
-					</details>
-
-					<details className="group">
-						<summary className="flex justify-between items-center cursor-pointer list-none">
-							<span className="font-medium">本人確認はどのくらいの時間がかかりますか？</span>
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-							</svg>
-						</summary>
-						<div className="mt-2 text-sm text-foreground/70 pl-1">
-							本人確認プロセス全体は2〜5分程度で完了します。
-						</div>
-					</details>
-				</div>
-			</div>
-		</div>
-	);
-};
-
-export default VerificationStatus;-e 
 ### FILE: ./src/components/verification/verification-complete.tsx
 
 'use client';
@@ -6516,164 +5537,6 @@ export default function VerificationComplete({
 		</motion.div>
 	);
 }-e 
-### FILE: ./src/components/verification/face-verification-section.tsx
-
-'use client';
-
-import React, { useState } from 'react';
-import FaceVideoCapture from './face-video-capture';
-import { useAuth } from '@/context/auth-context';
-import LoadingSpinner from '@/components/ui/loading-spinner';
-
-interface FaceVerificationSectionProps {
-	onComplete: () => void;
-}
-
-const FaceVerificationSection: React.FC<FaceVerificationSectionProps> = ({ onComplete }) => {
-	const { userData, loading } = useAuth();
-	const [showCamera, setShowCamera] = useState<boolean>(false);
-	const [error, setError] = useState<string | null>(null);
-	const [privacyAgreed, setPrivacyAgreed] = useState<boolean>(false);
-	const [isCompleted, setIsCompleted] = useState<boolean>(false);
-
-	// ローディング状態のハンドリング
-	if (loading) {
-		return (
-			<div className="flex justify-center items-center py-6">
-				<LoadingSpinner/>
-			</div>
-		);
-	}
-
-	// 顔認証が既に完了している場合
-	if (userData?.faceVideo && userData.faceVideo.storagePath) {
-		return (
-			<div className="bg-highlight/10 p-6 rounded-xl shadow-soft mb-8">
-				<div className="flex flex-col items-center text-center space-y-3">
-					<div className="w-12 h-12 bg-highlight/20 text-highlight rounded-full flex items-center justify-center">
-						<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-						</svg>
-					</div>
-					<h3 className="text-lg font-medium">顔認証登録済み</h3>
-					<p className="text-foreground/70">
-						顔認証の登録が完了しています。
-						{userData.faceVideo.confirmed === false && (
-							<span className="text-red-500 block mt-2">
-								※システムによる確認中です。問題があれば後ほどご連絡いたします。
-							</span>
-						)}
-					</p>
-					<button
-						onClick={onComplete}
-						className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90"
-					>
-						次へ進む
-					</button>
-				</div>
-			</div>
-		);
-	}
-
-	// 顔認証の完了処理
-	const handleVerificationComplete = (success: boolean) => {
-		if (success) {
-			setIsCompleted(true);
-			// 少し遅延を入れて次のステップに進む
-			setTimeout(() => {
-				onComplete();
-			}, 1500);
-		}
-	};
-
-	// エラー処理
-	const handleError = (errorMessage: string) => {
-		setError(errorMessage);
-		setShowCamera(false);
-	};
-
-	return (
-		<div className="bg-border/5 p-6 rounded-xl shadow-soft mb-8">
-			<h2 className="text-xl font-medium text-center mb-4">顔認証</h2>
-
-			{isCompleted ? (
-				<div className="flex flex-col items-center text-center space-y-3 py-4">
-					<div className="w-12 h-12 bg-highlight/20 text-highlight rounded-full flex items-center justify-center">
-						<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-						</svg>
-					</div>
-					<h3 className="text-lg font-medium">顔認証登録完了</h3>
-					<p className="text-foreground/70">顔認証の登録が完了しました。次の手順に進みます...</p>
-					<LoadingSpinner size="small" />
-				</div>
-			) : showCamera ? (
-				<FaceVideoCapture
-					onComplete={handleVerificationComplete}
-					onError={handleError}
-				/>
-			) : (
-				<div className="flex flex-col items-center space-y-6">
-					<div className="text-center">
-						<p className="mb-3 text-foreground/80">
-							本人確認のため、顔認証を行います。顔動画を撮影して登録してください。
-						</p>
-						<div className="flex justify-center">
-							<img
-								src="/images/face-verification-sample.svg"
-								alt="顔認証イメージ"
-								className="w-48 h-auto opacity-80"
-							/>
-						</div>
-					</div>
-
-					{error && (
-						<div className="bg-red-500/10 text-red-500 p-4 rounded-lg w-full max-w-md">
-							{error}
-						</div>
-					)}
-
-					<div className="w-full max-w-md">
-						<div className="bg-border/5 p-4 rounded-lg text-sm text-foreground/80">
-							<h4 className="font-medium text-foreground">撮影時の注意事項:</h4>
-							<ul className="list-disc pl-5 mt-2 space-y-1">
-								<li>明るい場所で顔が明確に見えるようにしてください</li>
-								<li>録画中は顔を左右にゆっくり動かしてください</li>
-								<li>サングラス、マスク、帽子などを着用しないでください</li>
-								<li>撮影した顔動画は本人確認の目的でのみ使用されます</li>
-							</ul>
-						</div>
-
-						<div className="mt-4 flex items-start space-x-2">
-							<input
-								type="checkbox"
-								id="privacy-agreement"
-								checked={privacyAgreed}
-								onChange={(e) => setPrivacyAgreed(e.target.checked)}
-								className="mt-1"
-							/>
-							<label htmlFor="privacy-agreement" className="text-sm text-foreground/80">
-								顔動画の撮影・保存に同意します。この情報は本人確認とトラブル時の照合にのみ使用され、
-								<span className="text-accent hover:underline cursor-pointer">プライバシーポリシー</span>
-								に則って管理されます。
-							</label>
-						</div>
-					</div>
-
-					<button
-						onClick={() => setShowCamera(true)}
-						disabled={!privacyAgreed}
-						className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
-					>
-						顔認証を開始
-					</button>
-				</div>
-			)}
-		</div>
-	);
-};
-
-export default FaceVerificationSection;-e 
 ### FILE: ./src/components/games/AudioPermissionModal.tsx
 
 'use client';
@@ -11722,12 +10585,28 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ currentStep }) => {
 
 	// propsからcurrentStepが渡されていなければ、userDataから取得
 	const activeStep = currentStep || (userData?.registrationStep || 1);
-
 	const steps = [
-		{ id: 1, name: 'アカウント作成', path: '/register' },
-		{ id: 2, name: '本人確認', path: '/register/verification' },
-		{ id: 3, name: '支払い情報', path: '/register/payment' },
-		{ id: 4, name: '完了', path: '/register/complete' }
+		{
+			id: 1,
+			name: 'アカウント作成',
+			description: 'ログイン情報の登録',
+			status: 'complete', // 常に完了状態
+			href: '/register',
+		},
+		{
+			id: 2,
+			name: '決済情報',
+			description: 'お支払い方法の登録',
+			status: currentStep === 1 ? 'current' : currentStep > 1 ? 'complete' : 'upcoming',
+			href: '/register/payment',
+		},
+		{
+			id: 3,
+			name: '登録完了',
+			description: 'QRコードの発行',
+			status: currentStep === 2 ? 'current' : 'upcoming',
+			href: '/register/complete',
+		},
 	];
 
 	return (
@@ -11739,8 +10618,8 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ currentStep }) => {
 						<div className="relative flex flex-col items-center">
 							<div
 								className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${activeStep >= step.id
-										? 'border-highlight bg-highlight text-white'
-										: 'border-border bg-background text-foreground/60'
+									? 'border-highlight bg-highlight text-white'
+									: 'border-border bg-background text-foreground/60'
 									}`}
 							>
 								{step.id}
@@ -11813,6 +10692,55 @@ export default function EnhancedCardForm({ onSuccess }: { onSuccess?: () => void
 	const [succeeded, setSucceeded] = useState(false);
 	const [selectedMethod, setSelectedMethod] = useState<PaymentMethodType>('card');
 	const [paymentRequest, setPaymentRequest] = useState<any>(null);
+	const [isDuplicateCard, setIsDuplicateCard] = useState(false);
+
+	const handleSetupSuccess = async (setupIntent: any) => {
+		setSucceeded(true);
+
+		// Firestoreに支払い状態を更新
+		if (user) {
+			try {
+				const response = await fetch('/api/stripe/confirm-payment-setup', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': `Bearer ${await user.getIdToken()}`
+					},
+					body: JSON.stringify({
+						setupIntentId: setupIntent?.id,
+						paymentMethodId: setupIntent?.payment_method
+					})
+				});
+
+				// レスポンスをチェックしてカード重複エラーを処理
+				const data = await response.json();
+
+				if (!response.ok && data.error === 'duplicate_card') {
+					setIsDuplicateCard(true);
+					setError(data.message || 'この支払い方法は既に別のアカウントで使用されています。');
+					setSucceeded(false);
+					setProcessing(false);
+					return;
+				}
+
+			} catch (err) {
+				console.error('Error confirming payment setup:', err);
+				// ここではエラーを表示せず、成功として扱う
+			}
+		}
+
+		// 成功コールバック
+		setTimeout(() => {
+			if (onSuccess) {
+				onSuccess();
+			} else {
+				// 完了ページへリダイレクト
+				router.push('/register/complete');
+			}
+		}, 2000);
+
+		setProcessing(false);
+	};
 
 	// Setup Intentの取得
 	useEffect(() => {
@@ -11951,43 +10879,6 @@ export default function EnhancedCardForm({ onSuccess }: { onSuccess?: () => void
 		}
 	};
 
-	// セットアップ成功時の処理
-	const handleSetupSuccess = async (setupIntent: any) => {
-		setSucceeded(true);
-
-		// Firestoreに支払い状態を更新
-		if (user) {
-			try {
-				await fetch('/api/stripe/confirm-payment-setup', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'Authorization': `Bearer ${await user.getIdToken()}`
-					},
-					body: JSON.stringify({
-						setupIntentId: setupIntent?.id,
-						paymentMethodId: setupIntent?.payment_method
-					})
-				});
-			} catch (err) {
-				console.error('Error confirming payment setup:', err);
-				// ここではエラーを表示せず、成功として扱う
-			}
-		}
-
-		// 成功コールバック
-		setTimeout(() => {
-			if (onSuccess) {
-				onSuccess();
-			} else {
-				// 完了ページへリダイレクト
-				router.push('/register/complete');
-			}
-		}, 2000);
-
-		setProcessing(false);
-	};
-
 	// カード入力状態の変更ハンドラ
 	const handleCardChange = (event: any) => {
 		setCardComplete(event.complete);
@@ -12076,9 +10967,33 @@ export default function EnhancedCardForm({ onSuccess }: { onSuccess?: () => void
 			</div>
 
 			{/* エラーメッセージ */}
+			{/* エラーメッセージ */}
 			{error && (
-				<div className="bg-red-500/10 text-red-500 p-3 rounded-lg text-sm">
-					{error}
+				<div className={`p-4 rounded-lg text-sm ${isDuplicateCard ? 'bg-yellow-500/10 text-yellow-700' : 'bg-red-500/10 text-red-500'}`}>
+					{isDuplicateCard ? (
+						<>
+							<p className="font-medium">カード重複エラー</p>
+							<p>{error}</p>
+							<div className="mt-3">
+								<p className="text-sm font-medium">以下の対応をお試しください:</p>
+								<ul className="mt-1 text-sm list-disc pl-5 space-y-1">
+									<li>別のカードをご利用ください</li>
+									<li>既存のアカウントにログインしてください</li>
+									<li>
+										<button
+											type="button"
+											onClick={() => router.push('/login')}
+											className="text-accent hover:underline"
+										>
+											ログインページへ
+										</button>
+									</li>
+								</ul>
+							</div>
+						</>
+					) : (
+						error
+					)}
 				</div>
 			)}
 
@@ -12585,109 +11500,6 @@ export default function CardForm({ onSuccess }: { onSuccess?: () => void }) {
 		</Elements>
 	);
 }-e 
-### FILE: ./src/context/ekyc-context.tsx
-
-'use client';
-
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { useAuth } from './auth-context';
-import { EkycData, EkycStatus } from '@/types';
-
-// コンテキストの型
-interface EkycContextType {
-	ekycData: EkycData | null;
-	isLoading: boolean;
-	error: string | null;
-	resetEkycStatus: () => Promise<void>;
-}
-
-// デフォルト値
-const defaultEkycData: EkycData = {
-	status: 'pending'
-};
-
-// コンテキスト作成
-const EkycContext = createContext<EkycContextType>({
-	ekycData: defaultEkycData,
-	isLoading: true,
-	error: null,
-	resetEkycStatus: async () => { }
-});
-
-// プロバイダーコンポーネント
-export function EkycProvider({ children }: { children: ReactNode }) {
-	const { user } = useAuth();
-	const [ekycData, setEkycData] = useState<EkycData | null>(defaultEkycData);
-	const [isLoading, setIsLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
-
-	// Firestoreからリアルタイムで状態を監視
-	useEffect(() => {
-		if (!user) {
-			setIsLoading(false);
-			return;
-		}
-
-		// ユーザーのeKYCデータを監視
-		const unsubscribe = onSnapshot(
-			doc(db, 'users', user.uid),
-			(snapshot) => {
-				if (snapshot.exists()) {
-					const userData = snapshot.data();
-					if (userData.eKYC) {
-						setEkycData(userData.eKYC as EkycData);
-					} else {
-						setEkycData(defaultEkycData);
-					}
-				} else {
-					setEkycData(defaultEkycData);
-				}
-				setIsLoading(false);
-			},
-			(err) => {
-				console.error('Error fetching eKYC data:', err);
-				setError('eKYCデータの取得中にエラーが発生しました。');
-				setIsLoading(false);
-			}
-		);
-
-		return () => unsubscribe();
-	}, [user]);
-
-	// eKYCの状態をリセット
-	const resetEkycStatus = async () => {
-		if (!user) return;
-
-		try {
-			await fetch('/api/veriff/reset-status', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${await user.getIdToken()}`
-				}
-			});
-
-			// 状態の更新はリスナーが自動的に処理
-		} catch (err) {
-			console.error('Error resetting eKYC status:', err);
-			setError('eKYC状態のリセット中にエラーが発生しました。');
-		}
-	};
-
-	const value = {
-		ekycData,
-		isLoading,
-		error,
-		resetEkycStatus
-	};
-
-	return <EkycContext.Provider value={value}>{children}</EkycContext.Provider>;
-}
-
-// カスタムフック
-export const useEkyc = () => useContext(EkycContext);-e 
 ### FILE: ./src/context/AudioContext.tsx
 
 'use client';

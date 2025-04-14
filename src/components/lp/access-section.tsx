@@ -47,11 +47,19 @@ export default function AccessSection() {
 							</svg>
 						</div>
 
-						<h3 className="text-2xl font-bold mb-6">料金プラン</h3>
+						<h3 className="text-2xl font-bold mb-6">料金</h3>
 
 						<div className="space-y-4">
 							<div className="flex justify-between items-center border-b border-border pb-3">
-								<span className="text-foreground/70">基本料金</span>
+								<span className="text-foreground/70">基本</span>
+								<span className="text-xl font-bold text-foreground/70">¥600<span className="text-sm font-normal">/時間</span></span>
+							</div>
+							<div className="flex justify-between items-center border-b border-border pb-3">
+								<span className="text-foreground/70">初回利用で</span>
+								<span className="text-xl font-bold text-accent">900円分のクーポン</span>
+							</div>
+							<div className="flex justify-between items-center border-b border-border pb-3">
+								<span className="text-foreground/70">20日以内の再来店で</span>
 								<span className="text-2xl font-bold text-accent">¥400<span className="text-sm font-normal">/時間</span></span>
 							</div>
 							<div className="flex justify-between items-center pb-3">
@@ -59,7 +67,7 @@ export default function AccessSection() {
 								<span className="text-highlight">無料</span>
 							</div>
 							<p className="text-sm text-foreground/60 mt-4">
-								※料金は1分単位で自動計算され、月末にまとめて登録支払い方法から引き落とされます。<br />
+								※料金は1分単位で自動計算され、月末にまとめて登録支払い方法から引き落とされます。<br/>
 							</p>
 						</div>
 					</motion.div>

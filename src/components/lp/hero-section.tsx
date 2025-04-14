@@ -112,7 +112,7 @@ export default function HeroSection() {
                 transition-all duration-300 hover:translate-y-[-2px]
               "
 						>
-							3分で会員登録完了
+							1分で会員登録完了
 						</Link>
 					</motion.div>
 				</div>

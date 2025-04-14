@@ -17,7 +17,7 @@ import { Calendar, Clock, CreditCard } from 'lucide-react';
 export default function DashboardPage() {
 	const { user, userData, signOut } = useAuth();
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
-	const [activeTab, setActiveTab] = useState('qr');
+	const [activeTab, setActiveTab] = useState('reservations');
 	const router = useRouter();
 
 	const handleSignOut = async () => {
@@ -64,27 +64,30 @@ export default function DashboardPage() {
 						</div>
 					</header>
 
-					{/* メインコンテンツ */}
 					<main className="container mx-auto px-4 py-8">
-						<h1 className="text-2xl font-bold mb-6">マイダッシュボード</h1>
-						<div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-8">
-							<Link
-								href="/reservation"
-								className="bg-border/5 hover:bg-border/10 rounded-xl p-4 flex flex-col items-center justify-center transition-colors"
-							>
-								<Calendar className="w-8 h-8 text-accent mb-2" />
-								<span className="font-medium text-foreground">新規予約</span>
-								<span className="text-sm text-foreground/60">座席を予約する</span>
-							</Link>
-						</div>
+						<h1 className="text-2xl font-bold mb-6">マイページ</h1>
+						{userData && userData.registrationCompleted && (<>
+							<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+								<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>
+								<QrCodeDisplay />
+							</div>
+							<div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-8">
+								<Link
+									href="/reservation"
+									className="bg-border/5 hover:bg-border/10 rounded-xl p-4 flex flex-col items-center justify-center transition-colors"
+								>
+									<Calendar className="w-8 h-8 text-accent mb-2" />
+									<span className="font-medium text-foreground">新規予約</span>
+									<span className="text-sm text-foreground/60">座席を予約する</span>
+								</Link>
+							</div>
+						</>)}
 
-						{/* 会員登録が完了していない場合は登録フローに誘導 */}
 						{userData && !userData.registrationCompleted && (
 							<div className="bg-accent/10 border border-accent/20 rounded-xl p-6 mb-8">
-								<h2 className="text-lg font-semibold mb-2">会員登録を完了させましょう</h2>
+								<h2 className="text-lg font-semibold mb-2">支払いの登録を完了させましょう</h2>
 								<p className="mb-4">
-									支払い方法の登録が必要です。1分で完了します。
-
+									登録完了後、会員QRコードが即時に発行されます。会員コードを使って入店ができます。
 								</p>
 								<Button
 									href="/register/verification"
@@ -101,13 +104,13 @@ export default function DashboardPage() {
 								{/* タブナビゲーション */}
 								<div className="flex border-b border-border mb-6">
 									<button
-										onClick={() => setActiveTab('qr')}
-										className={`py-2 px-4 font-medium ${activeTab === 'qr'
+										onClick={() => setActiveTab('coupon')}
+										className={`py-2 px-4 font-medium ${activeTab === 'coupon'
 											? 'text-accent border-b-2 border-accent'
 											: 'text-foreground/70 hover:text-foreground'
 											}`}
 									>
-										会員QRコード
+										クーポン
 									</button>
 									<button
 										onClick={() => setActiveTab('reservations')}
@@ -140,12 +143,6 @@ export default function DashboardPage() {
 
 								{/* タブコンテンツ */}
 								<div className="grid md:grid-cols-1 gap-8">
-									{activeTab === 'qr' && (
-										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-											<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>
-											<QrCodeDisplay />
-										</div>
-									)}
 
 									{activeTab === 'reservations' && (
 										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
