@@ -21,6 +21,11 @@ interface RangeSelection {
 	rangeEnd: string | null;
 }
 
+interface HoveredSlot {
+	seatId: string;
+	time: string;
+}
+
 const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 	const {
 		seats,
@@ -40,6 +45,119 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 	const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
 	const [seatRanges, setSeatRanges] = useState<Record<string, RangeSelection>>({});
 	const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
+
+	const [hoveredSlot, setHoveredSlot] = useState<HoveredSlot | null>(null);
+	const [activeSessionEndTimes, setActiveSessionEndTimes] = useState<Record<string, Date>>({});
+
+	// コンポーネントが読み込まれた時に現在のセッション情報を取得
+	useEffect(() => {
+		const fetchActiveSessions = async () => {
+			if (!selectedBranch) return;
+
+			try {
+				// 通常はFirestoreから現在アクティブなセッション情報を取得
+				// ここではモック実装として、使用中の座席には現在から2時間後の終了時刻を設定
+				const mockSessionEndTimes: Record<string, Date> = {};
+
+				seats.forEach(seat => {
+					if (seat.status === 'in-use') {
+						const endTime = new Date();
+						endTime.setHours(endTime.getHours() + 2);
+						mockSessionEndTimes[seat.seatId] = endTime;
+					}
+				});
+
+				setActiveSessionEndTimes(mockSessionEndTimes);
+			} catch (err) {
+				console.error('セッション情報の取得に失敗しました:', err);
+			}
+		};
+
+		fetchActiveSessions();
+	}, [selectedBranch, seats]);
+
+	// スロットのクリックハンドラーを修正
+	const handleSlotClick = (seatId: string, time: string) => {
+		// 利用できないスロットはクリックを無視
+		if (isSlotUnavailable(seatId, time).unavailable) return;
+
+		// 既存のロジックをここに（変更なし）
+		const currentRange = seatRanges[seatId] || { rangeStart: null, rangeEnd: null };
+		const isSeatSelected = selectedSeatIds.includes(seatId);
+
+		if (!isSeatSelected) {
+			setSelectedSeatIds(prev => [...prev, seatId]);
+			setSeatRanges(prev => ({
+				...prev,
+				[seatId]: { rangeStart: time, rangeEnd: null }
+			}));
+			return;
+		}
+
+		// First click sets start time
+		if (currentRange.rangeStart === null) {
+			setSeatRanges(prev => ({
+				...prev,
+				[seatId]: { rangeStart: time, rangeEnd: null }
+			}));
+			return;
+		}
+
+		// If clicking on the same slot, deselect it
+		if (currentRange.rangeStart === time && currentRange.rangeEnd === null) {
+			setSeatRanges(prev => {
+				const newRanges = { ...prev };
+				delete newRanges[seatId];
+				return newRanges;
+			});
+			setSelectedSeatIds(prev => prev.filter(id => id !== seatId));
+			return;
+		}
+
+		// 選択範囲内に予約不可の時間枠がないか確認
+		if (isValidTimeRange(seatId, currentRange.rangeStart, time)) {
+			// Second click sets end time
+			if (currentRange.rangeEnd === null) {
+				// Ensure start is before end
+				if (time < currentRange.rangeStart) {
+					setSeatRanges(prev => ({
+						...prev,
+						[seatId]: { rangeStart: time, rangeEnd: currentRange.rangeStart }
+					}));
+				} else {
+					setSeatRanges(prev => ({
+						...prev,
+						[seatId]: { ...prev[seatId], rangeEnd: time }
+					}));
+				}
+				return;
+			}
+		} else {
+			alert('選択範囲内に予約できない時間枠が含まれています。別の範囲を選択してください。');
+			return;
+		}
+
+		// If range is already set, start a new selection
+		setSeatRanges(prev => ({
+			...prev,
+			[seatId]: { rangeStart: time, rangeEnd: null }
+		}));
+	};
+
+	// 選択範囲の有効性をチェックする関数を更新
+	const isValidTimeRange = (seatId: string, startTime: string, endTime: string): boolean => {
+		// 時間の順序を調整
+		const start = startTime < endTime ? startTime : endTime;
+		const end = startTime < endTime ? endTime : startTime;
+
+		// 時間スロットを取得
+		const timeSlotsBetween = timeSlots
+			.map(slot => slot.time)
+			.filter(time => time >= start && time <= end);
+
+		// すべてのスロットが利用可能か確認
+		return timeSlotsBetween.every(time => !isSlotUnavailable(seatId, time).unavailable);
+	};
 
 	// Filter seats by the selected branch
 	const filteredSeats = seats.filter(seat =>
@@ -90,99 +208,157 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 	const timeSlots = generateTimeSlots();
 
 	// Check if a time slot is already reserved using the timeSlotAvailability data
-	const isReserved = (seatId: string, timeSlot: string): boolean => {
-		if (!date || !timeSlotAvailability || !timeSlotAvailability[seatId]) return false;
+	// time-grid.tsx 内の isReserved 関数の修正
 
-		// timeSlotAvailability[seatId][timeSlot] が false なら予約済み
-		return timeSlotAvailability[seatId][timeSlot] === false;
+	// 時間枠が予約済み・過去・利用不可のいずれかであるかチェック
+	const isSlotUnavailable = (seatId: string, timeSlot: string): { unavailable: boolean; reason: 'reserved' | 'past' | 'in-use' | null } => {
+		// 予約データがない場合
+		if (!date || !timeSlotAvailability || !timeSlotAvailability[seatId]) {
+			return { unavailable: true, reason: null };
+		}
+
+		// 予約済みかチェック (timeSlotAvailability[seatId][timeSlot] が false なら予約済み)
+		const isReservedSlot = timeSlotAvailability[seatId][timeSlot] === false;
+		if (isReservedSlot) {
+			return { unavailable: true, reason: 'reserved' };
+		}
+
+		// 過去の時間枠かチェック
+		const now = new Date();
+		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const selectedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+		// 過去の日付の場合
+		if (selectedDate < today) {
+			return { unavailable: true, reason: 'past' };
+		}
+
+		// 同じ日の場合は時間を比較
+		if (selectedDate.getTime() === today.getTime()) {
+			const [hour, minute] = timeSlot.split(':').map(Number);
+			const slotTime = new Date(today);
+			slotTime.setHours(hour, minute, 0, 0);
+
+			// 現在時刻より前の時間枠は選択不可
+			if (slotTime < now) {
+				return { unavailable: true, reason: 'past' };
+			}
+		}
+
+		// 座席の状態を確認
+		const seat = seats.find(s => s.seatId === seatId);
+		if (seat?.status === 'in-use') {
+			// 使用中の座席に対するチェック
+			// 実際には現在のセッション情報を取得して判断する必要があります
+			// ここでは簡易的に、使用中の座席は現在から3時間後以降の時間枠のみ予約可能とする
+			const [hour, minute] = timeSlot.split(':').map(Number);
+			const slotTime = new Date(selectedDate);
+			slotTime.setHours(hour, minute, 0, 0);
+
+			const earliestBookableTime = new Date();
+			earliestBookableTime.setHours(earliestBookableTime.getHours() + 3);
+
+			if (slotTime < earliestBookableTime) {
+				return { unavailable: true, reason: 'in-use' };
+			}
+		}
+
+		// 利用可能
+		return { unavailable: false, reason: null };
+	};
+
+	// 簡略版 - 予約済みかどうかの判定のみを行う関数(既存コードとの互換性用)
+	const isReserved = (seatId: string, timeSlot: string): boolean => {
+		const result = isSlotUnavailable(seatId, timeSlot);
+		return result.unavailable;
 	};
 
 	// Handle slot click for range selection
-	const handleSlotClick = (seatId: string, time: string) => {
-		if (isReserved(seatId, time)) return;
-
-		// Get current range for this seat
-		const currentRange = seatRanges[seatId] || { rangeStart: null, rangeEnd: null };
-
-		// Check if seat is already selected
-		const isSeatSelected = selectedSeatIds.includes(seatId);
-
-		if (!isSeatSelected) {
-			// Add new seat to selection
-			setSelectedSeatIds(prev => [...prev, seatId]);
-			setSeatRanges(prev => ({
-				...prev,
-				[seatId]: { rangeStart: time, rangeEnd: null }
-			}));
-			return;
-		}
-
-		// First click sets start time
-		if (currentRange.rangeStart === null) {
-			setSeatRanges(prev => ({
-				...prev,
-				[seatId]: { rangeStart: time, rangeEnd: null }
-			}));
-			return;
-		}
-
-		// If clicking on the same slot, deselect it
-		if (currentRange.rangeStart === time && currentRange.rangeEnd === null) {
-			// If this was the only selected time slot for this seat, remove the seat from selection
-			setSeatRanges(prev => {
-				const newRanges = { ...prev };
-				delete newRanges[seatId];
-				return newRanges;
-			});
-			setSelectedSeatIds(prev => prev.filter(id => id !== seatId));
-			return;
-		}
-
-		// 選択範囲内に予約済み時間枠がないか確認
-		if (isValidTimeRange(seatId, currentRange.rangeStart, time)) {
-			// Second click sets end time
-			if (currentRange.rangeEnd === null) {
-				// Ensure start is before end
-				if (time < currentRange.rangeStart) {
-					setSeatRanges(prev => ({
-						...prev,
-						[seatId]: { rangeStart: time, rangeEnd: currentRange.rangeStart }
-					}));
-				} else {
-					setSeatRanges(prev => ({
-						...prev,
-						[seatId]: { ...prev[seatId], rangeEnd: time }
-					}));
-				}
+	/*	const handleSlotClick = (seatId: string, time: string) => {
+			if (isReserved(seatId, time)) return;
+	
+			// Get current range for this seat
+			const currentRange = seatRanges[seatId] || { rangeStart: null, rangeEnd: null };
+	
+			// Check if seat is already selected
+			const isSeatSelected = selectedSeatIds.includes(seatId);
+	
+			if (!isSeatSelected) {
+				// Add new seat to selection
+				setSelectedSeatIds(prev => [...prev, seatId]);
+				setSeatRanges(prev => ({
+					...prev,
+					[seatId]: { rangeStart: time, rangeEnd: null }
+				}));
 				return;
 			}
-		} else {
-			alert('選択範囲内に予約済みの時間枠が含まれています。別の範囲を選択してください。');
-			return;
-		}
-
-		// If range is already set, start a new selection
-		setSeatRanges(prev => ({
-			...prev,
-			[seatId]: { rangeStart: time, rangeEnd: null }
-		}));
-	};
-
-	// 選択範囲内に予約済み時間枠がないか確認する関数
-	const isValidTimeRange = (seatId: string, startTime: string, endTime: string): boolean => {
-		if (!timeSlotAvailability || !timeSlotAvailability[seatId]) return true;
-
-		// 時間の大小関係を調整
-		const start = startTime < endTime ? startTime : endTime;
-		const end = startTime < endTime ? endTime : startTime;
-
-		// 時間スロットを取得
-		const slots = Object.keys(timeSlotAvailability[seatId])
-			.filter(time => time >= start && time < end);
-
-		// すべてのスロットが利用可能か確認
-		return slots.every(slot => timeSlotAvailability[seatId][slot] === true);
-	};
+	
+			// First click sets start time
+			if (currentRange.rangeStart === null) {
+				setSeatRanges(prev => ({
+					...prev,
+					[seatId]: { rangeStart: time, rangeEnd: null }
+				}));
+				return;
+			}
+	
+			// If clicking on the same slot, deselect it
+			if (currentRange.rangeStart === time && currentRange.rangeEnd === null) {
+				// If this was the only selected time slot for this seat, remove the seat from selection
+				setSeatRanges(prev => {
+					const newRanges = { ...prev };
+					delete newRanges[seatId];
+					return newRanges;
+				});
+				setSelectedSeatIds(prev => prev.filter(id => id !== seatId));
+				return;
+			}
+	
+			// 選択範囲内に予約済み時間枠がないか確認
+			if (isValidTimeRange(seatId, currentRange.rangeStart, time)) {
+				// Second click sets end time
+				if (currentRange.rangeEnd === null) {
+					// Ensure start is before end
+					if (time < currentRange.rangeStart) {
+						setSeatRanges(prev => ({
+							...prev,
+							[seatId]: { rangeStart: time, rangeEnd: currentRange.rangeStart }
+						}));
+					} else {
+						setSeatRanges(prev => ({
+							...prev,
+							[seatId]: { ...prev[seatId], rangeEnd: time }
+						}));
+					}
+					return;
+				}
+			} else {
+				alert('選択範囲内に予約済みの時間枠が含まれています。別の範囲を選択してください。');
+				return;
+			}
+	
+			// If range is already set, start a new selection
+			setSeatRanges(prev => ({
+				...prev,
+				[seatId]: { rangeStart: time, rangeEnd: null }
+			}));
+		};
+	
+		// 選択範囲内に予約済み時間枠がないか確認する関数
+			const isValidTimeRange = (seatId: string, startTime: string, endTime: string): boolean => {
+			if (!timeSlotAvailability || !timeSlotAvailability[seatId]) return true;
+	
+			// 時間の大小関係を調整
+			const start = startTime < endTime ? startTime : endTime;
+			const end = startTime < endTime ? endTime : startTime;
+	
+			// 時間スロットを取得
+			const slots = Object.keys(timeSlotAvailability[seatId])
+				.filter(time => time >= start && time < end);
+	
+			// すべてのスロットが利用可能か確認
+			return slots.every(slot => timeSlotAvailability[seatId][slot] === true);
+		};*/
 
 	// Check if a slot is within the selected range
 	const isInSelectedRange = (seatId: string, time: string): boolean => {
@@ -377,6 +553,60 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		}
 	}
 
+	const getSlotStyle = (seatId: string, timeSlot: string) => {
+		const result = isSlotUnavailable(seatId, timeSlot);
+		const isSelected = isInSelectedRange(seatId, timeSlot);
+
+		// 選択中
+		if (isSelected) {
+			const range = seatRanges[seatId] || { rangeStart: null, rangeEnd: null };
+			const isRangeStart = range.rangeStart === timeSlot;
+			const isRangeEnd = range.rangeEnd === timeSlot;
+
+			if (isRangeStart || isRangeEnd) {
+				return 'bg-accent/70'; // 選択範囲の開始/終了
+			}
+			return 'bg-accent/40'; // 選択範囲内
+		}
+
+		// 状態に応じたスタイル
+		if (result.unavailable) {
+			switch (result.reason) {
+				case 'reserved':
+					return 'bg-border/50 cursor-not-allowed'; // 予約済み
+				case 'past':
+					return 'bg-gray-300/30 cursor-not-allowed'; // 過去の時間枠
+				case 'in-use':
+					return 'bg-amber-300/30 cursor-not-allowed'; // 使用中
+				default:
+					return 'bg-border/30 cursor-not-allowed'; // その他の理由で利用不可
+			}
+		}
+
+		// 利用可能
+		return 'hover:bg-background/10';
+	};
+
+	// 時間枠のツールチップメッセージを取得する関数
+	const getSlotTooltip = (seatId: string, timeSlot: string) => {
+		const result = isSlotUnavailable(seatId, timeSlot);
+
+		if (result.unavailable) {
+			switch (result.reason) {
+				case 'reserved':
+					return '予約済み';
+				case 'past':
+					return '過去の時間枠は予約できません';
+				case 'in-use':
+					return '現在使用中です';
+				default:
+					return '予約できません';
+			}
+		}
+
+		return '予約可能';
+	};
+
 	return (
 		<div className="space-y-6 relative">
 			{/* Loading overlay */}
@@ -432,36 +662,56 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 
 							{/* Time slots */}
 							{timeSlots.map((slot) => {
-								const isSlotReserved = isReserved(seat.seatId, slot.time);
+								const slotResult = isSlotUnavailable(seat.seatId, slot.time);
+								const isUnavailable = slotResult.unavailable;
 								const isSelected = isInSelectedRange(seat.seatId, slot.time);
 
 								const range = seatRanges[seat.seatId] || { rangeStart: null, rangeEnd: null };
 								const isRangeStart = range.rangeStart === slot.time;
 								const isRangeEnd = range.rangeEnd === slot.time;
 
+								// ホバー時に表示するツールチップのメッセージ
+								const tooltipMessage = getSlotTooltip(seat.seatId, slot.time);
+
 								return (
 									<motion.div
 										key={`${seat.seatId}-${slot.time}`}
 										className={`
-                      w-16 h-16 flex-shrink-0 border-l border-border/20
-                      ${isSlotReserved ? 'bg-border/50 cursor-not-allowed' : 'cursor-pointer'}
-                      ${isSelected ? 'bg-accent/40' : ''}
-                      ${isRangeStart ? 'bg-accent/70' : ''}
-                      ${isRangeEnd ? 'bg-accent/70' : ''}
-                      ${!isSlotReserved && !isSelected ? 'hover:bg-background/10' : ''}
-                      flex items-center justify-center
-                    `}
-										whileHover={!isSlotReserved ? { scale: 1.05 } : {}}
-										whileTap={!isSlotReserved ? { scale: 0.95 } : {}}
-										onClick={() => !isSlotReserved && handleSlotClick(seat.seatId, slot.time)}
+        w-16 h-16 flex-shrink-0 border-l border-border/20
+        ${getSlotStyle(seat.seatId, slot.time)}
+        flex items-center justify-center relative
+      `}
+										whileHover={!isUnavailable ? { scale: 1.05 } : {}}
+										whileTap={!isUnavailable ? { scale: 0.95 } : {}}
+										onClick={() => !isUnavailable && handleSlotClick(seat.seatId, slot.time)}
+										onMouseEnter={() => setHoveredSlot({ seatId: seat.seatId, time: slot.time })}
+										onMouseLeave={() => setHoveredSlot(null)}
 									>
-										{isSlotReserved && (
+										{isUnavailable && slotResult.reason === 'reserved' && (
 											<div className="w-8 h-1 bg-border rounded-full"></div>
+										)}
+
+										{isUnavailable && slotResult.reason === 'past' && (
+											<div className="w-8 h-1 bg-gray-400 rounded-full"></div>
+										)}
+
+										{isUnavailable && slotResult.reason === 'in-use' && (
+											<div className="w-2 h-5 bg-amber-400/70 rounded-full"></div>
 										)}
 
 										{(isRangeStart || isRangeEnd) && (
 											<div className="w-2 h-2 bg-white rounded-full"></div>
 										)}
+
+										{/* ホバー時のツールチップ */}
+										{hoveredSlot &&
+											hoveredSlot.seatId === seat.seatId &&
+											hoveredSlot.time === slot.time && (
+												<div className="absolute z-20 bottom-full left-1/2 transform -translate-x-1/2 mb-1 
+                        px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap">
+													{tooltipMessage}
+												</div>
+											)}
 									</motion.div>
 								);
 							})}

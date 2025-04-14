@@ -212,10 +212,12 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 			console.log(`支店コード「${targetBranch.branchCode}」の座席情報を取得します`);
 
 			// Firestoreから座席データの取得を試みる
+			// 条件を変更: available だけでなく in-use 状態の座席も取得する
+			// maintenance 状態の座席は除外する
 			const seatsQuery = query(
 				collection(db, 'seats'),
 				where('branchCode', '==', targetBranch.branchCode),
-				where('status', '==', 'available')
+				where('status', 'in', ['available', 'in-use']) // 修正: in-use も含める
 			);
 
 			const seatsSnapshot = await getDocs(seatsQuery);
@@ -227,9 +229,13 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				// Firestoreから取得した座席データを処理
 				const seatsData: SeatDocument[] = [];
 				seatsSnapshot.forEach((doc) => {
+					const seatData = doc.data();
+					// デバッグ用にログ出力
+					console.log(`座席ID: ${doc.id}, 名前: ${seatData.name}, ステータス: ${seatData.status}`);
+
 					seatsData.push({
 						seatId: doc.id,
-						...doc.data()
+						...seatData
 					} as SeatDocument);
 				});
 
@@ -880,6 +886,69 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		}
 	}, [selectedDate, selectedBranch, fetchReservations, fetchAllSeatsTimeSlotAvailability, clearSelectedTimeSlots]);
 
+	const isTimeSlotInPast = useCallback((date: Date, timeSlot: string): boolean => {
+		const now = new Date();
+
+		// 日付が過去の場合
+		if (date.setHours(0, 0, 0, 0) < now.setHours(0, 0, 0, 0)) {
+			return true;
+		}
+
+		// 同じ日の場合は時間を比較
+		if (date.setHours(0, 0, 0, 0) === now.setHours(0, 0, 0, 0)) {
+			// 現在時刻を取得 (上記のsetHoursでnowの値が変わっているので再取得)
+			const currentTime = new Date();
+			const [hours, minutes] = timeSlot.split(':').map(Number);
+
+			// 時間枠の終了時刻 (開始から30分後と仮定)
+			const timeSlotDate = new Date();
+			timeSlotDate.setHours(hours, minutes + 30, 0, 0);
+
+			// 現在時刻が時間枠の終了時刻を過ぎている場合は過去と判定
+			return currentTime > timeSlotDate;
+		}
+
+		// 未来の日付の場合
+		return false;
+	}, []);
+
+	// セッション終了時刻を考慮した予約可能判定ヘルパー関数
+	const isTimeSlotAvailableForInUseSeat = useCallback((
+		date: Date,
+		timeSlot: string,
+		seatId: string
+	): boolean => {
+		// 過去の時間枠は予約不可
+		if (isTimeSlotInPast(date, timeSlot)) {
+			return false;
+		}
+
+		// 現在の日付ではない場合は通常の予約ルールを適用
+		const now = new Date();
+		if (date.setHours(0, 0, 0, 0) !== now.setHours(0, 0, 0, 0)) {
+			return true; // 将来の日付ならセッション状態に関わらず予約可能
+		}
+
+		// 該当座席のアクティブセッション終了時刻を取得する処理
+		// 現時点では簡易的に、現在時刻 + 2時間後を仮の終了時刻とする
+		const currentTime = new Date();
+		const sessionEndTime = new Date(currentTime);
+		sessionEndTime.setHours(sessionEndTime.getHours() + 2);
+
+		// 予約バッファ時間 (30分)
+		const bufferTimeMinutes = 30;
+		const earliestBookingTime = new Date(sessionEndTime);
+		earliestBookingTime.setMinutes(earliestBookingTime.getMinutes() + bufferTimeMinutes);
+
+		// 予約しようとしている時間枠の開始時刻
+		const [hours, minutes] = timeSlot.split(':').map(Number);
+		const timeSlotStartTime = new Date(date);
+		timeSlotStartTime.setHours(hours, minutes, 0, 0);
+
+		// 時間枠の開始時刻がセッション終了時刻+バッファ時間より後なら予約可能
+		return timeSlotStartTime >= earliestBookingTime;
+	}, [isTimeSlotInPast]);
+
 	// コンテキスト値の作成
 	const value = {
 		branches,
@@ -908,7 +977,8 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		getTimeSlotAvailability,
 		fetchAllSeatsTimeSlotAvailability,
 		checkReservationOverlap,
-		refreshReservationData
+		refreshReservationData,
+		isTimeSlotAvailableForInUseSeat,
 	};
 
 	return (
