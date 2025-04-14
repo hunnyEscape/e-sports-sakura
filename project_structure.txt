@@ -14,9 +14,7 @@
 │   ├── app
 │   │   ├── api
 │   │   │   ├── billing
-│   │   │   │   ├── history
-│   │   │   │   │   └── route.ts
-│   │   │   │   └── mock-charge
+│   │   │   │   └── history
 │   │   │   │       └── route.ts
 │   │   │   ├── reservations
 │   │   │   │   ├── [id]
@@ -42,6 +40,8 @@
 │   │   │       │   └── route.ts
 │   │   │       └── reset-status
 │   │   │           └── route.ts
+│   │   ├── camera-test
+│   │   │   └── page.tsx
 │   │   ├── dashboard
 │   │   │   └── page.tsx
 │   │   ├── favicon.ico
@@ -118,7 +118,9 @@
 │   │   │   ├── button.tsx
 │   │   │   └── loading-spinner.tsx
 │   │   └── verification
-│   │       ├── veriff-integration.tsx
+│   │       ├── camera-test.tsx
+│   │       ├── face-verification-section.tsx
+│   │       ├── face-video-capture.tsx
 │   │       ├── verification-complete.tsx
 │   │       ├── verification-status-v2.tsx
 │   │       └── verification-status.tsx
@@ -131,7 +133,9 @@
 │   ├── hooks
 │   │   └── use-veriff.ts
 │   ├── lib
+│   │   ├── face-verification-service.ts
 │   │   ├── firebase-admin.ts
+│   │   ├── firebase-storage-rules.txt
 │   │   ├── firebase.ts
 │   │   ├── gameData.ts
 │   │   ├── stripe-payment-methods.ts
@@ -146,4 +150,4 @@
 ├── tailwind.config.js
 └── tsconfig.json
 
-46 directories, 100 files
+46 directories, 104 files

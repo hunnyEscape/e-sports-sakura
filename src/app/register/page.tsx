@@ -9,6 +9,8 @@ export default function RegisterIndexPage() {
 	const { user, userData, loading } = useAuth();
 	const router = useRouter();
 
+	// src/app/register/page.tsx の変更箇所
+
 	useEffect(() => {
 		// 認証とデータのロードが完了したら処理
 		if (!loading) {
@@ -26,18 +28,17 @@ export default function RegisterIndexPage() {
 				} else if (userData.registrationStep !== undefined) {
 					// 登録途中ならその続きのページへ
 					const steps = [
-						'/register/verification',
-						'/register/payment',
+						'/register/payment', // verification を削除し、最初のステップを payment に
 						'/register/complete'
 					];
-					router.push(steps[userData.registrationStep] || '/register/verification');
+					router.push(steps[userData.registrationStep] || '/register/payment');
 				} else {
-					// 登録開始
-					router.push('/register/verification');
+					// 登録開始 - 直接 payment ページへ
+					router.push('/register/payment');
 				}
 			} else {
-				// userData読込中のエラー
-				router.push('/register/verification');
+				// userData読込中のエラー - 直接 payment ページへ
+				router.push('/register/payment');
 			}
 		}
 	}, [user, userData, loading, router]);

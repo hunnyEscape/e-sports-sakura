@@ -76,7 +76,6 @@ export default function DashboardPage() {
 								<span className="font-medium text-foreground">新規予約</span>
 								<span className="text-sm text-foreground/60">座席を予約する</span>
 							</Link>
-
 						</div>
 
 						{/* 会員登録が完了していない場合は登録フローに誘導 */}
@@ -84,7 +83,7 @@ export default function DashboardPage() {
 							<div className="bg-accent/10 border border-accent/20 rounded-xl p-6 mb-8">
 								<h2 className="text-lg font-semibold mb-2">会員登録を完了させましょう</h2>
 								<p className="mb-4">
-									身分証明と支払い方法の登録が必要です。2分で完了します。
+									支払い方法の登録が必要です。1分で完了します。
 
 								</p>
 								<Button

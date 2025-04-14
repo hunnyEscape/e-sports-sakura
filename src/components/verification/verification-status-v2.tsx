@@ -6,14 +6,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import { useAuth } from '@/context/auth-context';
-import { useEkyc } from '@/context/ekyc-context';
 import {
 	VerifiedIcon,
 	VerificationFailedIcon,
 	VerificationPendingIcon,
 	VerificationBadge
 } from '@/components/icons/verification-icons';
-import { createVeriffSession } from '@/lib/veriff';
 
 export default function VerificationStatusV2() {
 	const router = useRouter();

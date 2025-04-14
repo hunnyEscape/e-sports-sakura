@@ -1,3 +1,4 @@
+// src/app/api/stripe/confirm-payment-setup/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -45,6 +46,45 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		// PaymentMethodの取得
+		const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+		// カードのfingerprintを取得（カードタイプの場合のみ）
+		let cardFingerprint = null;
+		let last4 = null;
+		let brand = null;
+
+		if (paymentMethod.type === 'card' && paymentMethod.card) {
+			cardFingerprint = paymentMethod.card.fingerprint;
+			last4 = paymentMethod.card.last4;
+			brand = paymentMethod.card.brand;
+
+			// 重複チェック - 同じfingerprint持つ別ユーザーが存在するか確認
+			if (cardFingerprint) {
+				const db = getFirestore();
+				const usersSnapshot = await db.collection('users')
+					.where('stripe.cardFingerprint', '==', cardFingerprint)
+					.get();
+
+				// 重複するユーザーがあり、かつ現在のユーザーと異なる場合はエラー
+				if (!usersSnapshot.empty) {
+					let isDuplicate = false;
+					usersSnapshot.forEach(doc => {
+						if (doc.id !== userId) {
+							isDuplicate = true;
+						}
+					});
+
+					if (isDuplicate) {
+						return NextResponse.json({
+							error: 'duplicate_card',
+							message: 'この支払い方法は既に別のアカウントで使用されています。ご自身の既存アカウントにログインするか、別の支払い方法をご利用ください。'
+						}, { status: 409 });
+					}
+				}
+			}
+		}
+
 		// Firestoreからユーザーデータを取得
 		const db = getFirestore();
 		const userRef = db.collection('users').doc(userId);
@@ -74,6 +114,9 @@ export async function POST(request: NextRequest) {
 		// Firestoreにユーザーの支払い状態を更新
 		await userRef.update({
 			'stripe.paymentMethodId': paymentMethodId,
+			'stripe.cardFingerprint': cardFingerprint,
+			'stripe.last4': last4,
+			'stripe.brand': brand,
 			'stripe.paymentSetupCompleted': true,
 			'stripe.updatedAt': new Date().toISOString(),
 			'registrationStep': 1, // 決済情報登録ステップ完了

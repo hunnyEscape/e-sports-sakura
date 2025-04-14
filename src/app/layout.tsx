@@ -1,5 +1,4 @@
 import { AuthProvider } from '@/context/auth-context';
-import { EkycProvider } from '@/context/ekyc-context';
 import { AudioProvider } from '@/context/AudioContext';
 import './globals.css';
 import type { Metadata } from 'next';
@@ -19,9 +18,7 @@ export default function RootLayout({
 			<body>
 				<AudioProvider>
 					<AuthProvider>
-						<EkycProvider>
 							{children}
-						</EkycProvider>
 					</AuthProvider>
 				</AudioProvider>
 			</body>

@@ -1,8 +1,11 @@
 -e 
 ### FILE: ./src/types/firebase.ts
 
-import { Timestamp } from './index';
-// src/types/firebase.ts に追加
+import { Timestamp, FieldValue } from 'firebase/firestore';
+
+// Custom type to handle both Timestamp and string
+export type TimestampOrString = Timestamp | string | FieldValue;
+
 // 支店情報
 export interface BranchDocument {
 	branchId: string;
@@ -25,8 +28,8 @@ export interface BranchDocument {
 		latitude: number;
 		longitude: number;
 	};
-	createdAt: Timestamp | string;
-	updatedAt: Timestamp | string;
+	createdAt: TimestampOrString;
+	updatedAt: TimestampOrString;
 }
 
 // Firestore User ドキュメントのインターフェース
@@ -35,18 +38,21 @@ export interface UserDocument {
 	email: string | null;
 	displayName: string | null;
 	photoURL: string | null;
-	createdAt: Timestamp | string;
-	lastLogin: Timestamp | string;
+	createdAt: TimestampOrString;
+	lastLogin: TimestampOrString;
 	registrationCompleted: boolean;
 	registrationCompletedAt?: string;
 	registrationStep?: number;
 
 	// eKYC情報
-	eKYC?: {
-		sessionId?: string;
-		status: string;
-		verifiedAt?: string;
-		lastUpdated?: string;
+	faceVideo?: {
+		storagePath: string;      // 例: users/{uid}/face.mp4
+		downloadURL?: string;     // 署名付きURLまたは管理者用URL
+		confirmed: boolean;       // 判定結果（初期値: true）
+		checkedAt?: string;       // 判定実行日（ISO形式）
+		rejectionReason?: string; // 拒否理由（"too_dark"|"masked"|"duplicate"など）
+		flagged?: boolean;        // 確認要/BAN対象フラグ
+		similarityCheckCompleted?: boolean; // 顔照合済みフラグ
 	};
 
 	// Stripe情報
@@ -70,12 +76,13 @@ export interface SessionDocument {
 	sessionId: string;
 	userId: string;
 	seatId: string;
-	startTime: Timestamp | string;
-	endTime: Timestamp | string;
+	startTime: TimestampOrString;
+	endTime: TimestampOrString;
 	durationMinutes: number;
 	amount: number;
 	pricePerHour: number;
 	active: boolean;
+	billingId?: string; 
 }
 
 // 座席情報
@@ -93,8 +100,8 @@ export interface SeatDocument {
 		[key: string]: string;
 	};
 	maxAdvanceBookingDays?: number;
-	createdAt: Timestamp | string;
-	updatedAt: Timestamp | string;
+	createdAt: TimestampOrString;
+	updatedAt: TimestampOrString;
 }
 
 // 予約情報
@@ -110,8 +117,8 @@ export interface ReservationDocument {
 	duration: number;
 	status: 'confirmed' | 'cancelled' | 'completed';
 	notes?: string;
-	createdAt: Timestamp | string;
-	updatedAt: Timestamp | string;
+	createdAt: TimestampOrString;
+	updatedAt: TimestampOrString;
 }
 
 // 利用履歴情報
@@ -124,7 +131,7 @@ export interface UsageHistoryDocument {
 	invoiceId?: string;     // 請求ID
 	isTest?: boolean;       // テスト利用フラグ
 	status: string;         // 状態（"paid", "pending"など）
-	timestamp: Timestamp | string; // 利用日時
+	timestamp: TimestampOrString; // 利用日時
 	seatId?: string;        // 座席ID（あれば）
 }-e 
 ### FILE: ./src/types/api.ts
@@ -326,10 +333,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 							createdAt: serverTimestamp(),
 							lastLogin: serverTimestamp(),
 							registrationCompleted: false,
-							registrationStep: 0,
-							eKYC: {
-								status: 'pending'
-							}
+							registrationStep: 2,
 						};
 
 						await setDoc(userDocRef, newUserData);
@@ -511,6 +515,15 @@ export interface StripeInfo {
 import { loadStripe, Stripe } from '@stripe/stripe-js';
 import { PaymentMethodType } from '@/types';
 
+declare global {
+	interface Window {
+		ApplePaySession?: {
+			canMakePayments: () => boolean;
+		};
+	}
+}
+
+
 // Google Pay関連の定数
 export const GOOGLE_PAY_CONFIG = {
 	apiVersion: 2,
@@ -586,7 +599,12 @@ export async function checkAvailablePaymentMethods(stripe: Stripe | null): Promi
 	}
 
 	// Apple Payの利用可能性をチェック
-	if (stripe && window?.ApplePaySession && typeof window.ApplePaySession.canMakePayments === 'function') {
+	if (
+		stripe &&
+		typeof window !== 'undefined' &&
+		'ApplePaySession' in window &&
+		typeof window.ApplePaySession?.canMakePayments === 'function'
+	) {
 		try {
 			result.applePay = window.ApplePaySession.canMakePayments();
 		} catch (e) {
@@ -597,7 +615,7 @@ export async function checkAvailablePaymentMethods(stripe: Stripe | null): Promi
 	return result;
 }
 
-// Stripeを初期化し、支払い方法の利用可能性をチェックするラッパー関数
+// Stripeを初期化し、支払い方法の利用可能性をチェックするラッパー
 export async function initializeStripeWithPaymentMethods(): Promise<{
 	stripe: Stripe | null;
 	availableMethods: Record<string, boolean>;
@@ -710,7 +728,7 @@ export const stripePromise = loadStripe(
 // バックエンド用のStripeインスタンス（API Routes内で使用）
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY || '';
 export const stripe = new Stripe(stripeSecretKey, {
-	apiVersion: '2023-10-16', // Stripeの最新APIバージョンに適宜更新
+	apiVersion: '2025-03-31.basil', // Stripeの最新APIバージョンに適宜更新
 });
 
 // StripeのSetup Intentを作成する関数
@@ -995,9 +1013,11 @@ export async function createInvoiceForUsage(
 		});
 
 		// 請求書の確定
+		if (!invoice.id) throw new Error('invoice.id is undefined');
 		const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
 
 		// 支払い処理
+		if (!finalizedInvoice.id) throw new Error('finalizedInvoice.id is undefined');
 		return await stripe.invoices.pay(finalizedInvoice.id);
 	} catch (error) {
 		console.error('Error creating invoice for usage:', error);
@@ -1088,8 +1108,8 @@ export const GAME_DATA: Record<string, CategoryData> = {
 					見た目は可愛らしく、ファンタジックで親しみやすいデザインですが、ゲームとしての深みや**駆け引き**の面白さは非常に高く、友人同士の対戦や配信・実況などにもぴったりのタイトルです。
 					魔女として隠れる楽しさと、ハンターとして暴くスリル――この両方を体験できる、独特の魅力を持った作品と言えるでしょう。
 				`,
-				playerCount: '2人チーム制　4〜8人程度でも十分楽しめるが多人数ほど盛り上がる。最大16人',
-				recommendedTime: '1試合：約5〜10分前後、30分-1時間',
+				playerCount: '2人チーム制　最大16人',
+				recommendedTime: '30分-2時間',
 				difficulty: '初心者向け',
 				videoSrc: '/WitchIt.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/WitchIt.webp`,
@@ -1112,7 +1132,7 @@ export const GAME_DATA: Record<string, CategoryData> = {
 					しかも、ユーザーが自作したコースを公開・プレイすることができるため、コンテンツは常に増え続けており、飽きが来にくいという点も魅力のひとつです。
 				`,
 				playerCount: '1-4人',
-				recommendedTime: '20-40分',
+				recommendedTime: '30分-3時間',
 				difficulty: '初心者向け',
 				videoSrc: '/GolfIt.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/GolfIt.webp`,
@@ -1145,9 +1165,9 @@ export const GAME_DATA: Record<string, CategoryData> = {
 					「2人でしか体験できない特別なゲーム」を探している方に、心からおすすめできる一本です。
 				`,
 				playerCount: '2人',
-				recommendedTime: '1-2時間',
+				recommendedTime: '12時間～',
 				difficulty: '中級者向け',
-				videoSrc: '/WeWereHereForever.mp4',
+				videoSrc: '/WeWereHereForever2.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/WeWereHereForever.webp`,
 				rule: `
 				無線のようなボイスチャットを使ってコミュニケーションを取りながら、片方が見ているシンボルや仕掛けのヒントをもう一方に伝え、それぞれの部屋で謎を解いていきます。
@@ -1168,7 +1188,7 @@ export const GAME_DATA: Record<string, CategoryData> = {
 				プレイヤーは、「ポータルガン」という特殊な装置を使って空間に二つのポータルを開き、それを活用してステージを突破していくという、独自のゲームプレイを体験します。
 				`,
 				playerCount: '1-2人',
-				recommendedTime: '1-2時間',
+				recommendedTime: '6時間～',
 				difficulty: '中級者向け',
 				videoSrc: '/portal.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/portal.webp`,
@@ -1194,7 +1214,7 @@ export const GAME_DATA: Record<string, CategoryData> = {
 				銀行への潜入、空港でのハッキング、仮想空間への侵入など、スパイ映画のようなミッションが続々と登場します。
 				`,
 				playerCount: '2人',
-				recommendedTime: '4-6時間(役割交代すればもう一周楽しめる)',
+				recommendedTime: '4-6時間',
 				difficulty: '中級者向け',
 				videoSrc: '/Tango.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/Tango.webp`,
@@ -1218,7 +1238,7 @@ export const GAME_DATA: Record<string, CategoryData> = {
 				『Counter-Strike 2』は、世界中のプレイヤーたちにとって、長年の経験がそのまま蓄積される「知のFPS」でありながら、今この瞬間から誰でも始められる、極めてフェアな設計のゲームです。もしあなたが、頭を使いながらチームと連携し、一発一発に意味のある対戦ゲームを探しているなら、このゲームはまさにうってつけだと言えるでしょう。試しに1ラウンドでもプレイしてみれば、きっとその緊張感と達成感に引き込まれるはずです。			
 				`,
 				playerCount: '5v5',
-				recommendedTime: '∞',
+				recommendedTime: '20時間～',
 				difficulty: '上級者向け',
 				videoSrc: '/CS2.mp4',
 				thumbnailSrc: `${cloudFrontUrl}/CS2.webp`,
@@ -1244,6 +1264,248 @@ export const GAME_DATA: Record<string, CategoryData> = {
 		]
 	}
 };-e 
+### FILE: ./src/lib/face-verification-service.ts
+
+import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { getStorage, ref, getDownloadURL, deleteObject } from 'firebase/storage';
+import { UserDocument } from '@/types/firebase';
+
+/**
+ * 顔認証サービスクラス
+ * 顔動画の管理やステータス確認を行う
+ */
+export class FaceVerificationService {
+  
+  /**
+   * ユーザーの顔認証ステータスを取得
+   * @param userId ユーザーID
+   * @returns 顔認証ステータス情報
+   */
+  static async getFaceVerificationStatus(userId: string): Promise<{
+    isCompleted: boolean;
+    isPending: boolean;
+    isRejected: boolean;
+    rejectionReason?: string;
+  }> {
+    try {
+      const db = getFirestore();
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      
+      if (!userDoc.exists()) {
+        throw new Error('ユーザーが見つかりません');
+      }
+      
+      const userData = userDoc.data() as UserDocument;
+      const faceVideo = userData.faceVideo;
+      
+      if (!faceVideo) {
+        return {
+          isCompleted: false,
+          isPending: false,
+          isRejected: false
+        };
+      }
+      
+      return {
+        isCompleted: true,
+        isPending: faceVideo.confirmed === null || faceVideo.confirmed === undefined,
+        isRejected: faceVideo.confirmed === false,
+        rejectionReason: faceVideo.rejectionReason
+      };
+    } catch (error) {
+      console.error('顔認証ステータス取得エラー:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * 顔動画の一時的なダウンロードURL生成
+   * @param userId ユーザーID
+   * @param expirationTimeMinutes URLの有効期限（分）
+   * @returns 署名付きURL
+   */
+  static async getTemporaryDownloadUrl(userId: string, expirationTimeMinutes: number = 5): Promise<string> {
+    try {
+      const db = getFirestore();
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      
+      if (!userDoc.exists()) {
+        throw new Error('ユーザーが見つかりません');
+      }
+      
+      const userData = userDoc.data() as UserDocument;
+      
+      if (!userData.faceVideo?.storagePath) {
+        throw new Error('顔動画が登録されていません');
+      }
+      
+      const storage = getStorage();
+      const videoRef = ref(storage, userData.faceVideo.storagePath);
+      
+      // Firebase Storageの署名付きURL（デフォルトで一時的なURLが生成される）
+      // 注: この方法では厳密な有効期限指定はできないが、一般的には短期間の有効期限となる
+      const downloadUrl = await getDownloadURL(videoRef);
+      
+      return downloadUrl;
+    } catch (error) {
+      console.error('ダウンロードURL生成エラー:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * 顔認証の再試行（既存のデータをリセット）
+   * @param userId ユーザーID
+   * @returns 成功したかどうか
+   */
+  static async resetFaceVerification(userId: string): Promise<boolean> {
+    try {
+      const db = getFirestore();
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      
+      if (!userDoc.exists()) {
+        throw new Error('ユーザーが見つかりません');
+      }
+      
+      const userData = userDoc.data() as UserDocument;
+      
+      // 既存の顔動画がある場合は削除
+      if (userData.faceVideo?.storagePath) {
+        const storage = getStorage();
+        const videoRef = ref(storage, userData.faceVideo.storagePath);
+        await deleteObject(videoRef);
+      }
+      
+      // Firestoreのデータもリセット
+      await updateDoc(doc(db, 'users', userId), {
+        faceVideo: null
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('顔認証リセットエラー:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * 管理者用: フラグ付きユーザーの一覧取得
+   * @returns フラグ付きユーザーリスト
+   */
+  static async getFlaggedUsers(): Promise<UserDocument[]> {
+    try {
+      const db = getFirestore();
+      const usersRef = collection(db, 'users');
+      
+      // フラグが立っているユーザーを検索
+      const q = query(
+        usersRef, 
+        where('faceVideo.flagged', '==', true)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const flaggedUsers: UserDocument[] = [];
+      
+      querySnapshot.forEach((doc) => {
+        flaggedUsers.push(doc.data() as UserDocument);
+      });
+      
+      return flaggedUsers;
+    } catch (error) {
+      console.error('フラグ付きユーザー取得エラー:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * 管理者用: 顔認証ステータスの手動更新
+   * @param userId ユーザーID
+   * @param status 更新するステータス情報
+   * @returns 成功したかどうか
+   */
+  static async updateVerificationStatus(
+    userId: string,
+    status: {
+      confirmed: boolean;
+      flagged?: boolean;
+      rejectionReason?: string | null;
+    }
+  ): Promise<boolean> {
+    try {
+      const db = getFirestore();
+      const userDocRef = doc(db, 'users', userId);
+      
+      // 既存のfaceVideo情報を維持しつつステータスのみ更新
+      await updateDoc(userDocRef, {
+        'faceVideo.confirmed': status.confirmed,
+        'faceVideo.flagged': status.flagged ?? false,
+        'faceVideo.rejectionReason': status.rejectionReason || null,
+        'faceVideo.checkedAt': new Date().toISOString()
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('ステータス更新エラー:', error);
+      return false;
+    }
+  }
+}
+
+export default FaceVerificationService;-e 
+### FILE: ./src/app/camera-test/page.tsx
+
+'use client';
+
+import React from 'react';
+import CameraTest from '@/components/verification/camera-test';
+import Link from 'next/link';
+
+export default function CameraTestPage() {
+	return (
+		<div className="min-h-screen bg-background text-foreground">
+			<header className="bg-background/80 backdrop-blur-sm border-b border-border">
+				<div className="container mx-auto px-4">
+					<div className="flex items-center justify-between h-16">
+						<Link href="/" className="font-bold text-xl text-accent">
+							E-Sports Sakura
+						</Link>
+
+						<nav>
+							<Link href="/dashboard" className="text-foreground/70 hover:text-accent">
+								ダッシュボードに戻る
+							</Link>
+						</nav>
+					</div>
+				</div>
+			</header>
+
+			<main className="container mx-auto px-4 py-8 max-w-2xl">
+				<div className="mb-6">
+					<h1 className="text-2xl font-bold mb-2">カメラテストツール</h1>
+					<p className="text-foreground/70">
+						このページはカメラの動作確認テスト用です。異なるカメラを選択して、正しく映像が表示されるか確認できます。
+					</p>
+				</div>
+
+				<CameraTest />
+
+				<div className="mt-8 bg-border/5 p-4 rounded-lg">
+					<h2 className="text-lg font-medium mb-2">使い方:</h2>
+					<ol className="list-decimal pl-5 space-y-2">
+						<li>「カメラを選択」からテストしたいカメラデバイスを選びます</li>
+						<li>「カメラを開始」ボタンをクリックしてカメラを起動します</li>
+						<li>カメラの映像が表示されることを確認します</li>
+						<li>「フレームキャプチャ」ボタンで現在の映像をキャプチャし、画像データを確認できます</li>
+						<li>「カメラを停止」でテストを終了します</li>
+					</ol>
+					<p className="mt-4 text-sm text-foreground/60">
+						<strong>注意:</strong> カメラが表示されない場合は、ブラウザのカメラ許可設定を確認してください。また、他のアプリケーションがカメラを使用している場合は、それらを閉じてからお試しください。
+					</p>
+				</div>
+			</main>
+		</div>
+	);
+}-e 
 ### FILE: ./src/app/login/page.tsx
 
 'use client';
@@ -1422,7 +1684,6 @@ export default function DashboardPage() {
 								<Link href="/lp" className="flex items-center">
 									<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 								</Link>
-
 								<div className="flex items-center space-x-4">
 									{user?.photoURL && (
 										<Image
@@ -1465,11 +1726,11 @@ export default function DashboardPage() {
 							<div className="bg-accent/10 border border-accent/20 rounded-xl p-6 mb-8">
 								<h2 className="text-lg font-semibold mb-2">会員登録を完了させましょう</h2>
 								<p className="mb-4">
-									サービスを利用するには、追加情報の入力とeKYC認証が必要です。
-									数分で完了します。
+									身分証明と支払い方法の登録が必要です。2分で完了します。
+
 								</p>
 								<Button
-									href="/register/personal-info"
+									href="/register/verification"
 									variant="primary"
 								>
 									登録を続ける
@@ -1558,17 +1819,26 @@ export default function DashboardPage() {
 														</div>
 														<div className="text-sm text-foreground/70">
 															<p>••••••••••••{userData.stripe.paymentMethodId.slice(-4)}</p>
-															<p className="mt-1">更新日: {new Date(userData.stripe.updatedAt).toLocaleDateString('ja-JP')}</p>
+															{/*<p className="mt-1">更新日: {new Date(userData.stripe.updatedAt).toLocaleDateString('ja-JP')}</p>*/}
 														</div>
 													</div>
 
 													<div className="flex justify-between items-center">
-														<Button
+														{/*<Button
 															href="/payment"
 															variant="outline"
+															disabled={true}
 														>
 															カード情報を更新
+														</Button>*/}
+
+														<Button
+															variant="outline"
+															className="opacity-50 pointer-events-auto cursor-pointer"
+														>
+															カード情報を更新（未実装）
 														</Button>
+
 
 														<button
 															className="text-sm text-foreground/60 hover:text-accent"
@@ -1633,7 +1903,9 @@ import CalendarView from '@/components/reservation/calendar-view';
 import TimeGrid from '@/components/reservation/time-grid';
 import ReservationForm from '@/components/reservation/reservation-form';
 import LoginPrompt from '@/components/reservation/login-prompt';
-
+import Link from 'next/link';
+import Image from 'next/image';
+import LoadingSpinner from '@/components/ui/loading-spinner';
 enum ReservationStep {
 	SELECT_BRANCH,
 	SELECT_DATE,
@@ -1642,9 +1914,10 @@ enum ReservationStep {
 }
 
 const ReservationPageContent: React.FC = () => {
-	const { user, loading } = useAuth();
-	const { setSelectedBranch, selectedTimeSlots, clearSelectedTimeSlots } = useReservation();
+	const [isLoggingOut, setIsLoggingOut] = useState(false);
 	const router = useRouter();
+	const { user, loading, signOut } = useAuth();
+	const { setSelectedBranch, selectedTimeSlots, clearSelectedTimeSlots } = useReservation();
 
 	const [currentStep, setCurrentStep] = useState<ReservationStep>(ReservationStep.SELECT_BRANCH);
 	const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -1775,8 +2048,46 @@ const ReservationPageContent: React.FC = () => {
 		}
 	};
 
+	const handleSignOut = async () => {
+		try {
+			setIsLoggingOut(true);
+			await signOut();
+			router.push('/');
+		} catch (error) {
+			console.error('Logout error:', error);
+			setIsLoggingOut(false);
+		}
+	};
+
 	return (
-		<div className="min-h-screen bg-background py-12 px-4">
+		<div className="min-h-screen bg-background px-4">
+			<header className="relative bg-background/80 backdrop-blur-sm border-b border-border sticky top-0 z-10 mb-10">
+				<div className="container mx-auto px-4">
+					<div className="flex items-center justify-between h-16">
+						<Link href="/lp" className="flex items-center">
+							<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
+						</Link>
+						<div className="flex items-center space-x-4">
+							{user?.photoURL && (
+								<Image
+									src={user.photoURL}
+									alt={user.displayName || 'ユーザー'}
+									width={32}
+									height={32}
+									className="rounded-full"
+								/>
+							)}
+							<button
+								onClick={handleSignOut}
+								disabled={isLoggingOut}
+								className="text-foreground/70 hover:text-accent"
+							>
+								{isLoggingOut ? <LoadingSpinner size="small" /> : 'ログアウト'}
+							</button>
+						</div>
+					</div>
+				</div>
+			</header>
 			<motion.div
 				initial={{ opacity: 0, y: 20 }}
 				animate={{ opacity: 1, y: 0 }}
@@ -1907,39 +2218,19 @@ import SeatInitializer from '@/components/ini/create-seat-documents';
 
 export default function LandingPage() {
 	return (
-		<main className="landing-page bg-background text-foreground">
-			<LpHeader />
+		<main className="landing-page text-foreground">
+			<LpHeader/>
 			<div className="pt-16">
-				<HeroSection />
-				<FeaturesSection />
-				<div className="h-[50vh] flex items-center justify-center mb-12">
-					<div className="text-center">
-						<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">ラインナップ</h2>
-						<p className="text-lg text-muted-foreground mx-auto w-full">
-							様々なジャンルから選べる人気タイトルをご用意しています
-						</p>
-					</div>
-				</div>
-				<GamesSection />
-				<StepsSection />
-
-				{/* スペック紹介セクション */}
+				<HeroSection/>
+				<FeaturesSection/>
+				<GamesSection/>
+				<StepsSection/>
 				<SpecsSection />
-
-				{/* 予約カレンダーセクション (新規追加) */}
 				<AvailabilitySection />
-
-				{/* よくある質問セクション */}
 				<FaqSection />
-
-				{/* アクセス・料金セクション */}
 				<AccessSection />
-
-				{/* 最終CTAセクション */}
 				<CtaSection />
 			</div>
-
-			{/* LP専用フッター */}
 			<LpFooter />
 		</main>
 	);
@@ -2422,7 +2713,7 @@ export async function POST(req: NextRequest) {
 		// Create new reservation
 		const newReservation: Omit<ReservationDocument, 'id'> = {
 			userId: user.uid,
-			userEmail: user.email,
+			userEmail: user.email||'',
 			seatId,
 			seatName,
 			date,
@@ -2511,7 +2802,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 		};
 
 		// Check if the user is authorized to access this reservation
-		if (reservation.userId !== user.uid) {
+		if (reservation.id !== user.uid) {
 			return NextResponse.json(
 				{ error: 'この予約にアクセスする権限がありません' },
 				{ status: 403 }
@@ -2716,7 +3007,6 @@ export async function POST(request: NextRequest) {
 			// eKYCが既に完了している場合
 			if (userData?.eKYC?.status === 'completed') {
 				const response: VeriffSessionResponse = {
-					message: 'Verification already completed',
 					status: 'completed',
 					sessionId: userData.eKYC.sessionId || '',
 					sessionUrl: ''
@@ -2996,131 +3286,21 @@ export async function GET(request: NextRequest) {
 		);
 	}
 }-e 
-### FILE: ./src/app/api/billing/mock-charge/route.ts
-
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
-import { initAdminApp } from '@/lib/firebase-admin';
-import { stripe } from '@/lib/stripe';
-
-// Firebase Admin初期化
-initAdminApp();
-
-/**
- * 開発環境用のモック課金API
- * 実際の環境では入退室管理システムから自動的に課金処理されます
- */
-export async function POST(request: NextRequest) {
-	// 本番環境では使用不可
-	if (process.env.NODE_ENV === 'production') {
-		return NextResponse.json(
-			{ error: 'This endpoint is only available in development mode' },
-			{ status: 403 }
-		);
-	}
-
-	try {
-		// トークンの検証
-		const authHeader = request.headers.get('Authorization');
-		if (!authHeader || !authHeader.startsWith('Bearer ')) {
-			return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-		}
-
-		const token = authHeader.split('Bearer ')[1];
-		if (!token) {
-			return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-		}
-
-		// Firebaseでトークンを検証
-		const decodedToken = await getAuth().verifyIdToken(token);
-		const userId = decodedToken.uid;
-
-		// リクエストボディを取得
-		const body = await request.json();
-		const { durationMinutes = 60, description = 'テスト利用' } = body;
-
-		// 料金計算 (10分あたり120円)
-		const amountYen = Math.ceil(durationMinutes / 10) * 120;
-
-		// Firestoreからユーザーデータを取得
-		const db = getFirestore();
-		const userRef = db.collection('users').doc(userId);
-		const userDoc = await userRef.get();
-
-		if (!userDoc.exists) {
-			return NextResponse.json({ error: 'User not found' }, { status: 404 });
-		}
-
-		const userData = userDoc.data();
-
-		// Stripe顧客IDを確認
-		if (!userData?.stripe?.customerId) {
-			return NextResponse.json(
-				{ error: 'Stripe customer not found' },
-				{ status: 400 }
-			);
-		}
-
-		// Stripeで請求書を作成（テスト用）
-		const invoice = await stripe.invoices.create({
-			customer: userData.stripe.customerId,
-			auto_advance: true, // 自動的に確定する
-			description: description,
-			metadata: {
-				userId: userId,
-				durationMinutes: String(durationMinutes),
-				testMode: 'true'
-			}
-		});
-
-		// 請求項目を追加
-		await stripe.invoiceItems.create({
-			customer: userData.stripe.customerId,
-			amount: amountYen * 100, // 日本円をセントに変換（100倍）
-			currency: 'jpy',
-			description: `利用時間: ${durationMinutes}分`,
-			invoice: invoice.id,
-		});
-
-		// 請求書を確定
-		const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
-
-		// 請求書を支払う（テスト用）
-		const paidInvoice = await stripe.invoices.pay(invoice.id);
-
-		// 利用履歴に記録
-		await db.collection('usageHistory').add({
-			userId,
-			invoiceId: paidInvoice.id,
-			amount: amountYen,
-			durationMinutes,
-			status: 'paid',
-			timestamp: new Date().toISOString(),
-			description: description,
-			isTest: true
-		});
-
-		return NextResponse.json({
-			success: true,
-			invoiceId: paidInvoice.id,
-			amount: amountYen,
-			durationMinutes,
-			paidAt: new Date().toISOString()
-		});
-
-	} catch (error) {
-		console.error('Error in mock billing:', error);
-		return NextResponse.json(
-			{ error: 'Internal server error' },
-			{ status: 500 }
-		);
-	}
-}-e 
 ### FILE: ./src/app/api/seats/route.ts
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getFirestore, collection, getDocs, query, where } from 'firebase/firestore';
+import {
+	NextRequest,
+	NextResponse
+} from 'next/server';
+import {
+	getFirestore,
+	collection,
+	getDocs,
+	query,
+	where,
+	CollectionReference,
+	Query
+} from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { firebaseConfig } from '@/lib/firebase';
 import { SeatDocument, ReservationDocument } from '@/types/firebase';
@@ -3135,22 +3315,27 @@ export async function GET(req: NextRequest) {
 		const url = new URL(req.url);
 		const status = url.searchParams.get('status');
 
-		// Build query for seats collection
-		let seatsQuery = collection(db, 'seats');
+		// FirestoreのseatsコレクションをSeatDocument型として取得
+		const seatsCollection = collection(db, 'seats') as CollectionReference<SeatDocument>;
+
+		// 初めはコレクション参照として、Query型で扱う
+		let seatsQuery: Query<SeatDocument> = seatsCollection;
 
 		// If status filter is provided, apply it
 		if (status) {
-			seatsQuery = query(seatsQuery, where('status', '==', status));
+			seatsQuery = query(seatsCollection, where('status', '==', status));
 		}
 
 		// Execute query
 		const querySnapshot = await getDocs(seatsQuery);
-
-		// Convert snapshot to data array
-		const seats = querySnapshot.docs.map(doc => ({
-			id: doc.id,
-			...doc.data()
-		})) as SeatDocument[];
+		// 以下で各ドキュメントからseatIdを明示的にセットすることで、SeatDocumentの必須フィールドと合致させる
+		const seats = querySnapshot.docs.map(doc => {
+			const data = doc.data() as Omit<SeatDocument, 'seatId'>;
+			return {
+				...data,
+				seatId: doc.id // FirestoreのドキュメントIDをseatIdとして代入
+			};
+		});
 
 		// Get date param for availability check
 		const date = url.searchParams.get('date');
@@ -3162,7 +3347,6 @@ export async function GET(req: NextRequest) {
 				where('date', '==', date),
 				where('status', '==', 'confirmed')
 			);
-
 			const reservationsSnapshot = await getDocs(reservationsQuery);
 			const reservations = reservationsSnapshot.docs.map(doc => doc.data()) as ReservationDocument[];
 
@@ -3198,8 +3382,6 @@ export async function GET(req: NextRequest) {
 		);
 	}
 }
-
-// This endpoint can be used to check availability for a specific date and time
 export async function POST(req: NextRequest) {
 	try {
 		const { date, startTime, endTime } = await req.json();
@@ -3213,11 +3395,14 @@ export async function POST(req: NextRequest) {
 		}
 
 		// Query seats
-		const seatsSnapshot = await getDocs(collection(db, 'seats'));
-		const seats = seatsSnapshot.docs.map(doc => ({
-			id: doc.id,
-			...doc.data()
-		})) as SeatDocument[];
+		const seatsSnapshot = await getDocs(collection(db, 'seats') as CollectionReference<SeatDocument>);
+		const seats = seatsSnapshot.docs.map(doc => {
+			const data = doc.data() as Omit<SeatDocument, 'seatId'>;
+			return {
+				...data,
+				seatId: doc.id
+			};
+		});
 
 		// Query reservations for the specified date
 		const reservationsQuery = query(
@@ -3252,7 +3437,7 @@ export async function POST(req: NextRequest) {
 				seatId: seat.seatId,
 				name: seat.name,
 				isAvailable: !hasConflict && seat.status === 'available',
-				ratePerMinute: seat.ratePerMinute || 0
+				ratePerMinute: seat.ratePerHour || 0
 			};
 		});
 
@@ -3264,7 +3449,8 @@ export async function POST(req: NextRequest) {
 			{ status: 500 }
 		);
 	}
-}-e 
+}
+-e 
 ### FILE: ./src/app/api/stripe/create-setup-intent/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -3562,11 +3748,14 @@ export async function POST(request: NextRequest) {
 ### FILE: ./src/app/api/stripe/webhook/route.ts
 
 // src/app/api/stripe/webhook/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { initAdminApp } from '@/lib/firebase-admin';
-import { getFirestore } from 'firebase-admin/firestore';
-import { stripe } from '@/lib/stripe';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import Stripe from 'stripe'; // ✅ デフォルトインポートで型利用もOK
+
+import { stripe } from '@/lib/stripe'; // これはインスタンス（secretキーで生成済）想定
 
 // Firebase Admin初期化
 initAdminApp();
@@ -3576,12 +3765,11 @@ const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 
 export async function POST(request: NextRequest) {
 	try {
-		// リクエストのRawボディを取得
 		const payload = await request.text();
 		const headersList = headers();
 		const sig = headersList.get('stripe-signature') || '';
 
-		let event;
+		let event: Stripe.Event;
 
 		// シグネチャの検証
 		try {
@@ -3591,27 +3779,22 @@ export async function POST(request: NextRequest) {
 			return NextResponse.json({ error: 'Webhook signature verification failed' }, { status: 400 });
 		}
 
-		// Firestore参照
 		const db = getFirestore();
 
-		// イベントタイプに基づいて処理
 		switch (event.type) {
-			// 支払い方法が追加された時
-			case 'payment_method.attached':
-				const paymentMethod = event.data.object;
-				// 顧客IDを取得
+			case 'payment_method.attached': {
+				const paymentMethod = event.data.object as Stripe.PaymentMethod;
 				const customerId = paymentMethod.customer;
 
 				if (customerId) {
-					// 顧客IDに基づいてユーザーを検索
-					const usersSnapshot = await db.collection('users')
+					const usersSnapshot = await db
+						.collection('users')
 						.where('stripe.customerId', '==', customerId)
 						.limit(1)
 						.get();
 
 					if (!usersSnapshot.empty) {
 						const userDoc = usersSnapshot.docs[0];
-						// ユーザーのStripe情報を更新
 						await userDoc.ref.update({
 							'stripe.paymentMethodId': paymentMethod.id,
 							'stripe.updatedAt': new Date().toISOString(),
@@ -3623,85 +3806,91 @@ export async function POST(request: NextRequest) {
 					}
 				}
 				break;
+			}
 
-			// 請求書の支払いが成功した時
-			case 'invoice.paid':
-				const invoice = event.data.object;
-				// 利用履歴に記録
+			case 'invoice.paid': {
+				const invoice = event.data.object as Stripe.Invoice & { last_payment_error?: any };
+
 				if (invoice.customer) {
-					const usersSnapshot = await db.collection('users')
+					const usersSnapshot = await db
+						.collection('users')
 						.where('stripe.customerId', '==', invoice.customer)
 						.limit(1)
 						.get();
 
 					if (!usersSnapshot.empty) {
 						const userDoc = usersSnapshot.docs[0];
-						const userId = userDoc.id;
 
-						// 利用履歴に追加
+						// default_payment_method の ID 抽出
+						let defaultPaymentMethodId = '';
+						if (invoice.default_payment_method) {
+							defaultPaymentMethodId =
+								typeof invoice.default_payment_method === 'string'
+									? invoice.default_payment_method
+									: invoice.default_payment_method.id;
+						}
+
 						await db.collection('usageHistory').add({
-							userId,
+							userId: userDoc.id,
 							invoiceId: invoice.id,
-							amount: invoice.amount_paid / 100, // セントから円に変換
+							amount: invoice.amount_paid / 100,
 							status: 'paid',
 							timestamp: new Date().toISOString(),
 							description: invoice.description || '利用料金',
 							metadata: invoice.metadata || {},
-							paymentMethodType: invoice.default_payment_method
-								? await getPaymentMethodType(invoice.default_payment_method)
+							paymentMethodType: defaultPaymentMethodId
+								? await getPaymentMethodType(defaultPaymentMethodId)
 								: 'unknown',
 							durationMinutes: invoice.metadata?.durationMinutes
 								? parseInt(invoice.metadata.durationMinutes)
-								: undefined
+								: undefined,
 						});
 
-						// ユーザーの請求履歴にも追加
 						await userDoc.ref.update({
-							'billingHistory': db.FieldValue.arrayUnion({
+							billingHistory: FieldValue.arrayUnion({
 								invoiceId: invoice.id,
 								amount: invoice.amount_paid / 100,
 								date: new Date().toISOString(),
-								status: 'paid'
-							})
+								status: 'paid',
+							}),
 						});
 					}
 				}
 				break;
+			}
 
-			// 請求書の支払いが失敗した時
-			case 'invoice.payment_failed':
-				const failedInvoice = event.data.object;
-				// 支払い失敗を記録
+			case 'invoice.payment_failed': {
+				const failedInvoice = event.data.object as Stripe.Invoice & { last_payment_error?: any };
+
 				if (failedInvoice.customer) {
-					const usersSnapshot = await db.collection('users')
+					const usersSnapshot = await db
+						.collection('users')
 						.where('stripe.customerId', '==', failedInvoice.customer)
 						.limit(1)
 						.get();
 
 					if (!usersSnapshot.empty) {
 						const userDoc = usersSnapshot.docs[0];
-						const userId = userDoc.id;
+						const errorMessage = (failedInvoice as any).last_payment_error?.message || '不明なエラー';
 
-						// 失敗記録を追加
 						await db.collection('paymentFailures').add({
-							userId,
+							userId: userDoc.id,
 							invoiceId: failedInvoice.id,
-							amount: failedInvoice.amount_due / 100, // セントから円に変換
+							amount: failedInvoice.amount_due / 100,
 							timestamp: new Date().toISOString(),
-							reason: failedInvoice.last_payment_error?.message || '不明なエラー'
+							reason: errorMessage,
 						});
 
-						// ユーザーの支払い状態を更新
 						await userDoc.ref.update({
 							'stripe.paymentStatus': 'failed',
-							'stripe.lastPaymentError': failedInvoice.last_payment_error?.message,
-							'stripe.lastPaymentErrorAt': new Date().toISOString()
+							'stripe.lastPaymentError': errorMessage,
+							'stripe.lastPaymentErrorAt': new Date().toISOString(),
 						});
 					}
 				}
 				break;
+			}
 
-			// その他のイベント
 			default:
 				console.log(`Unhandled event type: ${event.type}`);
 		}
@@ -3722,15 +3911,14 @@ async function getPaymentMethodType(paymentMethodId: string): Promise<string> {
 		console.error('Error retrieving payment method:', error);
 		return 'unknown';
 	}
-}-e 
+}
+-e 
 ### FILE: ./src/app/register/complete/page.tsx
 
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
-import Link from 'next/link';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/auth-context';
@@ -3756,8 +3944,11 @@ export default function CompletePage() {
 			}
 
 			// 決済設定が完了している場合のみ、登録完了処理を行う
-			if (userData?.stripe?.paymentSetupCompleted ||
-				userData?.registrationStep >= 1) {
+			if (
+				userData?.stripe?.paymentSetupCompleted ||
+				(typeof userData?.registrationStep === 'number' && userData.registrationStep >= 1)
+			  ) {
+			  
 				try {
 					setCompleting(true);
 
@@ -3904,74 +4095,6 @@ export default function VerificationPage() {
 			{/* メインコンテンツ */}
 			<VerificationStatus />
 
-			{/* FAQ セクション */}
-			<div className="mt-8 bg-border/5 rounded-xl p-6 shadow-soft">
-				<h3 className="text-lg font-medium mb-4">よくある質問</h3>
-				<div className="space-y-4">
-					<details className="group">
-						<summary className="flex justify-between items-center cursor-pointer list-none">
-							<span className="font-medium">どんな身分証明書が使えますか？</span>
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-							</svg>
-						</summary>
-						<div className="mt-2 text-sm text-foreground/70 pl-1">
-							以下の身分証明書が使用できます：
-							<ul className="list-disc pl-5 mt-1 space-y-1">
-								<li>運転免許証</li>
-								<li>パスポート</li>
-								<li>マイナンバーカード（写真付き）</li>
-								<li>在留カード</li>
-							</ul>
-							※通知カードや健康保険証など、顔写真がないものは利用できません。
-						</div>
-					</details>
-
-					<details className="group">
-						<summary className="flex justify-between items-center cursor-pointer list-none">
-							<span className="font-medium">本人確認に失敗した場合はどうなりますか？</span>
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-							</svg>
-						</summary>
-						<div className="mt-2 text-sm text-foreground/70 pl-1">
-							再度お試しいただけます。複数回失敗する場合は、以下をご確認ください：
-							<ul className="list-disc pl-5 mt-1 space-y-1">
-								<li>身分証明書が鮮明に写っているか</li>
-								<li>顔写真と身分証明書の本人が一致しているか</li>
-								<li>身分証明書の有効期限が切れていないか</li>
-								<li>十分な明るさがあるか</li>
-							</ul>
-							何度も失敗する場合は、お問い合わせフォームからサポートにご連絡ください。
-						</div>
-					</details>
-
-					<details className="group">
-						<summary className="flex justify-between items-center cursor-pointer list-none">
-							<span className="font-medium">カメラやマイクへのアクセス許可はなぜ必要ですか？</span>
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-							</svg>
-						</summary>
-						<div className="mt-2 text-sm text-foreground/70 pl-1">
-							本人確認プロセスでは、身分証明書の撮影と顔認証のためにカメラアクセスが必要です。これらの許可は本人確認プロセスのみに使用され、安全に管理されます。許可を拒否すると、本人確認プロセスを完了できません。
-						</div>
-					</details>
-
-					<details className="group">
-						<summary className="flex justify-between items-center cursor-pointer list-none">
-							<span className="font-medium">本人確認はどのくらいの時間がかかりますか？</span>
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-							</svg>
-						</summary>
-						<div className="mt-2 text-sm text-foreground/70 pl-1">
-							通常、本人確認プロセス全体は2〜5分程度で完了します。審査結果は通常すぐに表示されますが、場合によっては数分かかることがあります。
-						</div>
-					</details>
-				</div>
-			</div>
-
 			{/* プライバシーポリシーリンク */}
 			<div className="mt-6 text-center text-sm text-foreground/60">
 				本人確認の実施により、
@@ -4053,12 +4176,13 @@ export default function PaymentPage() {
 	return (
 		<div className="max-w-2xl mx-auto">
 			<div className="bg-border/5 rounded-xl shadow-soft p-6">
-				<h2 className="text-xl font-semibold mb-6">決済情報の登録</h2>
+				<h2 className="text-xl font-semibold mb-2">決済情報の登録</h2>
 
-				<div className="bg-blue-500/10 text-blue-600 p-4 rounded-lg mb-6">
+				<div className="bg-border/10 text-white p-4 rounded-lg mb-6">
 					<p>
-						サービスをご利用いただくには、お支払い情報の登録が必要です。<br />
-						サービス利用後に自動的に決済されます。
+						本サービスは月末締めの後払い方式です。<br />
+						毎月末にご利用内容に基づいて請求書（インボイス）を発行し、<br />
+						ご登録のお支払い方法（クレジットカードまたは銀行口座振替）にて自動で決済されます。
 					</p>
 				</div>
 
@@ -4068,18 +4192,17 @@ export default function PaymentPage() {
 
 						<div className="bg-border/10 rounded-lg p-4">
 							<div className="flex justify-between items-center mb-2">
-								<span className="font-medium">従量課金プラン</span>
-								<span className="text-xl font-bold text-accent">¥700 <span className="text-sm font-normal">/時間</span></span>
+								<span className="font-medium">従量課金</span>
+								<span className="text-xl font-bold text-accent">¥400 <span className="text-sm font-normal">/時間</span></span>
 							</div>
 							<ul className="text-sm text-foreground/70 space-y-1">
-								<li>• 10分単位での課金（¥120/10分）</li>
+								<li>• 1分単位での課金</li>
 								<li>• フリードリンク・お菓子込み</li>
 								<li>• 高性能ゲーミングPC利用可能</li>
 								<li>• 深夜割増なし（24時間同一料金）</li>
 							</ul>
 						</div>
 					</div>
-
 					<div>
 						<Elements stripe={stripePromise}>
 							<EnhancedCardForm />
@@ -4113,7 +4236,7 @@ export default function PaymentPage() {
 ### FILE: ./src/app/register/layout.tsx
 
 'use client';
-
+//src/app/register/layout.tsx
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -4812,6 +4935,800 @@ export default function ProtectedRoute({
 
 	return user ? <>{children}</> : null;
 }-e 
+### FILE: ./src/components/verification/face-video-capture.tsx
+
+'use client';
+
+import React, { useRef, useState, useEffect } from 'react';
+import { useAuth } from '@/context/auth-context';
+import LoadingSpinner from '@/components/ui/loading-spinner';
+
+interface FaceVideoCaptureProps {
+	onComplete: (success: boolean) => void;
+	onError: (error: string) => void;
+}
+
+const FaceVideoCapture: React.FC<FaceVideoCaptureProps> = ({ onComplete, onError }) => {
+	const { user } = useAuth();
+	const videoRef = useRef<HTMLVideoElement>(null);
+	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+	const streamRef = useRef<MediaStream | null>(null);
+	const videoContainerRef = useRef<HTMLDivElement>(null);
+
+	// 各種状態管理
+	const [isRecording, setIsRecording] = useState<boolean>(false);
+	const [status, setStatus] = useState<string>('初期化中...');
+	const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+	const [cameraReady, setCameraReady] = useState<boolean>(false);
+	const [debugInfo, setDebugInfo] = useState<string>('');
+	const [showCameraSelector, setShowCameraSelector] = useState<boolean>(false);
+	const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+	const [selectedCamera, setSelectedCamera] = useState<string>('');
+
+	// 録画結果の Blob を保持（最終的に1つの動画）
+	const [recordedVideoBlob, setRecordedVideoBlob] = useState<Blob | null>(null);
+
+	// 各ポーズ（正面、左、右）ごとのオーバーレイ画像、案内文、録画時間（秒）
+	const poseOverlays = [
+		{
+			src:`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/face1.webp`,
+			alt: "Front Pose Overlay",
+			instructions: "正面",
+			duration: 5
+		},
+		{
+			src:`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/face2.webp`,
+			alt: "Left Pose Overlay",
+			instructions: "左向き",
+			duration: 5
+		},
+		{
+			src:`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/face3.webp`,
+			alt: "Right Pose Overlay",
+			instructions: "右向き",
+			duration: 5
+		},
+	];
+	const totalRecordingDuration = poseOverlays.reduce((acc, curr) => acc + curr.duration, 0); // 合計15秒
+	const [currentPoseIndex, setCurrentPoseIndex] = useState<number>(0);
+
+	// デバッグ情報を追加する関数
+	const addDebugInfo = (info: string) => {
+		setDebugInfo(prev => `${new Date().toLocaleTimeString()}: ${info}\n${prev}`);
+	};
+
+	// 利用可能なカメラデバイスの取得
+	const getAvailableCameras = async () => {
+		try {
+			addDebugInfo("カメラデバイス一覧を取得中");
+			const devices = await navigator.mediaDevices.enumerateDevices();
+			const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+			addDebugInfo(`検出されたカメラデバイス: ${videoDevices.length}台`);
+			videoDevices.forEach((device, index) => {
+				addDebugInfo(`デバイス ${index + 1}: ID=${device.deviceId}, ラベル=${device.label || '名称なし'}`);
+			});
+
+			setCameraDevices(videoDevices);
+
+			// 初期デバイス設定
+			if (videoDevices.length > 0 && !selectedCamera) {
+				setSelectedCamera(videoDevices[0].deviceId);
+				addDebugInfo(`初期カメラを設定: ${videoDevices[0].label || 'デバイス1'}`);
+			}
+		} catch (err) {
+			addDebugInfo(`カメラデバイス取得エラー: ${err}`);
+		}
+	};
+
+	// コンポーネント初期化時にカメラデバイス取得
+	useEffect(() => {
+		getAvailableCameras();
+	}, []);
+
+	// 選択したカメラでストリームを初期化
+	const initializeCamera = async (deviceId?: string) => {
+		try {
+			setStatus('カメラへのアクセスを要求中...');
+			addDebugInfo(`カメラ初期化: ${deviceId ? `デバイスID=${deviceId}` : '既定デバイス'}`);
+
+			// すでにストリームがある場合は停止
+			if (streamRef.current) {
+				streamRef.current.getTracks().forEach(track => track.stop());
+				addDebugInfo("既存のカメラストリームを停止");
+			}
+
+			const constraints: MediaStreamConstraints = {
+				audio: false,
+				video: deviceId
+					? {
+						deviceId: { exact: deviceId },
+						width: { ideal: 640 },
+						height: { ideal: 480 }
+					}
+					: {
+						width: { ideal: 640 },
+						height: { ideal: 480 }
+					}
+			};
+
+			addDebugInfo(`制約オブジェクト: ${JSON.stringify(constraints)}`);
+
+			const stream = await navigator.mediaDevices.getUserMedia(constraints);
+			addDebugInfo(`ストリーム取得成功: アクティブ=${stream.active}, トラック数=${stream.getTracks().length}`);
+
+			const videoTrack = stream.getVideoTracks()[0];
+			if (videoTrack) {
+				addDebugInfo(`ビデオトラック: ${videoTrack.label}, 有効=${videoTrack.enabled}`);
+				const settings = videoTrack.getSettings();
+				addDebugInfo(`設定: 幅=${settings.width}, 高さ=${settings.height}, フレームレート=${settings.frameRate}`);
+			}
+
+			streamRef.current = stream;
+
+			if (videoRef.current) {
+				addDebugInfo("videoRef存在、ストリームをセット中");
+				videoRef.current.style.width = '100%';
+				videoRef.current.style.height = 'auto';
+				videoRef.current.style.display = 'block';
+				videoRef.current.style.objectFit = 'cover';
+				videoRef.current.srcObject = stream;
+				try {
+					await videoRef.current.play();
+					addDebugInfo("ビデオ再生開始成功");
+					setCameraReady(true);
+				} catch (e) {
+					addDebugInfo(`ビデオ再生エラー: ${e}`);
+					setStatus('カメラ映像の再生に失敗しました。再接続ボタンをクリックしてください。');
+				}
+			} else {
+				addDebugInfo("videoRefが見つかりません");
+			}
+
+			setHasPermission(true);
+			setStatus('');
+			return true;
+		} catch (err) {
+			addDebugInfo(`カメラ初期化エラー: ${err}`);
+			setHasPermission(false);
+			onError(`カメラへのアクセスが許可されていません。ブラウザの設定を確認してください。エラー: ${err}`);
+			setStatus('エラー: カメラへのアクセスが許可されていません');
+			return false;
+		}
+	};
+
+	// カメラ選択時の処理
+	const handleCameraChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+		const deviceId = e.target.value;
+		addDebugInfo(`カメラ変更: ${deviceId}`);
+		setSelectedCamera(deviceId);
+		setCameraReady(false);
+		await initializeCamera(deviceId);
+	};
+
+	// video タグのイベントリスナー
+	useEffect(() => {
+		if (videoRef.current) {
+			const videoElement = videoRef.current;
+			const handleCanPlay = () => {
+				addDebugInfo("ビデオ再生可能イベント発生");
+				setCameraReady(true);
+			};
+			const handlePlaying = () => {
+				addDebugInfo("ビデオ再生中イベント発生");
+				setCameraReady(true);
+			};
+			const handleError = (e: any) => {
+				addDebugInfo(`ビデオエラー発生: ${e}`);
+			};
+			videoElement.addEventListener('canplay', handleCanPlay);
+			videoElement.addEventListener('playing', handlePlaying);
+			videoElement.addEventListener('error', handleError);
+			return () => {
+				videoElement.removeEventListener('canplay', handleCanPlay);
+				videoElement.removeEventListener('playing', handlePlaying);
+				videoElement.removeEventListener('error', handleError);
+			};
+		}
+	}, [videoRef.current]);
+
+	useEffect(() => {
+		if (selectedCamera) {
+			initializeCamera(selectedCamera);
+		}
+	}, [selectedCamera]);
+
+	useEffect(() => {
+		if (hasPermission === true && videoRef.current) {
+			const checkVideoInterval = setInterval(() => {
+				const video = videoRef.current;
+				if (video) {
+					addDebugInfo(`ビデオ状態: 幅=${video.videoWidth}, 高さ=${video.videoHeight}, 再生中=${!video.paused}, 読込状態=${video.readyState}`);
+					if (video.videoWidth > 0 && video.videoHeight > 0 && !video.paused) {
+						setCameraReady(true);
+					}
+					try {
+						const canvas = document.createElement('canvas');
+						canvas.width = 320;
+						canvas.height = 240;
+						const ctx = canvas.getContext('2d');
+						if (ctx) {
+							ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+							const imageData = ctx.getImageData(0, 0, 10, 10);
+							let isAllZero = true;
+							for (let i = 0; i < 10 * 10 * 4; i += 4) {
+								if (imageData.data[i] > 0 || imageData.data[i + 1] > 0 || imageData.data[i + 2] > 0) {
+									isAllZero = false;
+									break;
+								}
+							}
+							if (isAllZero) {
+								addDebugInfo("警告: ビデオが真っ黒です（ピクセルデータがすべて0）");
+							} else {
+								addDebugInfo("ビデオに画像データあり");
+							}
+						}
+					} catch (e) {
+						addDebugInfo(`ピクセルデータ確認エラー: ${e}`);
+					}
+				}
+			}, 3000);
+			return () => clearInterval(checkVideoInterval);
+		}
+	}, [hasPermission]);
+
+	// ■ 全ステップ録画：すべて一つの動画として15秒間連続で録画し、5秒ごとにオーバーレイ・案内を更新
+	const startMultiStepRecording = () => {
+		if (!cameraReady || !streamRef.current) {
+			addDebugInfo("カメラが準備できていません");
+			return;
+		}
+		// 初期化：最初のポーズを設定
+		setCurrentPoseIndex(0);
+		setStatus(poseOverlays[0].instructions);
+		// 連続録画開始
+		startRecording();
+		setIsRecording(true);
+
+		// 5秒後：左向きに更新
+		setTimeout(() => {
+			setCurrentPoseIndex(1);
+			setStatus(poseOverlays[1].instructions);
+		}, poseOverlays[0].duration * 1000);
+
+		// 10秒後：右向きに更新
+		setTimeout(() => {
+			setCurrentPoseIndex(2);
+			setStatus(poseOverlays[2].instructions);
+		}, (poseOverlays[0].duration + poseOverlays[1].duration) * 1000);
+
+		// 15秒後：録画停止
+		setTimeout(() => {
+			stopRecording(true);
+		}, totalRecordingDuration * 1000);
+	};
+
+	// ■ 連続録画開始（単一の MediaRecorder で録画）
+	const startRecording = () => {
+		if (!streamRef.current) {
+			addDebugInfo("エラー: カメラストリームが見つかりません");
+			onError('カメラストリームが見つかりません。カメラを再接続してください。');
+			return;
+		}
+		setStatus('録画中...');
+		setIsRecording(true);
+
+		const mimeTypes = [
+			'video/webm;codecs=vp9',
+			'video/webm;codecs=vp8',
+			'video/webm',
+			'video/mp4'
+		];
+		let options = {};
+		for (const mimeType of mimeTypes) {
+			if (MediaRecorder.isTypeSupported(mimeType)) {
+				options = { mimeType };
+				addDebugInfo(`サポートされているmimeType: ${mimeType}`);
+				break;
+			}
+		}
+		const recordedChunks: BlobPart[] = [];
+		try {
+			mediaRecorderRef.current = new MediaRecorder(streamRef.current, options);
+			addDebugInfo(`MediaRecorder作成成功: ${mediaRecorderRef.current.state}`);
+		} catch (e) {
+			addDebugInfo(`MediaRecorderの作成に失敗: ${e}`);
+			onError('録画機能の初期化に失敗しました。ブラウザの互換性を確認してください。');
+			return;
+		}
+		mediaRecorderRef.current.ondataavailable = (event) => {
+			addDebugInfo(`データ利用可能: ${event.data.size} bytes`);
+			if (event.data.size > 0) {
+				recordedChunks.push(event.data);
+			}
+		};
+		mediaRecorderRef.current.onstop = async () => {
+			addDebugInfo(`MediaRecorder停止、チャンク数: ${recordedChunks.length}`);
+			if (recordedChunks.length === 0) {
+				addDebugInfo("エラー: 録画データがありません");
+				onError('録画データがありません。もう一度お試しください。');
+				return;
+			}
+			const blob = new Blob(recordedChunks, { type: 'video/webm' });
+			addDebugInfo(`Blob作成: ${blob.size} bytes`);
+			if (blob.size < 1000) {
+				addDebugInfo(`警告: 録画サイズが小さすぎます (${blob.size} bytes)`);
+				onError('録画データが不完全です。もう一度お試しください。');
+				return;
+			}
+			setRecordedVideoBlob(blob);
+			setStatus('録画完了！');
+			setIsRecording(false);
+			onComplete(true);
+		};
+		mediaRecorderRef.current.onerror = (event) => {
+			addDebugInfo(`MediaRecorderエラー: ${event}`);
+			onError('録画中にエラーが発生しました。もう一度お試しください。');
+		};
+		mediaRecorderRef.current.start(1000);
+		addDebugInfo("録画開始");
+	};
+
+	// ■ 連続録画停止（multiStep フラグが true の場合はタイマー経由の自動停止）
+	const stopRecording = (multiStep?: boolean) => {
+		if (mediaRecorderRef.current && (mediaRecorderRef.current.state === 'recording' || mediaRecorderRef.current.state === 'paused')) {
+			addDebugInfo(`録画停止リクエスト。現在の状態: ${mediaRecorderRef.current.state}`);
+			setStatus('録画完了。処理中...');
+			mediaRecorderRef.current.stop();
+			setIsRecording(false);
+		} else {
+			const state = mediaRecorderRef.current ? mediaRecorderRef.current.state : "MediaRecorderなし";
+			addDebugInfo(`録画を停止できません: ${state}`);
+			onError(`録画を停止できません。録画の状態: ${state}`);
+		}
+	};
+
+	// 録画動画をダウンロードするテスト用ボタンの処理
+	const downloadVideo = () => {
+		if (!recordedVideoBlob) return;
+		const url = URL.createObjectURL(recordedVideoBlob);
+		const a = document.createElement('a');
+		a.style.display = 'none';
+		a.href = url;
+		a.download = `face_video.webm`;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+	};
+
+	if (hasPermission === false) {
+		return (
+			<div className="bg-background/80 p-6 rounded-xl shadow-soft">
+				<div className="flex flex-col items-center justify-center space-y-4 text-center">
+					<div className="bg-red-500/10 text-red-500 p-4 rounded-lg mb-2 max-w-md">
+						<p className="text-lg font-medium">カメラへのアクセスが必要です</p>
+						<p className="mt-2">本人確認のため、カメラの使用を許可してください。</p>
+					</div>
+					<button
+						onClick={() => window.location.reload()}
+						className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90"
+					>
+						再試行
+					</button>
+				</div>
+			</div>
+		);
+	}
+
+	const reconnectCamera = async () => {
+		setStatus('カメラを再接続中...');
+		addDebugInfo("カメラ再接続試行");
+		await getAvailableCameras();
+		if (selectedCamera) {
+			await initializeCamera(selectedCamera);
+		} else {
+			await initializeCamera();
+		}
+	};
+
+	return (
+		<div className="bg-background/80 p-6 rounded-xl shadow-soft">
+			<div className="flex flex-col items-center space-y-4">
+				{/* カメラ選択 */}
+				{cameraDevices.length > 1 && (
+					<div className="w-full max-w-md">
+						<label className="block text-sm font-medium mb-1">カメラを選択:</label>
+						<select
+							value={selectedCamera}
+							onChange={handleCameraChange}
+							className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+						>
+							{cameraDevices.map((device) => (
+								<option key={device.deviceId} value={device.deviceId}>
+									{device.label || `カメラ ${cameraDevices.indexOf(device) + 1}`}
+								</option>
+							))}
+						</select>
+					</div>
+				)}
+				{/* ビデオプレビュー */}
+				<div
+					ref={videoContainerRef}
+					className="relative w-full max-w-md bg-black rounded-lg overflow-hidden flex justify-center items-center"
+					style={{
+						minHeight: "320px",
+						border: "1px solid #333"
+					}}
+				>
+					<video
+						ref={videoRef}
+						autoPlay
+						playsInline
+						muted
+						style={{
+							display: "block",
+							width: "100%",
+							height: "auto",
+							minHeight: "320px",
+							objectFit: "cover",
+							backgroundColor: "#000",
+						}}
+					/>
+					<img
+						src={poseOverlays[currentPoseIndex].src}
+						alt={poseOverlays[currentPoseIndex].alt}
+						className="absolute top-0 left-0 w-full h-full object-contain pointer-events-none"
+					/>
+					{hasPermission === true && !cameraReady && (
+						<div className="absolute inset-0 flex items-center justify-center bg-black/50">
+							<div className="text-center">
+								<LoadingSpinner/>
+								<p className="text-white mt-2">カメラを準備中...</p>
+							</div>
+						</div>
+					)}
+				</div>
+				{/* ステータス・案内表示 */}
+				<p className="text-foreground/80 text-center">
+					{poseOverlays[currentPoseIndex].instructions || status}
+				</p>
+				{/* 操作ボタン */}
+				<div className="flex space-x-4">
+					{!isRecording && (
+						<>
+							<button
+								onClick={reconnectCamera}
+								className="px-4 py-2 bg-border text-foreground rounded-lg hover:bg-border/80 mr-2"
+							>
+								カメラを再接続
+							</button>
+							<button
+								onClick={startMultiStepRecording}
+								disabled={hasPermission !== true}
+								className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+							>
+								録画開始
+							</button>
+						</>
+					)}
+					{isRecording && (
+						<button
+							onClick={() => stopRecording()}
+							className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+						>
+							録画停止
+						</button>
+					)}
+				</div>
+				{/* 録画完了後のダウンロードボタン */}
+				{recordedVideoBlob && (
+					<button
+						onClick={downloadVideo}
+						className="px-4 py-2 bg-blue-500 text-white rounded-lg"
+					>
+						動画をダウンロード
+					</button>
+				)}
+			</div>
+		</div>
+	);
+};
+
+export default FaceVideoCapture;
+-e 
+### FILE: ./src/components/verification/camera-test.tsx
+
+'use client';
+
+import React, { useRef, useState, useEffect } from 'react';
+
+/**
+ * カメラテスト用のシンプルなコンポーネント
+ * 撮影・録画・アップロード機能はなく、カメラの表示テストのみを行う
+ */
+const CameraTest: React.FC = () => {
+	const videoRef = useRef<HTMLVideoElement>(null);
+	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const streamRef = useRef<MediaStream | null>(null);
+
+	const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+	const [selectedCamera, setSelectedCamera] = useState<string>('');
+	const [log, setLog] = useState<string>('初期化中...\n');
+	const [showCanvas, setShowCanvas] = useState<boolean>(false);
+	const [cameraReady, setCameraReady] = useState<boolean>(false);
+	const [cameraSize, setCameraSize] = useState<{ width: number, height: number }>({ width: 640, height: 480 });
+
+	// ログを追加する関数
+	const addLog = (message: string) => {
+		setLog(prev => `${new Date().toLocaleTimeString()}: ${message}\n${prev}`);
+	};
+
+	// 利用可能なカメラデバイスを取得
+	const getAvailableCameras = async () => {
+		try {
+			addLog("カメラデバイス一覧を取得中...");
+			const devices = await navigator.mediaDevices.enumerateDevices();
+			const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+			addLog(`検出されたカメラデバイス: ${videoDevices.length}台`);
+			videoDevices.forEach((device, index) => {
+				addLog(`デバイス ${index + 1}: ${device.label || '名称なし'} (${device.deviceId.substring(0, 10)}...)`);
+			});
+
+			setCameraDevices(videoDevices);
+
+			// 初期デバイスを設定
+			if (videoDevices.length > 0 && !selectedCamera) {
+				setSelectedCamera(videoDevices[0].deviceId);
+				addLog(`初期カメラを設定: ${videoDevices[0].label || 'デバイス1'}`);
+			}
+
+			return videoDevices;
+		} catch (err) {
+			addLog(`カメラデバイス取得エラー: ${err}`);
+			return [];
+		}
+	};
+
+	// 初期化時にカメラデバイスを取得
+	useEffect(() => {
+		getAvailableCameras();
+	}, []);
+
+	// カメラの初期化と開始
+	const startCamera = async (deviceId?: string) => {
+		try {
+			// すでに使用中のカメラがあれば停止
+			if (streamRef.current) {
+				streamRef.current.getTracks().forEach(track => track.stop());
+				addLog("既存のカメラストリームを停止しました");
+			}
+
+			// カメラの制約オブジェクト
+			const constraints: MediaStreamConstraints = {
+				audio: false,
+				video: deviceId
+					? { deviceId: { exact: deviceId } }
+					: true
+			};
+
+			addLog(`カメラに接続を試みます... ${deviceId ? `デバイスID: ${deviceId.substring(0, 10)}...` : '既定のカメラ'}`);
+
+			// カメラへのアクセス要求
+			const stream = await navigator.mediaDevices.getUserMedia(constraints);
+			addLog(`カメラ接続成功: ビデオトラック数=${stream.getVideoTracks().length}`);
+
+			// ビデオトラックの情報を確認
+			const videoTrack = stream.getVideoTracks()[0];
+			if (videoTrack) {
+				addLog(`ビデオトラック情報: ${videoTrack.label}`);
+
+				// 設定を取得
+				const settings = videoTrack.getSettings();
+				addLog(`ビデオ設定: 幅=${settings.width || '不明'}, 高さ=${settings.height || '不明'}, フレームレート=${settings.frameRate || '不明'}`);
+
+				if (settings.width && settings.height) {
+					setCameraSize({ width: settings.width, height: settings.height });
+				}
+			}
+
+			streamRef.current = stream;
+
+			// ビデオ要素にストリームをセット
+			if (videoRef.current) {
+				addLog("ビデオ要素にストリームをセットします");
+				videoRef.current.srcObject = stream;
+				videoRef.current.onloadedmetadata = () => {
+					addLog("ビデオのメタデータを読み込みました");
+
+					if (videoRef.current) {
+						videoRef.current.play()
+							.then(() => {
+								addLog("ビデオの再生を開始しました");
+								setCameraReady(true);
+							})
+							.catch(err => {
+								addLog(`ビデオ再生エラー: ${err}`);
+							});
+					}
+				};
+			} else {
+				addLog("エラー: ビデオ要素が見つかりません");
+			}
+
+			return true;
+		} catch (err) {
+			addLog(`カメラ初期化エラー: ${err}`);
+			return false;
+		}
+	};
+
+	// カメラ選択時の処理
+	const handleCameraChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+		const deviceId = e.target.value;
+		addLog(`カメラ変更: ${deviceId.substring(0, 10)}...`);
+		setSelectedCamera(deviceId);
+		setCameraReady(false);
+		startCamera(deviceId);
+	};
+
+	// キャンバスにビデオフレームをキャプチャ
+	const captureFrame = () => {
+		if (videoRef.current && canvasRef.current) {
+			const video = videoRef.current;
+			const canvas = canvasRef.current;
+
+			// キャンバスサイズをビデオに合わせる
+			canvas.width = video.videoWidth;
+			canvas.height = video.videoHeight;
+
+			const ctx = canvas.getContext('2d');
+			if (ctx) {
+				// ビデオフレームをキャンバスに描画
+				ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+				// 画像データを取得して解析
+				try {
+					const imageData = ctx.getImageData(0, 0, 20, 20);
+					let totalBrightness = 0;
+
+					// 最初の20x20ピクセルの明るさを計算
+					for (let i = 0; i < 20 * 20 * 4; i += 4) {
+						const r = imageData.data[i];
+						const g = imageData.data[i + 1];
+						const b = imageData.data[i + 2];
+						// グレースケール変換（輝度を計算）
+						const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+						totalBrightness += brightness;
+					}
+
+					const averageBrightness = totalBrightness / (20 * 20);
+					addLog(`フレームキャプチャ: 平均輝度=${averageBrightness.toFixed(2)}`);
+
+					if (averageBrightness < 10) {
+						addLog("警告: 画像が非常に暗いです。カメラが正しく機能していない可能性があります。");
+					}
+				} catch (err) {
+					addLog(`画像解析エラー: ${err}`);
+				}
+
+				setShowCanvas(true);
+			}
+		}
+	};
+
+	return (
+		<div className="p-6 bg-background/80 rounded-xl shadow-soft">
+			<h2 className="text-xl font-medium text-center mb-6">カメラテスト</h2>
+
+			{/* カメラ選択 */}
+			<div className="mb-4">
+				<label className="block text-sm font-medium mb-1">カメラを選択:</label>
+				<div className="flex space-x-2">
+					<select
+						value={selectedCamera}
+						onChange={handleCameraChange}
+						className="flex-1 px-3 py-2 bg-background border border-border rounded-lg"
+					>
+						{cameraDevices.map((device) => (
+							<option key={device.deviceId} value={device.deviceId}>
+								{device.label || `カメラ ${cameraDevices.indexOf(device) + 1}`}
+							</option>
+						))}
+					</select>
+					<button
+						onClick={() => getAvailableCameras()}
+						className="px-3 py-2 bg-border text-foreground rounded-lg hover:bg-border/80"
+					>
+						更新
+					</button>
+				</div>
+			</div>
+
+			{/* カメラ表示エリア */}
+			<div className="mb-4 relative">
+				<div className="w-full bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '4/3' }}>
+					<video
+						ref={videoRef}
+						autoPlay
+						playsInline
+						muted
+						style={{
+							width: '100%',
+							height: 'auto',
+							display: 'block',
+							backgroundColor: '#000',
+						}}
+					/>
+
+					{!cameraReady && (
+						<div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white">
+							カメラの準備中...
+						</div>
+					)}
+				</div>
+
+				{/* カメラ情報 */}
+				<div className="mt-2 text-sm">
+					<p>解像度: {cameraSize.width} x {cameraSize.height}</p>
+				</div>
+			</div>
+
+			{/* 操作ボタン */}
+			<div className="flex flex-wrap gap-2 mb-4">
+				<button
+					onClick={() => startCamera(selectedCamera)}
+					className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90"
+				>
+					カメラを開始
+				</button>
+				<button
+					onClick={captureFrame}
+					disabled={!cameraReady}
+					className="px-4 py-2 bg-highlight text-white rounded-lg hover:bg-highlight/90 disabled:opacity-50"
+				>
+					フレームキャプチャ
+				</button>
+				<button
+					onClick={() => {
+						if (streamRef.current) {
+							streamRef.current.getTracks().forEach(track => track.stop());
+							addLog("カメラを停止しました");
+							setCameraReady(false);
+						}
+					}}
+					disabled={!cameraReady}
+					className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
+				>
+					カメラを停止
+				</button>
+			</div>
+
+			{/* キャプチャしたフレーム表示 */}
+			{showCanvas && (
+				<div className="mb-4">
+					<h3 className="text-sm font-medium mb-1">キャプチャしたフレーム:</h3>
+					<canvas
+						ref={canvasRef}
+						className="border border-border rounded-lg"
+						style={{ maxWidth: '100%', height: 'auto' }}
+					/>
+				</div>
+			)}
+
+			{/* ログ表示 */}
+			<div className="mt-4">
+				<h3 className="text-sm font-medium mb-1">カメラログ:</h3>
+				<pre className="p-3 text-xs bg-background/30 rounded-lg h-40 overflow-auto whitespace-pre-wrap">
+					{log}
+				</pre>
+			</div>
+		</div>
+	);
+};
+
+export default CameraTest;-e 
 ### FILE: ./src/components/verification/verification-status-v2.tsx
 
 'use client';
@@ -5190,453 +6107,299 @@ export default function VerificationStatusV2() {
 		</div>
 	);
 }-e 
-### FILE: ./src/components/verification/veriff-integration.tsx
-
-'use client';
-
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { useAuth } from '@/context/auth-context';
-import Button from '@/components/ui/button';
-import LoadingSpinner from '@/components/ui/loading-spinner';
-import { createVeriffSession, VeriffSession, VeriffStatus } from '@/lib/veriff';
-
-export default function VeriffIntegration() {
-	const { user } = useAuth();
-	const router = useRouter();
-	const [veriffSession, setVeriffSession] = useState<VeriffSession | null>(null);
-	const [status, setStatus] = useState<VeriffStatus>('pending');
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-
-	// ユーザーのVeriff状態を確認
-	useEffect(() => {
-		const checkVeriffStatus = async () => {
-			if (!user) return;
-
-			try {
-				const userDoc = await getDoc(doc(db, 'users', user.uid));
-				if (userDoc.exists() && userDoc.data().eKYC) {
-					const eKYC = userDoc.data().eKYC;
-					setStatus(eKYC.status || 'pending');
-
-					// すでにセッションがある場合
-					if (eKYC.sessionId) {
-						setVeriffSession({
-							sessionId: eKYC.sessionId,
-							sessionUrl: '',  // APIから取得する場合はここで設定
-							status: eKYC.status
-						});
-					}
-
-					// 検証が完了している場合
-					if (eKYC.status === 'completed') {
-						// 決済情報入力ステップに進む準備ができていることを示す
-						setTimeout(() => {
-							router.push('/register/payment');
-						}, 2000);
-					}
-				}
-			} catch (err) {
-				console.error('Error checking verification status:', err);
-				setError('検証状態の確認中にエラーが発生しました。');
-			}
-		};
-
-		checkVeriffStatus();
-	}, [user, router]);
-
-	// Veriffセッションを開始
-	const startVerification = async () => {
-		if (!user || !user.email) {
-			setError('ユーザー情報が取得できません。ログインし直してください。');
-			return;
-		}
-
-		setLoading(true);
-		setError(null);
-
-		try {
-			// Veriffセッションを作成
-			const session = await createVeriffSession(user.uid, user.email);
-
-			// セッション情報を保存
-			setVeriffSession(session);
-
-			// Firestoreにセッション情報を保存
-			await setDoc(doc(db, 'users', user.uid), {
-				eKYC: {
-					sessionId: session.sessionId,
-					status: 'pending',
-					createdAt: new Date().toISOString()
-				}
-			}, { merge: true });
-
-			// Veriffの検証ページにリダイレクト
-			window.location.href = session.sessionUrl;
-		} catch (err) {
-			console.error('Error starting verification:', err);
-			setError('検証の開始中にエラーが発生しました。後でもう一度お試しください。');
-			setLoading(false);
-		}
-	};
-
-	// モック実装用の関数（テスト/開発用）
-	const simulateVerification = async () => {
-		if (!user) return;
-
-		setLoading(true);
-		setError(null);
-
-		try {
-			// 検証完了をシミュレート
-			setTimeout(async () => {
-				const newStatus = 'completed';
-				setStatus(newStatus);
-
-				// Firestoreを更新
-				await setDoc(doc(db, 'users', user.uid), {
-					eKYC: {
-						sessionId: `mock-session-${Date.now()}`,
-						status: newStatus,
-						verifiedAt: new Date().toISOString()
-					},
-					registrationStep: 0  // eKYCステップ完了
-				}, { merge: true });
-
-				setLoading(false);
-
-				// 次のステップへ
-				setTimeout(() => {
-					router.push('/register/payment');
-				}, 1500);
-			}, 2000);
-		} catch (err) {
-			console.error('Error in mock verification:', err);
-			setError('検証のシミュレーション中にエラーが発生しました。');
-			setLoading(false);
-		}
-	};
-
-	// UI表示
-	const renderStatus = () => {
-		switch (status) {
-			case 'completed':
-				return (
-					<div className="bg-green-500/10 text-green-500 p-4 rounded-lg mb-6">
-						<div className="flex items-center">
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-							</svg>
-							<span className="font-medium">本人確認が完了しました。</span>
-						</div>
-						<p className="mt-2 text-sm">
-							決済情報の登録に進みます...
-						</p>
-					</div>
-				);
-			case 'failed':
-				return (
-					<div className="bg-red-500/10 text-red-500 p-4 rounded-lg mb-6">
-						<p className="font-medium">本人確認に失敗しました。</p>
-						<p className="mt-2 text-sm">
-							もう一度お試しいただくか、サポートにお問い合わせください。
-						</p>
-						<Button
-							onClick={startVerification}
-							className="mt-4"
-							disabled={loading}
-						>
-							再試行する
-						</Button>
-					</div>
-				);
-			default:
-				return (
-					<div className="space-y-6">
-						<div className="bg-orange-500/10 text-orange-500 p-4 rounded-lg mb-6">
-							<p>
-								安全なサービスのご提供のため、本人確認を行います。
-								有効な身分証明書（運転免許証、パスポート、マイナンバーカードなど）をご用意ください。
-							</p>
-						</div>
-
-						<div className="space-y-4">
-							<h3 className="text-lg font-medium">本人確認の流れ</h3>
-							<ol className="list-decimal pl-5 space-y-2">
-								<li>有効な身分証明書を用意する</li>
-								<li>本人確認を開始ボタンをクリックする</li>
-								<li>身分証の撮影（両面）</li>
-								<li>顔写真の撮影（本人確認）</li>
-								<li>審査完了（自動）</li>
-							</ol>
-						</div>
-
-						<div className="pt-4">
-							{process.env.NODE_ENV === 'development' ? (
-								// 開発環境では、モックボタンも表示
-								<div className="space-y-4">
-									<Button
-										onClick={startVerification}
-										disabled={loading}
-										className="w-full"
-									>
-										{loading ? <LoadingSpinner size="small" /> : '本人確認を開始する'}
-									</Button>
-									<Button
-										onClick={simulateVerification}
-										disabled={loading}
-										className="w-full bg-gray-500 hover:bg-gray-600"
-									>
-										{loading ? <LoadingSpinner size="small" /> : '(開発用) 検証完了をシミュレート'}
-									</Button>
-								</div>
-							) : (
-								<Button
-									onClick={startVerification}
-									disabled={loading}
-									className="w-full"
-								>
-									{loading ? <LoadingSpinner size="small" /> : '本人確認を開始する'}
-								</Button>
-							)}
-
-							<p className="mt-4 text-sm text-foreground/60 text-center">
-								本人確認は安全なシステムで行われ、あなたの個人情報は保護されます。<br />
-								Veriffのサービスを使用した本人確認プロセスを通じて、不正アクセスを防止します。
-							</p>
-						</div>
-					</div>
-				);
-		}
-	};
-
-	return (
-		<div className="bg-border/5 rounded-xl shadow-soft p-6">
-			<h2 className="text-xl font-semibold mb-6">本人確認 (eKYC)</h2>
-
-			{error && (
-				<div className="bg-red-500/10 text-red-500 p-4 rounded-lg mb-6">
-					{error}
-				</div>
-			)}
-
-			{renderStatus()}
-		</div>
-	);
-}-e 
 ### FILE: ./src/components/verification/verification-status.tsx
 
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Button from '@/components/ui/button';
-import LoadingSpinner from '@/components/ui/loading-spinner';
-import { useVeriff } from '@/hooks/use-veriff';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/auth-context';
-
-export default function VerificationStatus() {
+import { doc, updateDoc, getFirestore } from 'firebase/firestore';
+import { VerifiedIcon, VerificationPendingIcon } from '@/components/icons/verification-icons';
+import LoadingSpinner from '@/components/ui/loading-spinner';
+import FaceVideoCapture from './face-video-capture';
+import CameraTest from '@/components/verification/camera-test';
+const VerificationStatus = () => {
+	const { user, userData, loading } = useAuth();
 	const router = useRouter();
-	const { user } = useAuth();
-	const { status, error, isLoading, startVerification, simulateVerification } = useVeriff();
-	const [countdown, setCountdown] = useState(5);
+	const [currentStep, setCurrentStep] = useState<number>(1);
+	const [showCamera, setShowCamera] = useState<boolean>(false);
+	const [error, setError] = useState<string | null>(null);
+	const [privacyAgreed, setPrivacyAgreed] = useState<boolean>(false);
+	const [isCompleted, setIsCompleted] = useState<boolean>(false);
 
-	// 検証結果をリアルタイムで監視
+	// ユーザーの登録ステップを追跡
 	useEffect(() => {
+		if (!loading && userData) {
+			// faceVideoが存在すれば顔認証ステップは完了
+			const faceVideoCompleted = userData.faceVideo && userData.faceVideo.storagePath;
+
+			// 現在のステップを決定
+			if (!faceVideoCompleted) {
+				setCurrentStep(1); // 顔認証ステップ
+			} else {
+				setCurrentStep(2); // 完了ステップ
+			}
+		}
+	}, [userData, loading]);
+
+	// ローディング状態
+	if (loading) {
+		return (
+			<div className="flex justify-center items-center py-10">
+				<LoadingSpinner size="large" />
+			</div>
+		);
+	}
+
+	// ユーザーがログインしていない場合
+	if (!user) {
+		return (
+			<div className="bg-red-500/10 text-red-500 p-6 rounded-lg max-w-md mx-auto">
+				<p className="font-medium">ログインが必要です</p>
+				<p className="mt-2">本人確認を行うにはログインしてください。</p>
+				<button
+					onClick={() => router.push('/login')}
+					className="mt-4 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90"
+				>
+					ログインページへ
+				</button>
+			</div>
+		);
+	}
+
+	// 登録ステップの完了処理
+	const completeStep = async (step: number) => {
 		if (!user) return;
 
-		const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
-			if (snapshot.exists()) {
-				const data = snapshot.data();
-				if (data.eKYC?.status === 'completed') {
-					// 自動的に次のステップに進むためのカウントダウン
-					const timer = setInterval(() => {
-						setCountdown((prev) => {
-							if (prev <= 1) {
-								clearInterval(timer);
-								router.push('/register/payment');
-								return 0;
-							}
-							return prev - 1;
-						});
-					}, 1000);
+		try {
+			const db = getFirestore();
+			const userDocRef = doc(db, 'users', user.uid);
 
-					return () => clearInterval(timer);
-				}
-			}
-		});
+			// 現在のステップを更新
+			await updateDoc(userDocRef, {
+				registrationStep: 3 // 本人確認ステップを完了
+			});
 
-		// クリーンアップ
-		return () => unsubscribe();
-	}, [user, router]);
-
-	// UI表示をステータスに応じて切り替え
-	const renderContent = () => {
-		switch (status) {
-			case 'completed':
-				return (
-					<div className="bg-green-500/10 text-green-500 p-6 rounded-lg mb-6">
-						<div className="flex items-center mb-4">
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mr-3" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-							</svg>
-							<span className="text-lg font-medium">本人確認が完了しました</span>
-						</div>
-						<p className="mb-4">
-							お客様の本人確認が正常に完了しました。次のステップに進みます。
-						</p>
-						<div className="flex items-center justify-between">
-							<span className="text-sm">
-								{countdown}秒後に自動的に次のステップへ移動します...
-							</span>
-							<Button
-								onClick={() => router.push('/register/payment')}
-								variant="outline"
-								size="sm"
-							>
-								今すぐ次へ
-							</Button>
-						</div>
-					</div>
-				);
-
-			case 'failed':
-				return (
-					<div className="bg-red-500/10 text-red-500 p-6 rounded-lg mb-6">
-						<div className="flex items-center mb-4">
-							<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mr-3" viewBox="0 0 20 20" fill="currentColor">
-								<path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-							</svg>
-							<span className="text-lg font-medium">本人確認に失敗しました</span>
-						</div>
-						<p className="mb-4">
-							本人確認に失敗しました。以下の一般的な問題をご確認ください：
-							<ul className="list-disc pl-5 mt-2 space-y-1 text-sm">
-								<li>身分証明書が鮮明に写っていない</li>
-								<li>顔写真と身分証明書の本人が一致していない</li>
-								<li>有効期限が切れた身分証明書を使用している</li>
-								<li>推奨される身分証明書を使用していない</li>
-							</ul>
-						</p>
-						<Button
-							onClick={startVerification}
-							className="w-full mt-4"
-							disabled={isLoading}
-						>
-							再試行する
-						</Button>
-					</div>
-				);
-
-			case 'pending':
-			default:
-				return (
-					<div className="space-y-6">
-						<div className="bg-blue-500/10 text-blue-500 p-6 rounded-lg">
-							<h3 className="font-medium text-lg mb-2">本人確認について</h3>
-							<p className="mb-4">
-								本人確認は身分証明書と顔写真を使って、ご本人様であることを確認するプロセスです。
-								これにより、サービスの安全性と信頼性を高めています。
-							</p>
-							<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-								<div className="bg-blue-500/5 p-4 rounded-lg">
-									<div className="text-center mb-2">
-										<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto" viewBox="0 0 20 20" fill="currentColor">
-											<path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm3 1h6v4H7V5zm8 8v2h1v1H4v-1h1v-2a1 1 0 011-1h8a1 1 0 011 1z" clipRule="evenodd" />
-										</svg>
-									</div>
-									<h4 className="font-medium text-center mb-1">身分証撮影</h4>
-									<p className="text-xs text-center">
-										身分証明書の表面と裏面を撮影します
-									</p>
-								</div>
-								<div className="bg-blue-500/5 p-4 rounded-lg">
-									<div className="text-center mb-2">
-										<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto" viewBox="0 0 20 20" fill="currentColor">
-											<path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-										</svg>
-									</div>
-									<h4 className="font-medium text-center mb-1">顔写真撮影</h4>
-									<p className="text-xs text-center">
-										自撮りで本人確認用の写真を撮影します
-									</p>
-								</div>
-								<div className="bg-blue-500/5 p-4 rounded-lg">
-									<div className="text-center mb-2">
-										<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto" viewBox="0 0 20 20" fill="currentColor">
-											<path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-										</svg>
-									</div>
-									<h4 className="font-medium text-center mb-1">自動審査</h4>
-									<p className="text-xs text-center">
-										AIによる自動審査ですぐに結果が出ます
-									</p>
-								</div>
-							</div>
-						</div>
-
-						<div>
-							<h3 className="text-lg font-medium mb-3">本人確認に必要なもの</h3>
-							<ul className="list-disc pl-5 space-y-2">
-								<li>有効な身分証明書（運転免許証、パスポート、マイナンバーカードなど）</li>
-								<li>カメラ付きデバイス（スマートフォン、PC）</li>
-								<li>良好な照明環境</li>
-							</ul>
-						</div>
-
-						<div className="pt-4">
-							{process.env.NODE_ENV === 'development' ? (
-								// 開発環境では、本番と開発用のボタンを表示
-								<div className="space-y-4">
-									<Button
-										onClick={startVerification}
-										disabled={isLoading}
-										className="w-full"
-									>
-										{isLoading ? <LoadingSpinner size="small" /> : '本人確認を開始する'}
-									</Button>
-									<Button
-										onClick={simulateVerification}
-										disabled={isLoading}
-										className="w-full bg-gray-500 hover:bg-gray-600"
-									>
-										{isLoading ? <LoadingSpinner size="small" /> : '(開発用) 検証完了をシミュレート'}
-									</Button>
-								</div>
-							) : (
-								<Button
-									onClick={startVerification}
-									disabled={isLoading}
-									className="w-full"
-								>
-									{isLoading ? <LoadingSpinner size="small" /> : '本人確認を開始する'}
-								</Button>
-							)}
-						</div>
-					</div>
-				);
+			// 次のステップに進む
+			router.push('/register/payment');
+		} catch (error) {
+			console.error('ステップ更新エラー:', error);
+			setError('処理中にエラーが発生しました。もう一度お試しください。');
 		}
 	};
 
-	return (
-		<div className="bg-border/5 rounded-xl shadow-soft p-6">
-			<h2 className="text-xl font-semibold mb-6">本人確認 (eKYC)</h2>
+	// 顔認証の完了処理
+	const handleVerificationComplete = (success: boolean) => {
+		if (success) {
+			setIsCompleted(true);
+			// 少し遅延を入れて次のステップに進む
+			setTimeout(() => {
+				completeStep(1);
+			}, 1500);
+		}
+	};
 
-			{error && (
-				<div className="bg-red-500/10 text-red-500 p-4 rounded-lg mb-6">
-					{error}
+	// エラー処理
+	const handleError = (errorMessage: string) => {
+		setError(errorMessage);
+		setShowCamera(false);
+	};
+
+	// 顔認証が既に完了している場合
+	if (userData?.faceVideo && userData.faceVideo.storagePath) {
+		return (
+			<div className="max-w-md mx-auto">
+				<div className="bg-highlight/10 p-6 rounded-xl shadow-soft mb-8">
+					<div className="flex flex-col items-center text-center space-y-3">
+						<div className="w-12 h-12 bg-highlight/20 text-highlight rounded-full flex items-center justify-center">
+							<VerifiedIcon size={24} />
+						</div>
+						<h3 className="text-lg font-medium">顔認証登録済み</h3>
+						<p className="text-foreground/70">
+							顔認証の登録が完了しています。次のステップに進むことができます。
+							{userData.faceVideo.confirmed === false && (
+								<span className="text-red-500 block mt-2">
+									※システムによる確認中です。問題があれば後ほどご連絡いたします。
+								</span>
+							)}
+						</p>
+						<button
+							onClick={() => completeStep(1)}
+							className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90"
+						>
+							次へ進む
+						</button>
+					</div>
 				</div>
-			)}
+			</div>
+		);
+	}
 
-			{renderContent()}
+	return (
+		<div className="max-w-md mx-auto mt-8">
+			<div className="bg-border/5 p-6 rounded-xl shadow-soft mb-8">
+				<h2 className="text-xl font-medium text-center mb-4">本人確認</h2>
+				{isCompleted ? (
+					<div className="flex flex-col items-center text-center space-y-3 py-4">
+						<div className="w-12 h-12 bg-highlight/20 text-highlight rounded-full flex items-center justify-center">
+							<VerifiedIcon size={24} />
+						</div>
+						<h3 className="text-lg font-medium">顔認証登録完了</h3>
+						<p className="text-foreground/70">顔認証の登録が完了しました。次の手順に進みます...</p>
+						<LoadingSpinner size="small" />
+					</div>
+				) : showCamera ? (
+					<FaceVideoCapture 
+						onComplete={handleVerificationComplete} 
+						onError={handleError} 
+					/>
+				) : (
+					<div className="flex flex-col items-center space-y-6">
+						<div className="text-center">
+							<p className="mb-3 text-foreground/80">
+								本人確認のため、顔認証を行います。顔動画を撮影して登録してください。
+							</p>
+							<div className="flex justify-center">
+								<div className="w-48 h-48 bg-border/10 rounded-full flex items-center justify-center text-foreground/60">
+									<svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+									</svg>
+								</div>
+							</div>
+						</div>
+						
+						{error && (
+							<div className="bg-red-500/10 text-red-500 p-4 rounded-lg w-full max-w-md">
+								{error}
+							</div>
+						)}
+						
+						<div className="w-full max-w-md">
+							<div className="bg-border/5 p-4 rounded-lg text-sm text-foreground/80">
+								<h4 className="font-medium text-foreground">撮影時の注意事項:</h4>
+								<ul className="list-disc pl-5 mt-2 space-y-1">
+									<li>明るい場所で顔が明確に見えるようにしてください</li>
+									<li>録画中は顔を左右にゆっくり動かしてください</li>
+									<li>サングラス、マスク、帽子などを着用しないでください</li>
+									<li>撮影した顔動画は本人確認の目的でのみ使用されます</li>
+								</ul>
+							</div>
+							
+							<div className="mt-4 flex items-start space-x-2">
+								<input
+									type="checkbox"
+									id="privacy-agreement"
+									checked={privacyAgreed}
+									onChange={(e) => setPrivacyAgreed(e.target.checked)}
+									className="mt-1"
+								/>
+								<label htmlFor="privacy-agreement" className="text-sm text-foreground/80">
+									顔動画の撮影・保存に同意します。この情報は本人確認とトラブル時の照合にのみ使用され、
+									プライバシーポリシーに則って管理されます。
+								</label>
+							</div>
+						</div>
+						
+						<button
+							onClick={() => setShowCamera(true)}
+							disabled={!privacyAgreed}
+							className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							顔認証を開始
+						</button>
+					</div>
+				)}
+			</div>
+			
+			{/* FAQ セクション */}
+			<div className="bg-border/5 rounded-xl p-6 shadow-soft">
+				<h3 className="text-lg font-medium mb-4">よくある質問</h3>
+				<div className="space-y-4">
+					<details className="group">
+						<summary className="flex justify-between items-center cursor-pointer list-none">
+							<span className="font-medium">なぜ顔認証が必要なのですか？</span>
+							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+							</svg>
+						</summary>
+						<div className="mt-2 text-sm text-foreground/70 pl-1">
+							カフェ運営上の不正利用防止のために本人確認を行っています。より良いサービス提供のためご協力お願いいたします。
+						</div>
+					</details>
+					
+					<details className="group">
+						<summary className="flex justify-between items-center cursor-pointer list-none">
+							<span className="font-medium">撮影した顔動画はどのように管理されますか？</span>
+							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+							</svg>
+						</summary>
+						<div className="mt-2 text-sm text-foreground/70 pl-1">
+							撮影した顔動画は暗号化された形で安全に保管され、厳格なアクセス制限のもとで管理されます。会員様ご本人と当社の管理者のみがアクセスでき、本人確認以外の目的では使用いたしません。
+						</div>
+					</details>
+					
+					<details className="group">
+						<summary className="flex justify-between items-center cursor-pointer list-none">
+							<span className="font-medium">顔認証に失敗した場合はどうすればいいですか？</span>
+							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+							</svg>
+						</summary>
+						<div className="mt-2 text-sm text-foreground/70 pl-1">
+							顔認証に失敗した場合は、明るい場所で再度撮影をお試しください。何度も失敗する場合は、カスタマーサポートにご連絡いただくか、店舗スタッフにお問い合わせください。
+						</div>
+					</details>
+					<details className="group">
+						<summary className="flex justify-between items-center cursor-pointer list-none">
+							<span className="font-medium">本人確認に失敗した場合はどうなりますか？</span>
+							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+							</svg>
+						</summary>
+						<div className="mt-2 text-sm text-foreground/70 pl-1">
+							再度お試しいただけます。複数回失敗する場合は、以下をご確認ください：
+							<ul className="list-disc pl-5 mt-1 space-y-1">
+								<li>身分証明書が鮮明に写っているか</li>
+								<li>顔写真と身分証明書の本人が一致しているか</li>
+								<li>身分証明書の有効期限が切れていないか</li>
+								<li>十分な明るさがあるか</li>
+							</ul>
+							何度も失敗する場合は、お問い合わせフォームからサポートにご連絡ください。
+						</div>
+					</details>
+
+					<details className="group">
+						<summary className="flex justify-between items-center cursor-pointer list-none">
+							<span className="font-medium">カメラやマイクへのアクセス許可はなぜ必要ですか？</span>
+							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+							</svg>
+						</summary>
+						<div className="mt-2 text-sm text-foreground/70 pl-1">
+							本人確認プロセスでは、身分証明書の撮影と顔認証のためにカメラアクセスが必要です。これらの許可は本人確認プロセスのみに使用され、安全に管理されます。許可を拒否すると、本人確認プロセスを完了できません。
+						</div>
+					</details>
+
+					<details className="group">
+						<summary className="flex justify-between items-center cursor-pointer list-none">
+							<span className="font-medium">本人確認はどのくらいの時間がかかりますか？</span>
+							<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+								<path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+							</svg>
+						</summary>
+						<div className="mt-2 text-sm text-foreground/70 pl-1">
+							本人確認プロセス全体は2〜5分程度で完了します。
+						</div>
+					</details>
+				</div>
+			</div>
 		</div>
 	);
-}-e 
+};
+
+export default VerificationStatus;-e 
 ### FILE: ./src/components/verification/verification-complete.tsx
 
 'use client';
@@ -5753,6 +6516,164 @@ export default function VerificationComplete({
 		</motion.div>
 	);
 }-e 
+### FILE: ./src/components/verification/face-verification-section.tsx
+
+'use client';
+
+import React, { useState } from 'react';
+import FaceVideoCapture from './face-video-capture';
+import { useAuth } from '@/context/auth-context';
+import LoadingSpinner from '@/components/ui/loading-spinner';
+
+interface FaceVerificationSectionProps {
+	onComplete: () => void;
+}
+
+const FaceVerificationSection: React.FC<FaceVerificationSectionProps> = ({ onComplete }) => {
+	const { userData, loading } = useAuth();
+	const [showCamera, setShowCamera] = useState<boolean>(false);
+	const [error, setError] = useState<string | null>(null);
+	const [privacyAgreed, setPrivacyAgreed] = useState<boolean>(false);
+	const [isCompleted, setIsCompleted] = useState<boolean>(false);
+
+	// ローディング状態のハンドリング
+	if (loading) {
+		return (
+			<div className="flex justify-center items-center py-6">
+				<LoadingSpinner/>
+			</div>
+		);
+	}
+
+	// 顔認証が既に完了している場合
+	if (userData?.faceVideo && userData.faceVideo.storagePath) {
+		return (
+			<div className="bg-highlight/10 p-6 rounded-xl shadow-soft mb-8">
+				<div className="flex flex-col items-center text-center space-y-3">
+					<div className="w-12 h-12 bg-highlight/20 text-highlight rounded-full flex items-center justify-center">
+						<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+						</svg>
+					</div>
+					<h3 className="text-lg font-medium">顔認証登録済み</h3>
+					<p className="text-foreground/70">
+						顔認証の登録が完了しています。
+						{userData.faceVideo.confirmed === false && (
+							<span className="text-red-500 block mt-2">
+								※システムによる確認中です。問題があれば後ほどご連絡いたします。
+							</span>
+						)}
+					</p>
+					<button
+						onClick={onComplete}
+						className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90"
+					>
+						次へ進む
+					</button>
+				</div>
+			</div>
+		);
+	}
+
+	// 顔認証の完了処理
+	const handleVerificationComplete = (success: boolean) => {
+		if (success) {
+			setIsCompleted(true);
+			// 少し遅延を入れて次のステップに進む
+			setTimeout(() => {
+				onComplete();
+			}, 1500);
+		}
+	};
+
+	// エラー処理
+	const handleError = (errorMessage: string) => {
+		setError(errorMessage);
+		setShowCamera(false);
+	};
+
+	return (
+		<div className="bg-border/5 p-6 rounded-xl shadow-soft mb-8">
+			<h2 className="text-xl font-medium text-center mb-4">顔認証</h2>
+
+			{isCompleted ? (
+				<div className="flex flex-col items-center text-center space-y-3 py-4">
+					<div className="w-12 h-12 bg-highlight/20 text-highlight rounded-full flex items-center justify-center">
+						<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+						</svg>
+					</div>
+					<h3 className="text-lg font-medium">顔認証登録完了</h3>
+					<p className="text-foreground/70">顔認証の登録が完了しました。次の手順に進みます...</p>
+					<LoadingSpinner size="small" />
+				</div>
+			) : showCamera ? (
+				<FaceVideoCapture
+					onComplete={handleVerificationComplete}
+					onError={handleError}
+				/>
+			) : (
+				<div className="flex flex-col items-center space-y-6">
+					<div className="text-center">
+						<p className="mb-3 text-foreground/80">
+							本人確認のため、顔認証を行います。顔動画を撮影して登録してください。
+						</p>
+						<div className="flex justify-center">
+							<img
+								src="/images/face-verification-sample.svg"
+								alt="顔認証イメージ"
+								className="w-48 h-auto opacity-80"
+							/>
+						</div>
+					</div>
+
+					{error && (
+						<div className="bg-red-500/10 text-red-500 p-4 rounded-lg w-full max-w-md">
+							{error}
+						</div>
+					)}
+
+					<div className="w-full max-w-md">
+						<div className="bg-border/5 p-4 rounded-lg text-sm text-foreground/80">
+							<h4 className="font-medium text-foreground">撮影時の注意事項:</h4>
+							<ul className="list-disc pl-5 mt-2 space-y-1">
+								<li>明るい場所で顔が明確に見えるようにしてください</li>
+								<li>録画中は顔を左右にゆっくり動かしてください</li>
+								<li>サングラス、マスク、帽子などを着用しないでください</li>
+								<li>撮影した顔動画は本人確認の目的でのみ使用されます</li>
+							</ul>
+						</div>
+
+						<div className="mt-4 flex items-start space-x-2">
+							<input
+								type="checkbox"
+								id="privacy-agreement"
+								checked={privacyAgreed}
+								onChange={(e) => setPrivacyAgreed(e.target.checked)}
+								className="mt-1"
+							/>
+							<label htmlFor="privacy-agreement" className="text-sm text-foreground/80">
+								顔動画の撮影・保存に同意します。この情報は本人確認とトラブル時の照合にのみ使用され、
+								<span className="text-accent hover:underline cursor-pointer">プライバシーポリシー</span>
+								に則って管理されます。
+							</label>
+						</div>
+					</div>
+
+					<button
+						onClick={() => setShowCamera(true)}
+						disabled={!privacyAgreed}
+						className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+					>
+						顔認証を開始
+					</button>
+				</div>
+			)}
+		</div>
+	);
+};
+
+export default FaceVerificationSection;-e 
 ### FILE: ./src/components/games/AudioPermissionModal.tsx
 
 'use client';
@@ -5946,11 +6867,11 @@ export default function GameSection({
 	return (
 		<div
 			ref={sectionRef}
-			className={`relative min-h-screen py-0 md:py-0 transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-50'}`}
+			className={`relative min-h-screen py-0 md:py-28 transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-50'}`}
 		>
-			<div className="container mx-auto px-4">
+			<div className="container mx-auto">
 				<div className="md:hidden flex flex-col">
-					<div className="sticky top-28 z-10 h-[40vh] mb-8">
+					<div className="sticky top-0 z-10 h-[200px] mb-8">
 						<StickyGameVideo
 							videoSrc={game.videoSrc}
 							title={game.title}
@@ -5960,9 +6881,8 @@ export default function GameSection({
 							onAudioStateChange={handleAudioStateChange}
 						/>
 					</div>
-					<div className="max-w-3xl mx-auto">
-						<h2 className="text-3xl font-bold mb-2">{game.title}</h2>
-						<p className="mb-8 text-lg">{game.description}</p>
+					<div className="w-full mx-auto mb-20 p-4">
+						{gameTitleDetails(game)}
 						{renderGameDetails(game)}
 					</div>
 				</div>
@@ -5996,24 +6916,66 @@ export default function GameSection({
 		return (
 			<>
 				<div className="w-full">
-					<h2 className="text-3xl font-bold mb-1 ml-2">{game.title}</h2>
-					<p className="mb-4 ml-2">{renderMarkdownText(game.description)}</p>
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 bg-border/10 p-6 rounded-2xl">
-						<div>
-							<h4 className="text-foreground/60 font-medium mb-2">プレイ人数</h4>
-							<p className="text-lg text-foreground/60">{game.playerCount}</p>
+					<h2 className="text-3xl font-bold mb-1">{game.title}</h2>
+					<p className="mb-4 text-sm sm:text-base">{renderMarkdownText(game.description)}</p>
+					<div className="bg-border/5 rounded-xl overflow-hidden shadow-sm">
+						{/* ヘッダー部分（オプション） */}
+						<div className="bg-background/30 p-0 md:p-4 border-b border-border/10">
+							<h3 className="text-base md:text-lg font-medium">ゲーム詳細</h3>
 						</div>
-						<div>
-							<h4 className="text-foreground/60 font-medium mb-2">推奨プレイ時間</h4>
-							<p className="text-lg text-foreground/60">{game.recommendedTime}</p>
-						</div>
-						<div>
-							<h4 className="text-foreground/60 font-medium mb-2">難易度</h4>
-							<p className="text-lg text-foreground/60">{game.difficulty}</p>
-						</div>
-						<div>
-							<h4 className="text-foreground/60 font-medium mb-2">ジャンル</h4>
-							<p className="text-lg text-foreground/60">{game.genre}</p>
+
+						{/* 情報グリッド */}
+						<div className="grid grid-cols-2 gap-2 p-0 md:p-5 sm:grid-cols-2 md:grid-cols-4 md:gap-4 mb-6">
+							{/* プレイ人数 */}
+							<div className="flex flex-col p-2 md:p-3 rounded-lg hover:bg-background/40 transition-colors duration-200">
+								<span className="text-xs md:text-sm text-foreground/50 mb-1">プレイ人数</span>
+								<div className="flex items-center">
+									<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5 text-accent/80 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+										<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+										<circle cx="9" cy="7" r="4"></circle>
+										<path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+										<path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+									</svg>
+									<span className="text-sm md:text-base font-medium">{game.playerCount}</span>
+								</div>
+							</div>
+
+							{/* 推奨プレイ時間 */}
+							<div className="flex flex-col p-2 md:p-3 rounded-lg hover:bg-background/40 transition-colors duration-200">
+								<span className="text-xs md:text-sm text-foreground/50 mb-1">プレイ時間</span>
+								<div className="flex items-center">
+									<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5 text-accent/80 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+										<circle cx="12" cy="12" r="10"></circle>
+										<polyline points="12 6 12 12 16 14"></polyline>
+									</svg>
+									<span className="text-sm md:text-base font-medium">{game.recommendedTime}</span>
+								</div>
+							</div>
+
+							{/* 難易度 */}
+							<div className="flex flex-col p-2 md:p-3 rounded-lg hover:bg-background/40 transition-colors duration-200">
+								<span className="text-xs md:text-sm text-foreground/50 mb-1">難易度</span>
+								<div className="flex items-center">
+									<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5 text-accent/80 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+										<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+										<path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+									</svg>
+									<span className="text-sm md:text-base font-medium">{game.difficulty}</span>
+								</div>
+							</div>
+
+							{/* ジャンル */}
+							<div className="flex flex-col p-2 md:p-3 rounded-lg hover:bg-background/40 transition-colors duration-200">
+								<span className="text-xs md:text-sm text-foreground/50 mb-1">ジャンル</span>
+								<div className="flex items-center">
+									<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5 text-accent/80 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+										<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+										<polyline points="2 17 12 22 22 17"></polyline>
+										<polyline points="2 12 12 17 22 12"></polyline>
+									</svg>
+									<span className="text-sm md:text-base font-medium">{game.genre}</span>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -6026,7 +6988,7 @@ export default function GameSection({
 			<>
 				<div className="mb-8">
 					<h3 className="text-xl font-bold mb-1">ルール・コツ</h3>
-					<p className="mb-2">
+					<p className="mb-2 text-sm sm:text-base">
 						{renderMarkdownText(game.rule)}
 					</p>
 				</div>
@@ -6038,15 +7000,17 @@ export default function GameSection({
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import GameSection from './GameSession';
 import AudioPermissionModal from './AudioPermissionModal';
 import { useAudio } from '@/context/AudioContext';
-import {Game} from '../../lib/gameData';
+import { Game } from '../../lib/gameData';
+
 interface GameCategoryLayoutProps {
 	games: Game[];
 	onActiveIndexChange?: (index: number) => void;
 }
+
 export default function GameCategoryLayout({
 	games,
 	onActiveIndexChange
@@ -6054,6 +7018,9 @@ export default function GameCategoryLayout({
 	const [activeGameIndex, setActiveGameIndex] = useState(0);
 	const [visibleSections, setVisibleSections] = useState<boolean[]>(Array(games.length).fill(false));
 	const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL || 'https://d1abhb48aypmuo.cloudfront.net/e-sports-sakura';
+	// 型を明示的に定義してrefを初期化
+	const sectionsRef = useRef<(HTMLDivElement | null)[]>([]);
+	const [isMobile, setIsMobile] = useState(false);
 
 	// オーディオコンテキストを使用
 	const { globalAudioEnabled } = useAudio();
@@ -6063,6 +7030,32 @@ export default function GameCategoryLayout({
 		...game,
 		videoSrc: game.videoSrc.startsWith('http') ? game.videoSrc : `${cloudFrontUrl}${game.videoSrc}`
 	}));
+
+	// refs配列を初期化
+	useEffect(() => {
+		// ゲームの数に合わせて参照配列を初期化
+		sectionsRef.current = sectionsRef.current.slice(0, games.length);
+		while (sectionsRef.current.length < games.length) {
+			sectionsRef.current.push(null);
+		}
+	}, [games.length]);
+
+	// 画面サイズの検出
+	useEffect(() => {
+		const checkIfMobile = () => {
+			setIsMobile(window.innerWidth < 768); // md breakpoint
+		};
+
+		// 初期化時にチェック
+		checkIfMobile();
+
+		// リサイズイベントをリッスン
+		window.addEventListener('resize', checkIfMobile);
+
+		return () => {
+			window.removeEventListener('resize', checkIfMobile);
+		};
+	}, []);
 
 	// Notify parent of active index changes
 	useEffect(() => {
@@ -6080,24 +7073,131 @@ export default function GameCategoryLayout({
 		});
 	};
 
-	// 可視セクションが変わったら、activeゲームを更新
-	useEffect(() => {
-		const visibleIndex = visibleSections.findIndex(isVisible => isVisible);
-		if (visibleIndex !== -1 && visibleIndex !== activeGameIndex) {
-			setActiveGameIndex(visibleIndex);
+	// スクロール位置に基づいてアクティブなインデックスを更新するための関数
+	const updateActiveIndexBasedOnScroll = () => {
+		// スマホでの特別な処理
+		if (isMobile) {
+			const scrollPosition = window.scrollY + window.innerHeight / 2;
+
+			// sectionsRefに格納されている要素の位置をチェック
+			let closestIndex = 0;
+			let closestDistance = Infinity;
+
+			sectionsRef.current.forEach((section, index) => {
+				if (section) {
+					const rect = section.getBoundingClientRect();
+					const sectionMiddle = rect.top + window.scrollY + rect.height / 2;
+					const distance = Math.abs(scrollPosition - sectionMiddle);
+
+					if (distance < closestDistance) {
+						closestDistance = distance;
+						closestIndex = index;
+					}
+				}
+			});
+
+			if (closestIndex !== activeGameIndex) {
+				setActiveGameIndex(closestIndex);
+			}
+		} else {
+			// デスクトップでは従来のvisibleSectionsベースの処理
+			const visibleIndex = visibleSections.findIndex(isVisible => isVisible);
+			if (visibleIndex !== -1 && visibleIndex !== activeGameIndex) {
+				setActiveGameIndex(visibleIndex);
+			}
 		}
-	}, [visibleSections, activeGameIndex]);
+	};
+
+	// スクロールイベントとIntersection Observerの両方を使用
+	useEffect(() => {
+		// スクロールイベントリスナー（特にモバイル向け）
+		window.addEventListener('scroll', updateActiveIndexBasedOnScroll);
+
+		return () => {
+			window.removeEventListener('scroll', updateActiveIndexBasedOnScroll);
+		};
+	}, [visibleSections, activeGameIndex, isMobile]);
+
+	// 可視セクションが変わったら、activeゲームを更新（従来の処理も維持）
+	useEffect(() => {
+		if (!isMobile) {
+			const visibleIndex = visibleSections.findIndex(isVisible => isVisible);
+			if (visibleIndex !== -1 && visibleIndex !== activeGameIndex) {
+				setActiveGameIndex(visibleIndex);
+			}
+		}
+	}, [visibleSections, activeGameIndex, isMobile]);
+
+	// タッチスクリーンでのスワイプやタップの追加サポート
+	useEffect(() => {
+		if (isMobile) {
+			// 最後までスクロールしたかを検出
+			const handleScroll = () => {
+				const scrollHeight = document.documentElement.scrollHeight;
+				const scrollTop = window.scrollY;
+				const clientHeight = window.innerHeight;
+
+				// 画面下部に近づいたら最後のGameIndexをアクティブに
+				if (scrollTop + clientHeight >= scrollHeight - 150) {
+					setActiveGameIndex(games.length - 1);
+				}
+			};
+
+			window.addEventListener('scroll', handleScroll);
+			return () => {
+				window.removeEventListener('scroll', handleScroll);
+			};
+		}
+	}, [isMobile, games.length]);
+
+	// 手動でゲームを切り替える関数（UIボタン用）
+	const handleManualGameChange = (index: number) => {
+		setActiveGameIndex(index);
+		// 対応するセクションにスクロール
+		if (sectionsRef.current[index]) {
+			sectionsRef.current[index]?.scrollIntoView({ behavior: 'smooth' });
+		}
+	};
+
+	// ref設定用のコールバック
+	const setRef = (el: HTMLDivElement | null, index: number) => {
+		sectionsRef.current[index] = el;
+	};
 
 	return (
 		<>
 			{gamesWithFullUrls.map((game, index) => (
-				<GameSection
-					key={game.id}
-					game={game}
-					isActive={index === activeGameIndex}
-					onVisibilityChange={(isVisible) => handleVisibilityChange(index, isVisible)}
-					globalAudioEnabled={globalAudioEnabled}
-				/>
+				<React.Fragment key={game.id}>
+					{index === 0 && (
+						<div className="h-[50vh] flex items-center justify-center w-full">
+							<div className="text-center pb-20">
+								<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">マルチプレイで笑い飛ばすｗｗ</h2>
+								<p className="text-lg text-muted-foreground mx-auto w-full">
+									Youtube実況で大人気のワイワイ系タイトル
+								</p>
+							</div>
+						</div>
+					)}
+					{index === 3 && (
+						<div className="h-[50vh] flex items-center justify-center w-full">
+							<div className="text-center pb-20">
+								<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">本格協力プレイ</h2>
+								<p className="text-lg text-muted-foreground mx-auto w-full">
+									密に協力するディープ達成感
+								</p>
+							</div>
+						</div>
+					)}
+
+					<div ref={(el) => setRef(el, index)}>
+						<GameSection
+							game={game}
+							isActive={index === activeGameIndex}
+							onVisibilityChange={(isVisible) => handleVisibilityChange(index, isVisible)}
+							globalAudioEnabled={globalAudioEnabled}
+						/>
+					</div>
+				</React.Fragment>
 			))}
 		</>
 	);
@@ -6539,7 +7639,7 @@ export default function StickyGameVideo({
 	};
 
 	return (
-		<div className="relative w-full h-full bg-black/40 rounded-xl overflow-hidden">
+		<div className="relative w-full h-full bg-black/40 md:rounded-xl overflow-hidden">
 			{/* Loading indicator */}
 			{isLoading && (
 				<div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-background/50">
@@ -6820,7 +7920,7 @@ export function CategoryPageContainer({
 	category: string
 }) {
 	return (
-		<div className={`bg-background text-foreground`}>
+		<div className={`text-foreground`}>
 			<PageTransition>
 				{children}
 			</PageTransition>
@@ -6926,12 +8026,13 @@ export default function UsageHistory() {
 				const activeData = activeSessionSnapshot.docs[0].data() as SessionDocument;
 
 				// Firestoreのタイムスタンプをフォーマット
-				const startTimeDate = activeData.startTime instanceof Date
-					? activeData.startTime
-					: activeData.startTime?.toDate?.()
-					|| (typeof activeData.startTime === 'object' && 'seconds' in activeData.startTime
-						? new Date((activeData.startTime as Timestamp).seconds * 1000)
-						: new Date(activeData.startTime as string));
+				const startTimeDate =
+					typeof activeData.startTime === 'string'
+						? new Date(activeData.startTime)
+						: 'toDate' in activeData.startTime
+							? activeData.startTime.toDate()
+							: new Date();
+
 
 				const now = new Date();
 				// 現在の時点での利用時間（分）を計算
@@ -7005,19 +8106,20 @@ export default function UsageHistory() {
 				const data = doc.data() as SessionDocument;
 
 				// Firestoreのタイムスタンプをフォーマット
-				const endTimeDate = data.endTime instanceof Date
-					? data.endTime
-					: data.endTime?.toDate?.()
-					|| (typeof data.endTime === 'object' && 'seconds' in data.endTime
-						? new Date((data.endTime as Timestamp).seconds * 1000)
-						: new Date(data.endTime as string));
+				const endTimeDate =
+					typeof data.endTime === 'string'
+						? new Date(data.endTime)
+						: 'toDate' in data.endTime
+							? data.endTime.toDate()
+							: new Date();
 
-				const startTimeDate = data.startTime instanceof Date
-					? data.startTime
-					: data.startTime?.toDate?.()
-					|| (typeof data.startTime === 'object' && 'seconds' in data.startTime
-						? new Date((data.startTime as Timestamp).seconds * 1000)
-						: new Date(data.startTime as string));
+				const startTimeDate =
+					typeof data.startTime === 'string'
+						? new Date(data.startTime)
+						: 'toDate' in data.startTime
+							? data.startTime.toDate()
+							: new Date();
+
 
 				// 座席情報を取得
 				const seatInfo = seats[data.seatId];
@@ -7301,11 +8403,21 @@ export default function QrCodeDisplay() {
 						<img
 							src={qrCodeDataUrl}
 							alt="QRコード"
-							className="w-full h-full object-contain"
+							className="w-full max-w-[150px] h-full object-contain"
 						/>
 					</div>
 					<p className="text-sm text-foreground/70 mb-4">
-						店舗の入口リーダーにかざして入室できます。<br/>席のリーダーにかざすとPCを起動できます。
+						店舗の入口リーダーにかざして入室できます。<br/>
+						席のリーダーにかざすとPCを起動できます。<br/>
+					</p>
+					<Button
+						variant="outline"
+						className="opacity-50 pointer-events-auto cursor-pointer"
+					>
+						会員QRの更新手続き（未実装）
+					</Button>
+					<p className="text-sm text-foreground/70 mt-2">
+						セキュリティの関係上、会員QRが紛失したり他人に漏洩した場合は更新手続きをお願いします。
 					</p>
 				</>
 			) : (
@@ -7883,7 +8995,7 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 				startTime: slot.startTime,
 				endTime: slot.endTime,
 				duration: calculateDuration(slot.startTime, slot.endTime),
-				status: 'confirmed',
+				status: 'confirmed' as const,
 				notes
 			}));
 
@@ -7992,7 +9104,7 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 										{detail?.slot.startTime} - {detail?.slot.endTime} ({detail?.duration}分)
 									</div>
 									<div className="text-xs text-foreground/50 mt-1">
-										単価: ¥{Math.round(detail?.seat.ratePerHour / 60)}円/分 × {detail?.duration}分
+										単価: ¥{Math.round(detail?.seat.ratePerHour||400 / 60)}円/分 × {detail?.duration}分
 									</div>
 								</div>
 							))}
@@ -8814,7 +9926,8 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 
 		// コンテキストを更新
 		setSelectedTimeSlots(newSelectedTimeSlots);
-	}, [seatRanges, selectedSeatIds, setSelectedTimeSlots, filteredSeats]);
+		//}, [seatRanges, selectedSeatIds, setSelectedTimeSlots, filteredSeats]);
+	}, [seatRanges,selectedSeatIds,setSelectedTimeSlots]);
 
 	// Handle continue to confirmation
 	const handleContinue = () => {
@@ -9090,7 +10203,7 @@ import AvailabilityCalendar from './availability-calendar';
 
 const AvailabilitySection: React.FC = () => {
 	return (
-		<section className="py-20 bg-background/50">
+		<section className="py-20 bg-background/70">
 			<div className="container mx-auto px-4">
 				{/* Section header */}
 				<div className="text-center mb-12">
@@ -9210,32 +10323,16 @@ export default function CtaSection() {
 	const isInView = useInView(ref, { once: true, amount: 0.3 });
 
 	return (
-		<section
-			id="cta"
-			className="py-24 relative"
-			ref={ref}
-		>
-			{/* 背景画像 */}
-			<div className="absolute inset-0 z-0">
-				<Image
-					src="/images/lp/cta-bg.jpg"
-					alt="ゲーミングスペースの夜景"
-					fill
-					style={{ objectFit: 'cover' }}
-					className="brightness-25"
-				/>
-				<div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent"></div>
-			</div>
-
+		<section id="cta" className="py-24 relative bg-background/90" ref={ref}>
 			<div className="container mx-auto px-4 relative z-10 text-center">
 				<motion.div
-					className="max-w-2xl mx-auto"
+					className="max-w-5xl mx-auto"
 					initial={{ opacity: 0, y: 30 }}
 					animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
 					transition={{ duration: 0.6 }}
 				>
-					<h2 className="text-4xl md:text-5xl font-bold mb-6">
-						今夜、ふらっと立ち寄って<span className="text-accent">みない？</span>
+					<h2 className="text-5xl md:text-5xl font-bold mb-6">
+						ふらっと立ち寄って<span className="text-accent">みませんか？</span>
 					</h2>
 
 					<p className="text-xl text-foreground/80 mb-10">
@@ -9247,39 +10344,16 @@ export default function CtaSection() {
 						<Link
 							href="/register"
 							className="
-                bg-accent hover:bg-accent/90 
-                text-white font-semibold py-4 px-8 
-                rounded-2xl shadow-lg 
-                transition-all duration-300 hover:translate-y-[-2px]
-                text-lg
-              "
+									bg-accent hover:bg-accent/90 
+									text-white font-semibold py-4 px-8 
+									rounded-2xl shadow-lg 
+									transition-all duration-300 hover:translate-y-[-2px]
+									text-lg
+								"
 						>
 							今すぐ会員登録
 						</Link>
-
-						<Link
-							href="https://line.me/R/ti/p/@example"
-							target="_blank"
-							rel="noopener noreferrer"
-							className="
-                bg-[#06C755] hover:bg-[#06C755]/90
-                text-white font-semibold py-4 px-8 
-                rounded-2xl shadow-lg 
-                transition-all duration-300 hover:translate-y-[-2px]
-                flex items-center justify-center gap-2
-                text-lg
-              "
-						>
-							<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-								<path d="M12 2C6.4772 2 2 5.6519 2 10.1C2 13.4682 4.2066 16.3507 7.4999 17.5835C7.6518 17.6368 7.8483 17.7352 7.899 17.8889C7.9497 18.0419 7.9168 18.2756 7.8871 18.4238C7.8176 18.7601 7.6465 19.4743 7.6465 19.4743C7.6073 19.6469 7.5157 20.1332 8.0001 20.3904C8.4846 20.6475 8.9199 20.2317 9.2769 19.909C9.6347 19.586 10.3685 18.958 10.8319 18.5752C13.2514 19.4452 16.0002 18.8669 18.2245 17.4077C20.9407 15.6807 22.0001 12.9711 22.0001 10.0999C22.0001 5.6519 17.5229 2 12 2ZM6.8904 12.8297C6.8904 12.9042 6.8022 12.9937 6.6925 12.9937L6.6924 12.9937L5.0523 12.9929C4.9426 12.9929 4.8532 12.9042 4.8532 12.8297L4.8532 12.8296L4.8533 9.55301C4.8533 9.47849 4.9428 9.38899 5.0525 9.38899L5.0526 9.38899L6.6927 9.38969C6.8024 9.38969 6.8906 9.47921 6.8906 9.55373V9.55375L6.8904 12.8297ZM11.2289 12.8297C11.2289 12.9042 11.1407 12.9937 11.0311 12.9937L11.031 12.9937L9.39087 12.9929C9.28121 12.9929 9.19183 12.9042 9.19183 12.8297L9.19182 12.8296L9.19194 9.55302C9.19194 9.4785 9.2814 9.389 9.39107 9.389L9.39109 9.389L11.0312 9.3897C11.1409 9.3897 11.2291 9.47922 11.2291 9.55374V9.55375L11.2289 12.8297ZM17.4679 12.8293C17.4679 12.9039 17.3784 12.9933 17.2688 12.9933L17.2687 12.9933L15.6288 12.9926C15.522 12.9926 15.4357 12.9081 15.4315 12.8356L15.4315 12.8347L15.4306 10.8297L13.6558 13.2862C13.6153 13.3389 13.5628 13.3602 13.5097 13.3602C13.4561 13.3602 13.4035 13.3388 13.3623 13.2861L11.5965 10.8476V12.8347C11.5965 12.9092 11.507 12.9987 11.3973 12.9987L11.3973 12.9987L9.75707 12.9979C9.6474 12.9979 9.55802 12.9092 9.55802 12.8347L9.55802 12.8347L9.55814 9.5581C9.55814 9.50101 9.59586 9.448 9.65622 9.42173C9.71658 9.39523 9.78981 9.39898 9.84669 9.43097L9.8467 9.43098L13.5093 11.7657L17.1765 9.43064C17.2334 9.39866 17.3066 9.39491 17.367 9.4214C17.4274 9.44766 17.4651 9.5007 17.4651 9.55779V9.55781L17.4679 12.8293ZM19.1441 12.8297C19.1441 12.9042 19.0547 12.9937 18.945 12.9937L18.945 12.9937L17.305 12.9929C17.1953 12.9929 17.1059 12.9042 17.1059 12.8297L17.1059 12.8296L17.106 9.55301C17.106 9.47849 17.1955 9.38899 17.3052 9.38899L17.3052 9.38899L18.9453 9.38969C19.055 9.38969 19.1432 9.47921 19.1432 9.55373V9.55375L19.1441 12.8297Z" />
-							</svg>
-							LINEで登録
-						</Link>
 					</div>
-
-					<p className="mt-6 text-foreground/60">
-						※LINE連携で会員登録すると、<span className="text-highlight">初回1時間無料</span>クーポンをプレゼント
-					</p>
 				</motion.div>
 			</div>
 		</section>
@@ -9299,7 +10373,7 @@ export default function AccessSection() {
 	return (
 		<section
 			id="access"
-			className="py-20 bg-gradient-to-b from-background/90 to-background"
+			className="py-20 bg-background/90"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
@@ -9341,27 +10415,14 @@ export default function AccessSection() {
 						<div className="space-y-4">
 							<div className="flex justify-between items-center border-b border-border pb-3">
 								<span className="text-foreground/70">基本料金</span>
-								<span className="text-2xl font-bold text-accent">¥700<span className="text-sm font-normal">/時間</span></span>
+								<span className="text-2xl font-bold text-accent">¥400<span className="text-sm font-normal">/時間</span></span>
 							</div>
-
-							<div className="flex justify-between items-center border-b border-border pb-3">
-								<span className="text-foreground/70">延長料金</span>
-								<span>10分ごと ¥120</span>
-							</div>
-
-							<div className="flex justify-between items-center border-b border-border pb-3">
-								<span className="text-foreground/70">パック料金</span>
-								<span>3時間 ¥1,800</span>
-							</div>
-
 							<div className="flex justify-between items-center pb-3">
 								<span className="text-foreground/70">ドリンク・お菓子</span>
 								<span className="text-highlight">無料</span>
 							</div>
-
 							<p className="text-sm text-foreground/60 mt-4">
-								※料金は自動計算され、登録カードから引き落とされます。<br />
-								※深夜帯（22時〜翌8時）は10%割増となります。
+								※料金は1分単位で自動計算され、月末にまとめて登録支払い方法から引き落とされます。<br />
 							</p>
 						</div>
 					</motion.div>
@@ -9431,24 +10492,28 @@ import { motion, useInView, AnimatePresence } from 'framer-motion';
 // FAQ項目
 const faqItems = [
 	{
-		question: "女性一人でも安心して使える？",
-		answer: "はい、安心してご利用いただけます。シェアスペース設計で常に誰かの目があり、また24時間の監視カメラシステムを備えています。店内は明るく開放的な設計で、スタッフも遠隔サポートで対応可能です。"
-	},
-	{
 		question: "予約は必要？",
-		answer: "予約は不要です。会員登録（LINE連携）さえ完了していれば、いつでもドアのQRコードリーダーにかざすだけで入店できます。混雑状況はアプリで確認できるので、事前にチェックすることも可能です。"
+		answer: `
+			予約は不要です。会員登録さえ完了していれば、いつでもドアのQRコードリーダーにかざすだけで入店できます。
+			混雑状況はマイページで確認できるので、事前にチェックすることも可能です。
+			確実なご予定がある場合は事前に予約しておくことをオススメいたします。
+			`
 	},
 	{
 		question: "夜中でも安全？",
-		answer: "24時間体制のセキュリティシステムを導入しており、出入り管理も厳重に行っています。また、緊急時にはヘルプボタンでスタッフとすぐに連絡が取れる体制を整えています。セキュリティ会社とも提携しているため、安心してご利用いただけます。"
+		answer: `
+			24時間体制のセキュリティシステムを導入しており、出入り管理も厳重に行っています。
+			また、緊急時にはヘルプボタンでスタッフとすぐに連絡が取れる体制を整えています。
+			セキュリティ会社とも提携しているため、安心してご利用いただけます。
+			`
 	},
 	{
 		question: "持ち込みは可能？",
-		answer: "飲食物の持ち込みは可能です。また、ヘッドセットなど個人の周辺機器の持ち込みも歓迎しています。ただし、大型機材や他のお客様のご迷惑になるものはご遠慮ください。"
+		answer: `飲食物の持ち込みは不可です。ヘッドセットなど個人の周辺機器の持ち込みは歓迎しています。ただし、大型機材や他のお客様のご迷惑になるものはご遠慮ください。`
 	},
 	{
 		question: "支払い方法は？",
-		answer: "会員登録時にクレジットカードを登録いただくと、利用後に自動的に料金が引き落とされます。従量課金制で、1時間700円（税込）からのご利用が可能です。追加料金や隠れた費用はありません。"
+		answer: "会員登録時にクレジットカードを登録いただくと、利用後に自動的に料金が引き落とされます。従量課金制で、1時間400円（税込）からのご利用が可能です。追加料金や会費はありません。"
 	},
 	{
 		question: "インストールできるゲームは？",
@@ -9468,7 +10533,7 @@ export default function FaqSection() {
 	return (
 		<section
 			id="faq"
-			className="py-20 bg-gradient-to-b from-background to-background/90"
+			className="py-20 bg-gradient-to-b from-background/70 to-background/90"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
@@ -9633,7 +10698,7 @@ export default function FeaturesSection() {
 	return (
 		<section
 			id="features"
-			className="py-20 bg-gradient-to-b from-background to-background/90"
+			className="py-20 bg-gradient-to-b from-background/0 to-background/90"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
@@ -9663,10 +10728,10 @@ export default function FeaturesSection() {
 						<motion.div
 							key={scene.id}
 							className="
-                bg-border/10 rounded-2xl overflow-hidden 
-                shadow-soft hover:shadow-lg transition-all 
-                duration-300 hover:translate-y-[-5px]
-              "
+								bg-background/60 rounded-2xl overflow-hidden 
+								shadow-soft hover:shadow-lg transition-all 
+								duration-300 hover:translate-y-[-5px]
+							"
 							variants={cardVariants}
 							custom={index}
 						>
@@ -9681,7 +10746,7 @@ export default function FeaturesSection() {
 							</div>
 							<div className="p-6">
 								<h3 className="text-xl font-semibold mb-3">{scene.title}</h3>
-								<p className="text-foreground/70">{scene.description}</p>
+								<p className="text-foreground/60">{scene.description}</p>
 							</div>
 						</motion.div>
 					))}
@@ -9707,20 +10772,20 @@ const specs = [
 			{ label: "CPU", value: "AMD Ryzen 7 7800X3D" },
 			{ label: "メモリ", value: "32GB DDR5" },
 			{ label: "ストレージ", value: "1TB NVMe SSD" },
-			{ label: "モニター", value: "34インチ ウルトラワイド 165Hz" }
+			{ label: "モニター", value: "34インチ 湾曲ウルトラワイド WQHD 120Hz" }
 		],
-		image: "/images/lp/specs/pc.jpg"
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/spec1.webp`,
 	},
 	{
 		category: "周辺機器",
 		items: [
-			{ label: "ゲーミングチェア", value: "COUGAR Ranger Pro" },
-			{ label: "キーボード", value: "Razer BlackWidow V3" },
-			{ label: "マウス", value: "Logicool G Pro X Superlight" },
+			{ label: "ゲーミングチェア", value: "社長椅子 レザーリクライニングチェア" },
+			{ label: "キーボード", value: "Logicool K835GPR メカニカルキーボード 赤軸" },
+			{ label: "マウス", value: "Xiaomi 72g 6200調節可能DPI" },
 			{ label: "ヘッドセット", value: "HyperX Cloud III" },
 			{ label: "コントローラー", value: "Xbox / Switch Proコン対応" }
 		],
-		image: "/images/lp/specs/peripherals.jpg"
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/spec2.webp`,
 	},
 	{
 		category: "設備・サービス",
@@ -9728,10 +10793,8 @@ const specs = [
 			{ label: "ネット回線", value: "有線LAN 1Gbps (Ping 6ms以下)" },
 			{ label: "ドリンク", value: "フリードリンク (コーヒー、お茶など)" },
 			{ label: "スナック", value: "お菓子付き (補充は定期的)" },
-			{ label: "冷蔵庫", value: "フリースペース利用可能" },
-			{ label: "空調", value: "個別調整可能" }
 		],
-		image: "/images/lp/specs/amenities.jpg"
+		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/spec3.webp`,
 	}
 ];
 
@@ -9742,7 +10805,7 @@ export default function SpecsSection() {
 	return (
 		<section
 			id="specs"
-			className="py-20 bg-gradient-to-b from-background/90 to-background"
+			className="py-20 bg-gradient-to-b from-background/90 to-background/70"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
@@ -9757,8 +10820,7 @@ export default function SpecsSection() {
 						<span className="text-accent">本格</span>スペック＆設備
 					</h2>
 					<p className="text-foreground/70 max-w-2xl mx-auto">
-						ただのネットカフェじゃない。ゲームを本気で楽しむための
-						ハイスペックPCと快適な環境をご用意しています。
+						ゲームを本気で楽しむために快適な環境をご用意しています。
 					</p>
 				</motion.div>
 
@@ -10105,42 +11167,23 @@ const usageSteps = [
 	{
 		number: 1,
 		title: "QRコードで入室",
-		description: "会員登録後に表示されるQRコードをドアの読み取り機にかざすだけで入室できます。",
-		icon: (
-			<svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-				<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-				<rect x="7" y="7" width="3" height="3"></rect>
-				<rect x="14" y="7" width="3" height="3"></rect>
-				<rect x="7" y="14" width="3" height="3"></rect>
-				<rect x="14" y="14" width="3" height="3"></rect>
-			</svg>
-		)
+		description: "会員QRコードを扉の読み取り機にかざして入室できます。",
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/qrEnter.webp`} alt="QRコードで入室" className="h-100 w-100" />
 	},
 	{
 		number: 2,
 		title: "好きな席で自由に",
-		description: "お好きな席に座り、席のQRコードをスキャンするだけでPCが起動。すぐにゲームが始められます。",
-		icon: (
-			<svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-				<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-				<polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-				<line x1="12" y1="22.08" x2="12" y2="12"></line>
-			</svg>
-		)
+		description: "会員QRコードを席の読み取り機にかざしてPCを起動します。インストールやログイン不要！すぐにゲームが始まります。",
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/qrStart.webp`} alt="好きな席で自由に" className="h-100 w-100" />
 	},
 	{
 		number: 3,
 		title: "そのまま帰るだけ",
-		description: "利用終了後は席を立ってそのまま帰るだけ。料金は自動計算され、登録されたカードから引き落とされます。",
-		icon: (
-			<svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-				<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-				<polyline points="16 17 21 12 16 7"></polyline>
-				<line x1="21" y1="12" x2="9" y2="12"></line>
-			</svg>
-		)
+		description: "PCをシャットダウンして、そのまま帰るだけ。料金は自動計算され、登録されたカードにまとめて月末に請求されます。",
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/exit.webp`} alt="そのまま帰るだけ" className="h-100 w-100" />
 	}
 ];
+
 
 export default function StepsSection() {
 	const ref = useRef(null);
@@ -10149,11 +11192,10 @@ export default function StepsSection() {
 	return (
 		<section
 			id="steps"
-			className="py-20 bg-gradient-to-b from-background to-background/90"
+			className="pb-20 bg-background/90"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
-				{/* セクションタイトル */}
 				<motion.div
 					className="text-center mb-16"
 					initial={{ opacity: 0, y: 20 }}
@@ -10161,26 +11203,24 @@ export default function StepsSection() {
 					transition={{ duration: 0.5 }}
 				>
 					<h2 className="text-3xl md:text-4xl font-bold mb-4">
-						<span className="text-accent">めちゃ簡単</span>、3ステップで
+						利用は<span className="text-accent">めちゃ簡単</span><br/>3ステップで
 					</h2>
-					<p className="text-foreground/70 max-w-2xl mx-auto">
+					<p className="text-foreground/70 max-w-3xl mx-auto">
 						面倒な手続きも、スタッフ対応も必要ありません。
 						24時間いつでも、スマホ1つで完結します。
 					</p>
 				</motion.div>
-
-				{/* ステップカード */}
-				<div className="flex flex-col md:flex-row gap-8 justify-between max-w-4xl mx-auto">
+				<div className="flex flex-col md:flex-row gap-8 justify-between max-w-4xl mx-auto p-4">
 					{usageSteps.map((step, index) => (
 						<motion.div
 							key={step.number}
-							className="bg-border/10 rounded-2xl p-6 md:p-8 flex-1 relative shadow-soft"
+							className="bg-border/10 rounded-2xl p-4 md:p-8 flex-1 relative shadow-soft"
 							initial={{ opacity: 0, y: 30 }}
 							animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
 							transition={{ duration: 0.5, delay: index * 0.15 }}
 						>
 							{/* ステップ番号 */}
-							<div className="absolute -top-4 -left-4 bg-accent text-white w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-md">
+							<div className="absolute -top-4 -left-4 border border-accent bg-transparent w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-md">
 								{step.number}
 							</div>
 
@@ -10207,29 +11247,52 @@ export default function StepsSection() {
 					))}
 				</div>
 			</div>
+			<motion.div
+				className="mt-16 text-center"
+				initial={{ opacity: 0, y: 20 }}
+				animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+				transition={{ duration: 0.5, delay: 0.4 }}
+			>
+				<h3 className="text-2xl font-bold mb-4">
+					さっそく体験してみませんか？
+				</h3>
+				<p className="text-foreground/70 mb-6">
+					初回利用で1時間無料キャンペーン中！
+				</p>
+				<a
+					href="/reservation"
+					className="inline-block bg-accent text-white px-6 py-3 rounded-full font-semibold shadow-md hover:brightness-110 transition"
+				>
+					席を予約する
+				</a>
+			</motion.div>
 		</section>
 	);
 }-e 
 ### FILE: ./src/components/lp/hero-section.tsx
 
 'use client';
-
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 
 export default function HeroSection() {
-	const title = "疲れたから「ゆるゲー気分」";
-	const [titleChars, setTitleChars] = useState<string[]>([]);
+	// タイトルを2つのパートに分ける
+	const titlePart1 = "疲れたから";
+	const titlePart2 = "ゆるゲー気分";
+	const [titleChars1, setTitleChars1] = useState<string[]>([]);
+	const [titleChars2, setTitleChars2] = useState<string[]>([]);
 
 	useEffect(() => {
-		setTitleChars(title.split(''));
+		// 文字を個別に分割
+		setTitleChars1(titlePart1.split(''));
+		setTitleChars2(titlePart2.split(''));
 	}, []);
 
 	return (
 		<section className="relative min-h-screen flex items-center overflow-hidden">
-			<div className="absolute inset-0 z-0">
+			<div className="fixed inset-0 z-[-1]">
 				<Image
 					src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/hero-bg.webp`}
 					alt="深夜のゲーミングスペース"
@@ -10245,21 +11308,56 @@ export default function HeroSection() {
 			<div className="container mx-auto px-4 relative z-10">
 				<div className="max-w-4xl">
 					{/* タイトル文字ごとのアニメーション */}
-					<h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6 flex flex-wrap">
-						{titleChars.map((char, index) => (
+					<h1 className="text-5xl md:text-6xl font-bold text-foreground mb-2">
+						<div className="flex flex-wrap">
+							{/* 「疲れたから」の部分 */}
+							<span className="md:inline block w-full">
+								{titleChars1.map((char, index) => (
+									<motion.span
+										key={`part1-${index}`}
+										initial={{ opacity: 0, y: 20 }}
+										animate={{ opacity: 1, y: 0 }}
+										transition={{
+											duration: 0.5,
+											delay: 0.1 + index * 0.04,
+											ease: "easeOut"
+										}}
+									>
+										{char}
+									</motion.span>
+								))}
+							</span>
+
+							{/* スペース（デスクトップのみ表示） - 完全に非表示にして問題を解決 */}
+							{/* 必要な場合だけコメントを外してください
 							<motion.span
-								key={index}
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{
-									duration: 0.5,
-									delay: 0.1 + index * 0.04,
-									ease: "easeOut"
-								}}
+								className="hidden md:inline"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+								transition={{ duration: 0.5, delay: 0.1 + titleChars1.length * 0.04 }}
 							>
-								{char === " " ? "\u00A0" : char}
+								{"\u00A0"}
 							</motion.span>
-						))}
+							*/}
+
+							{/* 「ゆるゲー気分」の部分 (強調色) */}
+							<span className="md:inline text-accent">
+								{titleChars2.map((char, index) => (
+									<motion.span
+										key={`part2-${index}`}
+										initial={{ opacity: 0, y: 20 }}
+										animate={{ opacity: 1, y: 0 }}
+										transition={{
+											duration: 0.5,
+											delay: 0.1 + (titleChars1.length + index) * 0.04, // 中間スペースの遅延を削除
+											ease: "easeOut"
+										}}
+									>
+										{char}
+									</motion.span>
+								))}
+							</span>
+						</div>
 					</h1>
 
 					{/* サブキャッチコピー */}
@@ -10269,7 +11367,7 @@ export default function HeroSection() {
 						animate={{ opacity: 1, scale: 1 }}
 						transition={{ duration: 0.7, delay: 0.5 }}
 					>
-						コスパもいいし。～ふらっと寄れるゲームカフェ～
+						コスパもいいし。ふらっと寄れるゲームカフェ
 					</motion.p>
 
 					{/* CTAボタン */}
@@ -10281,13 +11379,13 @@ export default function HeroSection() {
 						<Link
 							href="/register"
 							className="
-                inline-block bg-accent hover:bg-accent/90 
-                text-white font-semibold py-3 px-8 
-                rounded-2xl shadow-soft 
+                inline-block bg-accent hover:bg-accent/90
+                text-white font-semibold py-3 px-8
+                rounded-2xl shadow-soft
                 transition-all duration-300 hover:translate-y-[-2px]
               "
 						>
-							3分で会員登録完了、解錠コードを受け取る
+							3分で会員登録完了
 						</Link>
 					</motion.div>
 				</div>
@@ -10358,39 +11456,22 @@ export default function GamesSection() {
 	);
 
 	return (
-		<section id="games" className="py-16">
-			<div className="container mx-auto px-4">
+		<section id="games" className="py-0 bg-background/90">
+			<div className="container mx-auto px-0 md:px-4">
 				<CategoryPageContainer category={currentCategory}>
 					{isLoading ? (
 						<div className="flex items-center justify-center min-h-[600px]">
 							<div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
 						</div>
 					) : (
-						<div className="min-h-[600px]">
+						<div className="md:min-h-[600px]">
 							<GameCategoryLayout
 								games={categoryData.games}
 								onActiveIndexChange={setActiveIndex}
 							/>
-
-							{/* プリロード用の非表示コンポーネント */}
-							<VideoPreloader
-								videoSrcs={videoSources}
-								currentIndex={activeIndex}
-							/>
 						</div>
 					)}
 				</CategoryPageContainer>
-
-				{/* Call to Action */}
-				<div className="text-center mt-16">
-					<p className="text-xl mb-4">これらのゲームをプレイしてみませんか？</p>
-					<a
-						href="#reservation"
-						className="inline-block bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-3 rounded-full font-medium text-lg transition-colors"
-					>
-						今すぐ予約する
-					</a>
-				</div>
 			</div>
 		</section>
 	);
@@ -10418,7 +11499,7 @@ export default function LpHeader() {
 		const currentScrollY = window.scrollY;
 
 		if (currentScrollY > lastScrollY && currentScrollY > 100) {
-			// 下にスクロール中かつ100px以上スクロール済み → 非表示
+			// 下にスクロール中かつ100px以上スクロール済み → 非表
 			setIsVisible(false);
 		} else {
 			// 上にスクロール中 → 表示
@@ -10428,6 +11509,7 @@ export default function LpHeader() {
 		setLastScrollY(currentScrollY);
 	};
 
+	/*
 	useEffect(() => {
 		window.addEventListener('scroll', controlHeader);
 
@@ -10435,10 +11517,10 @@ export default function LpHeader() {
 			window.removeEventListener('scroll', controlHeader);
 		};
 	}, [lastScrollY]);
-
+*/
 	return (
 		<motion.header
-			className={`fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-sm border-b border-border transition-transform duration-300`}
+			className={`relative top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-sm border-b border-border transition-transform duration-300`}
 			initial={{ translateY: 0 }}
 			animate={{ translateY: isVisible ? 0 : '-100%' }}
 			transition={{ duration: 0.3 }}
@@ -10626,135 +11708,65 @@ export default function LpHeader() {
 }-e 
 ### FILE: ./src/components/registration/progress-tracker.tsx
 
-'use client';
+import React from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/auth-context';
 
-import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
-import Link from 'next/link';
+interface ProgressTrackerProps {
+	currentStep?: number; // オプショナルに変更
+}
 
-// 登録ステップの定義（個人情報ステップを省略）
-const registrationSteps = [
-	{
-		id: 'verification',
-		name: '本人確認',
-		path: '/register/verification',
-		icon: (
-			<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-				<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-				<polyline points="22 4 12 14.01 9 11.01"></polyline>
-			</svg>
-		)
-	},
-	{
-		id: 'payment',
-		name: '決済情報',
-		path: '/register/payment',
-		icon: (
-			<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-				<rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
-				<line x1="1" y1="10" x2="23" y2="10"></line>
-			</svg>
-		)
-	},
-	{
-		id: 'complete',
-		name: '完了',
-		path: '/register/complete',
-		icon: (
-			<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-				<path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
-			</svg>
-		)
-	}
-];
+const ProgressTracker: React.FC<ProgressTrackerProps> = ({ currentStep }) => {
+	const { userData } = useAuth();
+	const router = useRouter();
 
-export default function ProgressTracker() {
-	const pathname = usePathname();
-	const [currentStepIndex, setCurrentStepIndex] = useState(0);
+	// propsからcurrentStepが渡されていなければ、userDataから取得
+	const activeStep = currentStep || (userData?.registrationStep || 1);
 
-	useEffect(() => {
-		// パスから現在のステップを特定
-		const index = registrationSteps.findIndex(step => pathname?.includes(step.id));
-		if (index !== -1) {
-			setCurrentStepIndex(index);
-		}
-	}, [pathname]);
+	const steps = [
+		{ id: 1, name: 'アカウント作成', path: '/register' },
+		{ id: 2, name: '本人確認', path: '/register/verification' },
+		{ id: 3, name: '支払い情報', path: '/register/payment' },
+		{ id: 4, name: '完了', path: '/register/complete' }
+	];
 
 	return (
-		<div className="mb-8">
-			{/* モバイル表示 */}
-			<div className="md:hidden">
-				<div className="flex items-center justify-between px-1">
-					<span className="text-sm font-medium">
-						ステップ {currentStepIndex + 1}/{registrationSteps.length}
-					</span>
-					<span className="text-sm text-foreground/70">
-						{registrationSteps[currentStepIndex].name}
-					</span>
-				</div>
-				<div className="mt-2 h-2 w-full bg-border/30 rounded-full overflow-hidden">
-					<div
-						className="h-full bg-accent rounded-full"
-						style={{ width: `${((currentStepIndex + 1) / registrationSteps.length) * 100}%` }}
-					></div>
-				</div>
-			</div>
-
-			{/* デスクトップ表示 */}
-			<ol className="hidden md:flex items-center">
-				{registrationSteps.map((step, index) => {
-					// ステップの状態判定
-					const isActive = index === currentStepIndex;
-					const isCompleted = index < currentStepIndex;
-					const isPending = index > currentStepIndex;
-
-					return (
-						<li key={step.id} className="relative flex-1">
-							{index > 0 && (
-								<div className="absolute inset-0 flex items-center">
-									<div className={`h-0.5 w-full ${isCompleted ? 'bg-accent' : 'bg-border/30'}`}></div>
-								</div>
-							)}
-
-							<div className="relative flex items-center justify-center">
-								{isCompleted ? (
-									<Link href={step.path} className="group">
-										<span className="h-10 w-10 flex items-center justify-center rounded-full bg-accent text-white transition-colors group-hover:bg-accent/80">
-											<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-												<polyline points="20 6 9 17 4 12"></polyline>
-											</svg>
-										</span>
-										<span className="absolute top-12 left-1/2 -translate-x-1/2 text-sm font-medium text-foreground whitespace-nowrap">
-											{step.name}
-										</span>
-									</Link>
-								) : isActive ? (
-									<div>
-										<span className="h-10 w-10 flex items-center justify-center rounded-full bg-accent text-white">
-											{step.icon}
-										</span>
-										<span className="absolute top-12 left-1/2 -translate-x-1/2 text-sm font-medium text-foreground whitespace-nowrap">
-											{step.name}
-										</span>
-									</div>
-								) : (
-									<div>
-										<span className="h-10 w-10 flex items-center justify-center rounded-full bg-border/20 text-foreground/50">
-											{step.icon}
-										</span>
-										<span className="absolute top-12 left-1/2 -translate-x-1/2 text-sm font-medium text-foreground/50 whitespace-nowrap">
-											{step.name}
-										</span>
-									</div>
-								)}
+		<div className="w-full">
+			<div className="flex items-center justify-between">
+				{steps.map((step, i) => (
+					<React.Fragment key={step.id}>
+						{/* ステップの丸い部分 */}
+						<div className="relative flex flex-col items-center">
+							<div
+								className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${activeStep >= step.id
+										? 'border-highlight bg-highlight text-white'
+										: 'border-border bg-background text-foreground/60'
+									}`}
+							>
+								{step.id}
 							</div>
-						</li>
-					);
-				})}
-			</ol>
+							<div className="mt-2 text-xs text-center">
+								<p className={activeStep >= step.id ? 'text-foreground' : 'text-foreground/60'}>
+									{step.name}
+								</p>
+							</div>
+						</div>
+
+						{/* ステップ間の線 */}
+						{i < steps.length - 1 && (
+							<div
+								className={`flex-1 h-1 ${activeStep > step.id ? 'bg-highlight' : 'bg-border'
+									}`}
+							></div>
+						)}
+					</React.Fragment>
+				))}
+			</div>
 		</div>
 	);
-}-e 
+};
+
+export default ProgressTracker;-e 
 ### FILE: ./src/components/payment/enhanced-card-form.tsx
 
 // src/components/payment/enhanced-card-form.tsx
@@ -11081,7 +12093,6 @@ export default function EnhancedCardForm({ onSuccess }: { onSuccess?: () => void
 			<div className="flex flex-col">
 				{selectedMethod === 'card' && (
 					<Button
-						type="submit"
 						disabled={processing || !cardComplete || !stripe || !clientSecret || succeeded}
 						className={`w-full ${succeeded ? 'bg-green-600' : ''}`}
 					>
@@ -11101,7 +12112,6 @@ export default function EnhancedCardForm({ onSuccess }: { onSuccess?: () => void
 				{/* 開発環境のみ表示するモックボタン */}
 				{process.env.NODE_ENV === 'development' && !succeeded && (
 					<Button
-						type="button"
 						onClick={handleMockPayment}
 						disabled={processing || succeeded}
 						className="mt-4 bg-gray-500 hover:bg-gray-600"
@@ -11521,7 +12531,6 @@ const CardFormInner = ({ onSuccess }: { onSuccess?: () => void }) => {
 			{/* 送信ボタン */}
 			<div className="flex flex-col">
 				<Button
-					type="submit"
 					disabled={processing || !cardComplete || !stripe || !clientSecret || succeeded}
 					className={`w-full ${succeeded ? 'bg-green-600' : ''}`}
 				>
@@ -11540,7 +12549,6 @@ const CardFormInner = ({ onSuccess }: { onSuccess?: () => void }) => {
 				{/* 開発環境のみ表示するモックボタン */}
 				{process.env.NODE_ENV === 'development' && !succeeded && (
 					<Button
-						type="button"
 						onClick={handleMockPayment}
 						disabled={processing || succeeded}
 						className="mt-4 bg-gray-500 hover:bg-gray-600"
@@ -12177,19 +13185,20 @@ import {
 	User,
 	GoogleAuthProvider,
 	signInWithPopup,
-	createUserWithEmailAndPassword,
+	createUserWithEmailAndPassword as firebaseCreateUserWithEmailAndPassword,
 	signInWithEmailAndPassword as firebaseSignInWithEmailAndPassword,
 	sendPasswordResetEmail,
 	signOut as firebaseSignOut,
 	onAuthStateChanged
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider } from '@/lib/firebase';
+import { UserDocument } from '@/types/firebase';
 
 // コンテキストの型定義
 interface AuthContextType {
 	user: User | null;
-	userData: any | null;
+	userData: UserDocument | null;
 	loading: boolean;
 	signInWithGoogle: () => Promise<void>;
 	signInWithEmailAndPassword: (email: string, password: string) => Promise<void>;
@@ -12220,64 +13229,64 @@ const AuthContext = createContext<AuthContextType>(defaultContextValue);
 // コンテキストプロバイダーコンポーネント
 export function AuthProvider({ children }: { children: ReactNode }) {
 	const [user, setUser] = useState<User | null>(null);
-	const [userData, setUserData] = useState<any | null>(null);
+	const [userData, setUserData] = useState<UserDocument | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
 	// エラーをクリア
 	const clearError = () => setError(null);
 
-	// ユーザーの認証状態を監視
+	// ユーザーの認証状態を監視し、Firestore のユーザードキュメントの変更をリアルタイムで反映
 	useEffect(() => {
-		const unsubscribe = onAuthStateChanged(auth, async (user) => {
+		const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
 			setUser(user);
+			setLoading(false);
 
 			if (user) {
-				try {
-					// Firestoreからユーザーデータを取得
-					const userDocRef = doc(db, 'users', user.uid);
-					const userDoc = await getDoc(userDocRef);
-
-					if (userDoc.exists()) {
-						// 既存ユーザー - 最終ログイン時間を更新
-						const userData = userDoc.data();
-						await setDoc(userDocRef, {
-							...userData,
-							lastLogin: serverTimestamp()
-						}, { merge: true });
-						setUserData(userData);
-					} else {
-						// 新規ユーザー
-						const newUserData = {
-							uid: user.uid,
-							email: user.email,
-							displayName: user.displayName,
-							photoURL: user.photoURL,
-							createdAt: serverTimestamp(),
-							lastLogin: serverTimestamp(),
-							registrationCompleted: false,
-							registrationStep: 0,
-							eKYC: {
-								status: 'pending'
-							}
-						};
-
-						await setDoc(userDocRef, newUserData);
-						setUserData(newUserData);
+				// Firestore のユーザードキュメントをリアルタイムで監視
+				const userDocRef = doc(db, 'users', user.uid);
+				const unsubscribeSnapshot = onSnapshot(
+					userDocRef,
+					(docSnap) => {
+						if (docSnap.exists()) {
+							const data = docSnap.data() as UserDocument;
+							setUserData(data);
+						} else {
+							// ユーザードキュメントが存在しない場合、新規作成
+							const newUserData: UserDocument = {
+								uid: user.uid,
+								email: user.email,
+								displayName: user.displayName,
+								photoURL: user.photoURL,
+								createdAt: serverTimestamp(),
+								lastLogin: serverTimestamp(),
+								registrationCompleted: false,
+								registrationStep: 2,
+							};
+							setDoc(userDocRef, newUserData)
+								.then(() => setUserData(newUserData))
+								.catch((err) => {
+									console.error('Error setting new user document:', err);
+									setError('ユーザードキュメントの作成に失敗しました。');
+								});
+						}
+					},
+					(err) => {
+						console.error('Error fetching user data:', err);
+						setError('ユーザーデータの取得中にエラーが発生しました。');
 					}
-				} catch (err) {
-					console.error('Error fetching user data:', err);
-					setError('ユーザーデータの取得中にエラーが発生しました。');
-				}
+				);
+
+				// ユーザーがログアウトしたときなど、リスナーのクリーンアップ
+				return () => {
+					unsubscribeSnapshot();
+				};
 			} else {
 				setUserData(null);
 			}
-
-			setLoading(false);
 		});
 
-		// クリーンアップ関数
-		return () => unsubscribe();
+		return () => unsubscribeAuth();
 	}, []);
 
 	// Google認証でサインイン
@@ -12299,8 +13308,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			await firebaseSignInWithEmailAndPassword(auth, email, password);
 		} catch (err: any) {
 			console.error('Email/password sign in error:', err);
-
-			// エラーメッセージをユーザーフレンドリーに変換
 			if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
 				setError('メールアドレスまたはパスワードが正しくありません。');
 			} else if (err.code === 'auth/too-many-requests') {
@@ -12308,7 +13315,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			} else {
 				setError('ログイン中にエラーが発生しました。もう一度お試しください。');
 			}
-
 			throw err;
 		}
 	};
@@ -12317,11 +13323,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	const createUserWithEmailAndPassword = async (email: string, password: string) => {
 		try {
 			setError(null);
-			await createUserWithEmailAndPassword(auth, email, password);
+			await firebaseCreateUserWithEmailAndPassword(auth, email, password);
 		} catch (err: any) {
 			console.error('Create user error:', err);
-
-			// エラーメッセージをユーザーフレンドリーに変換
 			if (err.code === 'auth/email-already-in-use') {
 				setError('このメールアドレスは既に使用されています。');
 			} else if (err.code === 'auth/weak-password') {
@@ -12329,7 +13333,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			} else {
 				setError('アカウント作成中にエラーが発生しました。もう一度お試しください。');
 			}
-
 			throw err;
 		}
 	};
@@ -12341,13 +13344,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			await sendPasswordResetEmail(auth, email);
 		} catch (err: any) {
 			console.error('Password reset error:', err);
-
 			if (err.code === 'auth/user-not-found') {
 				setError('このメールアドレスに登録されているアカウントが見つかりません。');
 			} else {
 				setError('パスワードリセットメールの送信中にエラーが発生しました。');
 			}
-
 			throw err;
 		}
 	};
@@ -12380,150 +13381,116 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 // カスタムフック
-export const useAuth = () => useContext(AuthContext);-e 
+export const useAuth = () => useContext(AuthContext);
+-e 
 ### FILE: ./src/context/registration-context.tsx
 
-import { useState, useEffect } from 'react';
-import { useAuth } from '@/context/auth-context';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { VeriffSession, VeriffStatus } from '@/types';
+'use client';
 
-interface UseVeriffReturn {
-	status: VeriffStatus;
-	sessionId: string | null;
-	isLoading: boolean;
+import React, { createContext, useState, useContext, ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from './auth-context';
+
+// 登録ステップの型定義
+type RegistrationStep = 0 | 1 | 2 | 3;
+
+// コンテキストの型定義に completeRegistration、loading、error を追加
+interface RegistrationContextType {
+	currentStep: RegistrationStep;
+	setCurrentStep: (step: RegistrationStep) => void;
+	goToNextStep: () => void;
+	goToPreviousStep: () => void;
+	completeRegistration: () => Promise<void>;
+	loading: boolean;
 	error: string | null;
-	startVerification: () => Promise<void>;
-	simulateVerification: () => Promise<void>; // 開発用
 }
 
-/**
- * Veriff統合のためのカスタムフック
- */
-export function useVeriff(): UseVeriffReturn {
-	const { user } = useAuth();
-	const [status, setStatus] = useState<VeriffStatus>('pending');
-	const [sessionId, setSessionId] = useState<string | null>(null);
-	const [isLoading, setIsLoading] = useState(false);
+// デフォルト値を持つコンテキストを作成
+const RegistrationContext = createContext<RegistrationContextType>({
+	currentStep: 1,
+	setCurrentStep: () => { },
+	goToNextStep: () => { },
+	goToPreviousStep: () => { },
+	completeRegistration: async () => { },
+	loading: false,
+	error: null,
+});
+
+// 登録プロセスの各ステップに対応するパス
+const stepPaths = {
+	0: '/register',
+	1: '/register/verification',
+	2: '/register/payment',
+	3: '/register/complete',
+};
+
+// コンテキストプロバイダーコンポーネント
+export const RegistrationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+	const { userData } = useAuth();
+	const router = useRouter();
+
+	// 初期ステップをユーザーデータから設定（または1に設定）
+	const initialStep = (userData?.registrationStep as RegistrationStep) || 1;
+	const [currentStep, setCurrentStep] = useState<RegistrationStep>(initialStep);
+
+	// loading と error の状態を追加
+	const [loading, setLoading] = useState<boolean>(false);
 	const [error, setError] = useState<string | null>(null);
 
-	// ユーザーのVeriff状態を読み込む
-	useEffect(() => {
-		const loadVeriffStatus = async () => {
-			if (!user) return;
-
-			try {
-				const userDoc = await getDoc(doc(db, 'users', user.uid));
-				if (userDoc.exists() && userDoc.data().eKYC) {
-					const eKYC = userDoc.data().eKYC;
-					setStatus(eKYC.status || 'pending');
-					if (eKYC.sessionId) {
-						setSessionId(eKYC.sessionId);
-					}
-				}
-			} catch (err) {
-				console.error('Error loading verification status:', err);
-				setError('検証状態の取得中にエラーが発生しました。');
-			}
-		};
-
-		loadVeriffStatus();
-	}, [user]);
-
-	// Veriffセッションを開始する
-	const startVerification = async () => {
-		if (!user || !user.uid) {
-			setError('ユーザー情報が取得できません。ログインし直してください。');
-			return;
+	// 次のステップに進む
+	const goToNextStep = () => {
+		const nextStep = (currentStep + 1) as RegistrationStep;
+		// ※ステップの最大値は 3 と仮定（必要に応じて調整してください）
+		if (nextStep <= 3) {
+			setCurrentStep(nextStep);
+			router.push(stepPaths[nextStep]);
 		}
+	};
 
-		setIsLoading(true);
-		setError(null);
+	// 前のステップに戻る
+	const goToPreviousStep = () => {
+		const prevStep = (currentStep - 1) as RegistrationStep;
+		if (prevStep >= 1) {
+			setCurrentStep(prevStep);
+			router.push(stepPaths[prevStep]);
+		}
+	};
 
+	// 登録完了処理（例として非同期処理＋画面遷移）
+	const completeRegistration = async () => {
+		setLoading(true);
 		try {
-			// Firebase IDトークンを取得
-			const idToken = await user.getIdToken();
-
-			// APIを呼び出してセッションを作成
-			const response = await fetch('/api/veriff/create-session', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${idToken}`
-				}
-			});
-
-			if (!response.ok) {
-				throw new Error('セッション作成に失敗しました');
-			}
-
-			const data = await response.json();
-
-			// すでに検証が完了している場合
-			if (data.status === 'completed') {
-				setStatus('completed');
-				setIsLoading(false);
-				return;
-			}
-
-			// セッションIDを保存
-			setSessionId(data.sessionId);
-
-			// Veriffのページにリダイレクト
-			window.location.href = data.sessionUrl;
-
+			// ここで実際の登録完了処理を行う（例: API コール）
+			await new Promise<void>((resolve) => setTimeout(() => resolve(), 1000));
+			// 登録完了後に完了ページへ遷移
+			router.push(stepPaths[3]);
 		} catch (err) {
-			console.error('Error starting verification:', err);
-			setError('検証の開始中にエラーが発生しました。後でもう一度お試しください。');
-			setIsLoading(false);
+			setError('登録完了処理に失敗しました。');
+		} finally {
+			setLoading(false);
 		}
 	};
 
-	// 開発用: 検証完了をシミュレート
-	const simulateVerification = async () => {
-		if (!user) return;
+	return (
+		<RegistrationContext.Provider
+			value={{
+				currentStep,
+				setCurrentStep,
+				goToNextStep,
+				goToPreviousStep,
+				completeRegistration,
+				loading,
+				error,
+			}}
+		>
+			{children}
+		</RegistrationContext.Provider>
+	);
+};
 
-		setIsLoading(true);
-		setError(null);
-
-		try {
-			// モックセッションID
-			const mockSessionId = `mock-session-${Date.now()}`;
-			setSessionId(mockSessionId);
-
-			// 検証完了をシミュレート
-			setTimeout(async () => {
-				setStatus('completed');
-
-				// Firestoreを更新
-				await setDoc(doc(db, 'users', user.uid), {
-					eKYC: {
-						sessionId: mockSessionId,
-						status: 'completed',
-						verifiedAt: new Date().toISOString()
-					},
-					registrationStep: 0  // eKYCステップ完了
-				}, { merge: true });
-
-				setIsLoading(false);
-			}, 2000);
-		} catch (err) {
-			console.error('Error in mock verification:', err);
-			setError('検証のシミュレーション中にエラーが発生しました。');
-			setIsLoading(false);
-		}
-	};
-
-	return {
-		status,
-		sessionId,
-		isLoading,
-		error,
-		startVerification,
-		simulateVerification
-	};
-}-e 
+// カスタムフックとしてコンテキストを使用
+export const useRegistration = () => useContext(RegistrationContext);
+-e 
 ### FILE: ./tailwind.config.js
 
 //tailwind.config.js

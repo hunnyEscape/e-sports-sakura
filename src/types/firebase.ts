@@ -35,36 +35,18 @@ export interface UserDocument {
 	email: string | null;
 	displayName: string | null;
 	photoURL: string | null;
-	createdAt: TimestampOrString;
-	lastLogin: TimestampOrString;
+	createdAt: Timestamp | string;
+	lastLogin: Timestamp | string;
 	registrationCompleted: boolean;
 	registrationCompletedAt?: string;
 	registrationStep?: number;
-
-	// eKYC情報
-	faceVideo?: {
-		storagePath: string;      // 例: users/{uid}/face.mp4
-		downloadURL?: string;     // 署名付きURLまたは管理者用URL
-		confirmed: boolean;       // 判定結果（初期値: true）
-		checkedAt?: string;       // 判定実行日（ISO形式）
-		rejectionReason?: string; // 拒否理由（"too_dark"|"masked"|"duplicate"など）
-		flagged?: boolean;        // 確認要/BAN対象フラグ
-		similarityCheckCompleted?: boolean; // 顔照合済みフラグ
-	};
-
-	// Stripe情報
 	stripe?: {
 		customerId?: string;
 		paymentMethodId?: string;
+		cardFingerprint?: string; // 追加: カードの一意識別子
+		last4?: string;           // オプション: 下4桁（表示用）
+		brand?: string;           // オプション: カードブランド（表示用）
 		paymentSetupCompleted?: boolean;
-		createdAt?: string;
-		updatedAt?: string;
-		paymentMethodType?: string;
-		paymentMethodBrand?: string;
-		paymentMethodLast4?: string;
-		paymentStatus?: string;
-		lastPaymentError?: string;
-		lastPaymentErrorAt?: string;
 	};
 }
 
@@ -79,7 +61,7 @@ export interface SessionDocument {
 	amount: number;
 	pricePerHour: number;
 	active: boolean;
-	billingId?: string; 
+	billingId?: string;
 }
 
 // 座席情報

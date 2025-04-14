@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 							createdAt: serverTimestamp(),
 							lastLogin: serverTimestamp(),
 							registrationCompleted: false,
-							registrationStep: 2,
+							registrationStep: 1,
 						};
 
 						await setDoc(userDocRef, newUserData);

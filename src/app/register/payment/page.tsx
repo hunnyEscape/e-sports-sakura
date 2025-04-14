@@ -47,9 +47,10 @@ export default function PaymentPage() {
 
 				<div className="bg-border/10 text-white p-4 rounded-lg mb-6">
 					<p>
-						本サービスは月末締めの後払い方式です。<br />
-						毎月末にご利用内容に基づいて請求書（インボイス）を発行し、<br />
-						ご登録のお支払い方法（クレジットカードまたは銀行口座振替）にて自動で決済されます。
+						会費は<span className="text-highlight">無料です</span>。<br/>
+						施設を利用しない限り料金は発生しません。<br/>
+						本サービスは月末締めの<span className="text-highlight">後払い</span>です。<br />
+						毎月末にご利用内容に基づいて請求書を発行し、ご登録のクレジットカードにて自動で決済されます。
 					</p>
 				</div>
 
@@ -64,7 +65,7 @@ export default function PaymentPage() {
 							</div>
 							<ul className="text-sm text-foreground/70 space-y-1">
 								<li>• 1分単位での課金</li>
-								<li>• フリードリンク・お菓子込み</li>
+								<li>• ドリンク/お菓子付き</li>
 								<li>• 高性能ゲーミングPC利用可能</li>
 								<li>• 深夜割増なし（24時間同一料金）</li>
 							</ul>

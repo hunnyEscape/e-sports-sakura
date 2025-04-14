@@ -42,6 +42,55 @@ export default function EnhancedCardForm({ onSuccess }: { onSuccess?: () => void
 	const [succeeded, setSucceeded] = useState(false);
 	const [selectedMethod, setSelectedMethod] = useState<PaymentMethodType>('card');
 	const [paymentRequest, setPaymentRequest] = useState<any>(null);
+	const [isDuplicateCard, setIsDuplicateCard] = useState(false);
+
+	const handleSetupSuccess = async (setupIntent: any) => {
+		setSucceeded(true);
+
+		// Firestoreに支払い状態を更新
+		if (user) {
+			try {
+				const response = await fetch('/api/stripe/confirm-payment-setup', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': `Bearer ${await user.getIdToken()}`
+					},
+					body: JSON.stringify({
+						setupIntentId: setupIntent?.id,
+						paymentMethodId: setupIntent?.payment_method
+					})
+				});
+
+				// レスポンスをチェックしてカード重複エラーを処理
+				const data = await response.json();
+
+				if (!response.ok && data.error === 'duplicate_card') {
+					setIsDuplicateCard(true);
+					setError(data.message || 'この支払い方法は既に別のアカウントで使用されています。');
+					setSucceeded(false);
+					setProcessing(false);
+					return;
+				}
+
+			} catch (err) {
+				console.error('Error confirming payment setup:', err);
+				// ここではエラーを表示せず、成功として扱う
+			}
+		}
+
+		// 成功コールバック
+		setTimeout(() => {
+			if (onSuccess) {
+				onSuccess();
+			} else {
+				// 完了ページへリダイレクト
+				router.push('/register/complete');
+			}
+		}, 2000);
+
+		setProcessing(false);
+	};
 
 	// Setup Intentの取得
 	useEffect(() => {
@@ -180,43 +229,6 @@ export default function EnhancedCardForm({ onSuccess }: { onSuccess?: () => void
 		}
 	};
 
-	// セットアップ成功時の処理
-	const handleSetupSuccess = async (setupIntent: any) => {
-		setSucceeded(true);
-
-		// Firestoreに支払い状態を更新
-		if (user) {
-			try {
-				await fetch('/api/stripe/confirm-payment-setup', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'Authorization': `Bearer ${await user.getIdToken()}`
-					},
-					body: JSON.stringify({
-						setupIntentId: setupIntent?.id,
-						paymentMethodId: setupIntent?.payment_method
-					})
-				});
-			} catch (err) {
-				console.error('Error confirming payment setup:', err);
-				// ここではエラーを表示せず、成功として扱う
-			}
-		}
-
-		// 成功コールバック
-		setTimeout(() => {
-			if (onSuccess) {
-				onSuccess();
-			} else {
-				// 完了ページへリダイレクト
-				router.push('/register/complete');
-			}
-		}, 2000);
-
-		setProcessing(false);
-	};
-
 	// カード入力状態の変更ハンドラ
 	const handleCardChange = (event: any) => {
 		setCardComplete(event.complete);
@@ -305,9 +317,33 @@ export default function EnhancedCardForm({ onSuccess }: { onSuccess?: () => void
 			</div>
 
 			{/* エラーメッセージ */}
+			{/* エラーメッセージ */}
 			{error && (
-				<div className="bg-red-500/10 text-red-500 p-3 rounded-lg text-sm">
-					{error}
+				<div className={`p-4 rounded-lg text-sm ${isDuplicateCard ? 'bg-yellow-500/10 text-yellow-700' : 'bg-red-500/10 text-red-500'}`}>
+					{isDuplicateCard ? (
+						<>
+							<p className="font-medium">カード重複エラー</p>
+							<p>{error}</p>
+							<div className="mt-3">
+								<p className="text-sm font-medium">以下の対応をお試しください:</p>
+								<ul className="mt-1 text-sm list-disc pl-5 space-y-1">
+									<li>別のカードをご利用ください</li>
+									<li>既存のアカウントにログインしてください</li>
+									<li>
+										<button
+											type="button"
+											onClick={() => router.push('/login')}
+											className="text-accent hover:underline"
+										>
+											ログインページへ
+										</button>
+									</li>
+								</ul>
+							</div>
+						</>
+					) : (
+						error
+					)}
 				</div>
 			)}
 
