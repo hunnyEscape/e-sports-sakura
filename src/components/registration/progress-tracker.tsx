@@ -24,14 +24,14 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ currentStep }) => {
 			id: 2,
 			name: '決済情報',
 			description: 'お支払い方法の登録',
-			status: currentStep === 1 ? 'current' : currentStep > 1 ? 'complete' : 'upcoming',
+			status: activeStep === 2 ? 'current' : activeStep > 2 ? 'complete' : 'upcoming',
 			href: '/register/payment',
 		},
 		{
 			id: 3,
 			name: '登録完了',
 			description: 'QRコードの発行',
-			status: currentStep === 2 ? 'current' : 'upcoming',
+			status: activeStep === 3 ? 'current' : activeStep > 3 ? 'complete' : 'upcoming',
 			href: '/register/complete',
 		},
 	];

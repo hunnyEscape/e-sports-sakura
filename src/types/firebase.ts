@@ -35,8 +35,8 @@ export interface UserDocument {
 	email: string | null;
 	displayName: string | null;
 	photoURL: string | null;
-	createdAt: Timestamp | string;
-	lastLogin: Timestamp | string;
+	createdAt: TimestampOrString;
+	lastLogin: TimestampOrString;
 	registrationCompleted: boolean;
 	registrationCompletedAt?: string;
 	registrationStep?: number;

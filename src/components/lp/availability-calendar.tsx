@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Calendar, Info, Building, MapPin } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { BranchDocument } from '@/types/firebase';
+import { BranchDocument, ReservationDocument } from '@/types/firebase';
 
 interface AvailabilityCalendarProps {
 	onDateSelect?: (date: Date) => void;
@@ -113,16 +113,14 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
 
 					const reservationsSnapshot = await getDocs(reservationsQuery);
 
-					// メモリ内でフィルタリング - インデックス対応まで一時的対応
-					const filteredReservations = reservationsSnapshot.docs
-						.map(doc => ({
+					// ① ReservationDocument 型としてキャストして全予約を取得
+					const filteredReservations = reservationsSnapshot.docs.map(doc => {
+						const data = doc.data() as ReservationDocument;
+						return {
 							id: doc.id,
-							...doc.data()
-						}))
-						.filter(res =>
-							res.date >= startDateStr &&
-							res.date <= endDateStr
-						);
+							...data
+						};
+					});
 
 					// 日付ごとに予約をカウント
 					const reservationCountByDate: Record<string, { total: number, uniqueSeats: Set<string> }> = {};
