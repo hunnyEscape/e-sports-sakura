@@ -119,7 +119,7 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 		const day = String(date.getDate()).padStart(2, '0');
 		return `${year}-${month}-${day}`;
 	};
-	
+
 	// 時刻文字列を分単位に変換するヘルパー関数
 	const timeStringToMinutes = (timeStr: string): number => {
 		const [hours, minutes] = timeStr.split(':').map(Number);
@@ -497,9 +497,9 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 				const uniqueSeatsBooked = reservationCountByDate[dateStr].uniqueSeats.size;
 
 				// 閾値の設定（調整可能）
-				if (uniqueSeatsBooked >= totalSeats * 0.9) {
+				if (uniqueSeatsBooked >= totalSeats * 0.5) {
 					availability[dateStr] = 'booked';      // 90%以上予約済み: 満席
-				} else if (uniqueSeatsBooked >= totalSeats * 0.6) {
+				} else if (uniqueSeatsBooked >= totalSeats * 0.3) {
 					availability[dateStr] = 'limited';     // 60%以上予約済み: 残りわずか
 				} else {
 					availability[dateStr] = 'available';   // それ以外: 予約可能

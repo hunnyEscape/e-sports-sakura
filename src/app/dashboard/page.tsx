@@ -64,8 +64,7 @@ export default function DashboardPage() {
 						</div>
 					</header>
 
-					<main className="container mx-auto px-4 py-8">
-						<h1 className="text-2xl font-bold mb-6">マイページ</h1>
+					<main className="container mx-auto px-4 py-3 md:py-8">
 						{userData && userData.registrationCompleted && (<>
 							<div className="bg-border/5 rounded-2xl shadow-soft p-6">
 								<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>

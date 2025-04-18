@@ -61,7 +61,7 @@ export default function QrCodeDisplay() {
 		<div className="text-center">
 			{qrCodeDataUrl ? (
 				<>
-					<div className="bg-white p-4 rounded-lg w-64 h-64 mx-auto mb-4 flex items-center justify-center border-2 border-accent">
+					<div className="bg-white p-4 rounded-lg w-40 h-40 mx-auto mb-4 flex items-center justify-center border-2 border-accent">
 						<img
 							src={qrCodeDataUrl}
 							alt="QRコード"
@@ -74,13 +74,10 @@ export default function QrCodeDisplay() {
 					</p>
 					<Button
 						variant="outline"
-						className="opacity-50 pointer-events-auto cursor-pointer"
+						className="text-sm opacity-50 pointer-events-auto cursor-pointer"
 					>
-						会員QRの更新手続き（未実装）
+						会員QRの更新手続き : 紛失したり他人に漏洩した場合は更新手続きをお願いします。（未実装）
 					</Button>
-					<p className="text-sm text-foreground/70 mt-2">
-						セキュリティの関係上、会員QRが紛失したり他人に漏洩した場合は更新手続きをお願いします。
-					</p>
 				</>
 			) : (
 				<div className="bg-orange-500/10 text-orange-500 p-4 rounded-lg mb-4">
