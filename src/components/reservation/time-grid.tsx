@@ -187,15 +187,30 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		const startHour = selectedBranch?.businessHours?.open
 			? parseInt(selectedBranch.businessHours.open.split(':')[0])
 			: 10;
-		const endHour = selectedBranch?.businessHours?.close
+		let endHour = selectedBranch?.businessHours?.close
 			? parseInt(selectedBranch.businessHours.close.split(':')[0])
 			: 22;
 
+		// If viewing today, allow slots up through 24:00
+		const today = new Date();
+		if (
+			date.getFullYear() === today.getFullYear() &&
+			date.getMonth() === today.getMonth() &&
+			date.getDate() === today.getDate()
+		) {
+			endHour = 24;
+		}
+
 		for (let hour = startHour; hour <= endHour; hour++) {
 			for (let minute = 0; minute < 60; minute += 30) {
-				if (hour === endHour && minute > 0) continue;
+				// Skip invalid “24:30”
+				if (hour === 24 && minute > 0) continue;
+				// Skip any minute past closing time (except when endHour===24)
+				if (hour === endHour && minute > 0 && endHour !== 24) continue;
 
-				const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+				const hh = hour.toString().padStart(2, '0');
+				const mm = minute.toString().padStart(2, '0');
+				const time = `${hh}:${mm}`;
 				const formattedTime = `${hour}:${minute === 0 ? '00' : minute}`;
 
 				slots.push({ time, formattedTime });
@@ -204,6 +219,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 
 		return slots;
 	};
+
 
 	const timeSlots = generateTimeSlots();
 
@@ -267,99 +283,6 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		return { unavailable: false, reason: null };
 	};
 
-	// 簡略版 - 予約済みかどうかの判定のみを行う関数(既存コードとの互換性用)
-	const isReserved = (seatId: string, timeSlot: string): boolean => {
-		const result = isSlotUnavailable(seatId, timeSlot);
-		return result.unavailable;
-	};
-
-	// Handle slot click for range selection
-	/*	const handleSlotClick = (seatId: string, time: string) => {
-			if (isReserved(seatId, time)) return;
-	
-			// Get current range for this seat
-			const currentRange = seatRanges[seatId] || { rangeStart: null, rangeEnd: null };
-	
-			// Check if seat is already selected
-			const isSeatSelected = selectedSeatIds.includes(seatId);
-	
-			if (!isSeatSelected) {
-				// Add new seat to selection
-				setSelectedSeatIds(prev => [...prev, seatId]);
-				setSeatRanges(prev => ({
-					...prev,
-					[seatId]: { rangeStart: time, rangeEnd: null }
-				}));
-				return;
-			}
-	
-			// First click sets start time
-			if (currentRange.rangeStart === null) {
-				setSeatRanges(prev => ({
-					...prev,
-					[seatId]: { rangeStart: time, rangeEnd: null }
-				}));
-				return;
-			}
-	
-			// If clicking on the same slot, deselect it
-			if (currentRange.rangeStart === time && currentRange.rangeEnd === null) {
-				// If this was the only selected time slot for this seat, remove the seat from selection
-				setSeatRanges(prev => {
-					const newRanges = { ...prev };
-					delete newRanges[seatId];
-					return newRanges;
-				});
-				setSelectedSeatIds(prev => prev.filter(id => id !== seatId));
-				return;
-			}
-	
-			// 選択範囲内に予約済み時間枠がないか確認
-			if (isValidTimeRange(seatId, currentRange.rangeStart, time)) {
-				// Second click sets end time
-				if (currentRange.rangeEnd === null) {
-					// Ensure start is before end
-					if (time < currentRange.rangeStart) {
-						setSeatRanges(prev => ({
-							...prev,
-							[seatId]: { rangeStart: time, rangeEnd: currentRange.rangeStart }
-						}));
-					} else {
-						setSeatRanges(prev => ({
-							...prev,
-							[seatId]: { ...prev[seatId], rangeEnd: time }
-						}));
-					}
-					return;
-				}
-			} else {
-				alert('選択範囲内に予約済みの時間枠が含まれています。別の範囲を選択してください。');
-				return;
-			}
-	
-			// If range is already set, start a new selection
-			setSeatRanges(prev => ({
-				...prev,
-				[seatId]: { rangeStart: time, rangeEnd: null }
-			}));
-		};
-	
-		// 選択範囲内に予約済み時間枠がないか確認する関数
-			const isValidTimeRange = (seatId: string, startTime: string, endTime: string): boolean => {
-			if (!timeSlotAvailability || !timeSlotAvailability[seatId]) return true;
-	
-			// 時間の大小関係を調整
-			const start = startTime < endTime ? startTime : endTime;
-			const end = startTime < endTime ? endTime : startTime;
-	
-			// 時間スロットを取得
-			const slots = Object.keys(timeSlotAvailability[seatId])
-				.filter(time => time >= start && time < end);
-	
-			// すべてのスロットが利用可能か確認
-			return slots.every(slot => timeSlotAvailability[seatId][slot] === true);
-		};*/
-
 	// Check if a slot is within the selected range
 	const isInSelectedRange = (seatId: string, time: string): boolean => {
 		if (!selectedSeatIds.includes(seatId)) return false;
@@ -378,15 +301,32 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		return time >= start && time <= end;
 	};
 
-	// Calculate end time (30 minutes after the last slot)
+	// Calculate end time (30 minutes after the last slot), using local date to avoid TZ shift
 	const calculateEndTime = (time: string): string => {
 		if (!time) return '';
 
-		const timeDate = new Date(`${date.toISOString().split('T')[0]}T${time}`);
-		timeDate.setMinutes(timeDate.getMinutes() + 30);
-		return `${timeDate.getHours().toString().padStart(2, '0')}:${timeDate.getMinutes().toString().padStart(2, '0')}`;
-	};
+		// 「HH:mm」を分解
+		const [hour, minute] = time.split(':').map(Number);
 
+		// ローカルの日付 (date) をベースに new Date を生成
+		const timeDate = new Date(
+			date.getFullYear(),
+			date.getMonth(),
+			date.getDate(),
+			hour,
+			minute,
+			0,
+			0
+		);
+
+		// 30分後をセット
+		timeDate.setMinutes(timeDate.getMinutes() + 30);
+
+		// HH:mm フォーマット
+		const hh = String(timeDate.getHours()).padStart(2, '0');
+		const mm = String(timeDate.getMinutes()).padStart(2, '0');
+		return `${hh}:${mm}`;
+	};
 	// Reset selection when date changes
 	useEffect(() => {
 		setSelectedSeatIds([]);
@@ -450,11 +390,16 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 
 	// Calculate total duration in minutes for a seat
 	const calculateDuration = (startTime: string, endTime: string): number => {
-		const startParts = startTime.split(':').map(Number);
-		const endParts = endTime.split(':').map(Number);
+		const [sh, sm] = startTime.split(':').map(Number);
+		const [eh, em] = endTime.split(':').map(Number);
 
-		let startMinutes = startParts[0] * 60 + startParts[1];
-		let endMinutes = endParts[0] * 60 + endParts[1];
+		let startMinutes = sh * 60 + sm;
+		let endMinutes = eh * 60 + em;
+
+		// If end is not strictly after start, assume it wrapped past midnight
+		if (endMinutes <= startMinutes) {
+			endMinutes += 24 * 60;
+		}
 
 		return endMinutes - startMinutes;
 	};
@@ -487,13 +432,14 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 			// Calculate rate per minute from ratePerHour
 			const ratePerMinute = seat.ratePerHour ? seat.ratePerHour / 60 : 0;
 
+
 			return {
 				seat,
 				startTime,
 				endTime: actualEndTime,
 				duration,
 				ratePerMinute,
-				cost: Math.round(ratePerMinute * duration)
+				cost: Math.ceil(duration / 60) * 600,
 			};
 		})
 		.filter(Boolean);
@@ -769,7 +715,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 
 								<div className="pt-3 mt-2 border-t border-border/20">
 									<div className="flex justify-between items-center">
-										<span className="font-medium text-foreground/80">合計予想料金:</span>
+										<span className="font-medium text-foreground/80">合計予想料金 (予約時に料金は発生しません)</span>
 										<span className="font-bold text-lg text-foreground">¥{calculateTotalCost().toLocaleString()}</span>
 									</div>
 									<div className="text-xs text-foreground/50 mt-1">

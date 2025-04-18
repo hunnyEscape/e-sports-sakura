@@ -1,3 +1,4 @@
+// /src/components/dashboard/reservation-history.tsx
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, MapPin, Loader, Ban, CheckCircle, RefreshCw } from 'lucide-react';

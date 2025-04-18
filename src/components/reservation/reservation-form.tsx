@@ -41,16 +41,25 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		if (!seat) return null;
 
 		// 分数の計算
-		const startParts = slot.startTime.split(':').map(Number);
-		const endParts = slot.endTime.split(':').map(Number);
-		const startMinutes = startParts[0] * 60 + startParts[1];
-		const endMinutes = endParts[0] * 60 + endParts[1];
+		const [sh, sm] = slot.startTime.split(':').map(Number);
+		let [eh, em] = slot.endTime.split(':').map(Number);
+
+		let startMinutes = sh * 60 + sm;
+		let endMinutes = eh * 60 + em;
+
+		// 終了時刻が開始時刻以下なら深夜をまたいだものとみなす
+		if (endMinutes <= startMinutes) {
+			endMinutes += 24 * 60;
+		}
+
 		const duration = endMinutes - startMinutes;
+		// 料金計算（30分未満は30分、以降は1時間単位で繰り上げ）
+		const cost = Math.ceil(duration / 60) * 600;
 
 		// 料金計算
 		const ratePerMinute = seat.ratePerHour / 60;
-		const cost = Math.round(ratePerMinute * duration);
-
+		//const cost = Math.round(ratePerMinute * duration);
+	//	const cost = Math.ceil(duration / 60) * 600;
 		return {
 			seat,
 			slot,
@@ -71,14 +80,17 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		}
 
 		try {
-			const dateStr = selectedDate.toISOString().split('T')[0];
+			// ローカルの日付文字列を生成
+			const year = selectedDate.getFullYear();
+			const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+			const day = String(selectedDate.getDate()).padStart(2, '0');
+			const dateStr = `${year}-${month}-${day}`;
 
-			// 複数の予約データを準備
 			const reservationsData = selectedTimeSlots.map(slot => ({
 				userId: user?.uid || '',
 				seatId: slot.seatId,
 				seatName: slot.seatName || seats.find(s => s.seatId === slot.seatId)?.name || '',
-				date: dateStr,
+				date: dateStr,       // ← 修正済み
 				startTime: slot.startTime,
 				endTime: slot.endTime,
 				duration: calculateDuration(slot.startTime, slot.endTime),
@@ -87,20 +99,14 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 			}));
 
 			await createReservation(reservationsData);
-
 			setSubmitStatus('success');
-
-			// Notify parent component of success
-			if (onSuccess) {
-				setTimeout(() => {
-					onSuccess();
-				}, 2000);
-			}
+			onSuccess && setTimeout(onSuccess, 2000);
 		} catch (error) {
 			console.error('Reservation failed:', error);
 			setSubmitStatus('error');
 		}
 	};
+
 
 	// 分数を計算するヘルパー関数
 	const calculateDuration = (startTime: string, endTime: string): number => {
@@ -189,9 +195,6 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 									</div>
 									<div className="text-sm text-foreground/70 mt-1">
 										{detail?.slot.startTime} - {detail?.slot.endTime} ({detail?.duration}分)
-									</div>
-									<div className="text-xs text-foreground/50 mt-1">
-										単価: ¥{Math.round(detail?.seat.ratePerHour||400 / 60)}円/分 × {detail?.duration}分
 									</div>
 								</div>
 							))}

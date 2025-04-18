@@ -114,9 +114,12 @@ export const ReservationProvider: React.FC<{ children: ReactNode }> = ({ childre
 
 	// 日付文字列をYYYY-MM-DD形式に変換するヘルパー関数
 	const formatDateToString = (date: Date): string => {
-		return date.toISOString().split('T')[0];
+		const year = date.getFullYear();
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const day = String(date.getDate()).padStart(2, '0');
+		return `${year}-${month}-${day}`;
 	};
-
+	
 	// 時刻文字列を分単位に変換するヘルパー関数
 	const timeStringToMinutes = (timeStr: string): number => {
 		const [hours, minutes] = timeStr.split(':').map(Number);

@@ -1,10 +1,10 @@
+///src/app/api/reservations/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getFirestore, collection, addDoc, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { initializeApp } from 'firebase/app';
 import { firebaseConfig } from '@/lib/firebase';
 import { ReservationDocument } from '@/types/firebase';
-
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);

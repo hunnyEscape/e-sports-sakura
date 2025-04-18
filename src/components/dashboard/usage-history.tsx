@@ -1,5 +1,5 @@
 'use client';
-
+// /src/components/dashboard/usage-history.tsx
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/auth-context';
 import LoadingSpinner from '@/components/ui/loading-spinner';
@@ -91,8 +91,10 @@ export default function UsageHistory() {
 				// 現在の時点での利用時間（分）を計算
 				const currentDurationMinutes = Math.floor((now.getTime() - startTimeDate.getTime()) / (1000 * 60));
 				// 現在の時点での料金を計算（時間単位の料金を分単位に変換）
-				const currentAmount = Math.ceil(currentDurationMinutes * (activeData.pricePerHour / 60));
-
+				//const currentAmount = Math.ceil(currentDurationMinutes * (activeData.pricePerHour / 60));
+				const currentHourBlocks = Math.ceil(currentDurationMinutes / 60);
+				// 時間ブロック数に基づいて料金を計算
+				const currentAmount = currentHourBlocks * 600;
 				// 座席情報を取得
 				const seatInfo = seats[activeData.seatId];
 				const seatName = seatInfo?.name || `座席 ${activeData.seatId}`;
@@ -275,7 +277,10 @@ export default function UsageHistory() {
 
 	return (
 		<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-			<h2 className="text-lg font-semibold mb-4">利用履歴</h2>
+			<h2 className="text-lg font-semibold mb-2">利用履歴</h2>
+			<div className="bg-accent/5 p-3 rounded-lg mb-4 text-sm">
+				<p>ご利用料金は時間単位で計算されます。1時間あたり600円、超過すると次の1時間分が加算されます。</p>
+			</div>
 
 			{error && (
 				<div className="bg-red-500/10 text-red-500 p-4 rounded-lg mb-4">
@@ -297,6 +302,7 @@ export default function UsageHistory() {
 								<p className="text-sm text-foreground/70">開始時間: {formatDate(activeSession.timestamp)}</p>
 								<p className="text-sm text-foreground/70">
 									現在の利用時間: {getElapsedTime(activeSession.startTime || '')}
+									（{Math.ceil(activeSession.durationMinutes / 60)}時間ブロック）
 								</p>
 							</div>
 							<div className="text-right">
@@ -321,19 +327,14 @@ export default function UsageHistory() {
 				</div>
 			) : (
 				<>
-					{history.length > 0 && (
-						<h3 className="text-md font-medium mb-3">過去の利用履歴</h3>
-					)}
 					<div className="overflow-x-auto">
 						<table className="w-full">
 							<thead>
 								<tr className="text-left text-foreground/70 border-b border-border">
 									<th className="pb-2">日時</th>
 									<th className="pb-2">内容</th>
-									<th className="pb-2">店舗</th>
+
 									<th className="pb-2 text-right">利用時間</th>
-									<th className="pb-2 text-right">料金</th>
-									<th className="pb-2 text-right">ステータス</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -343,25 +344,9 @@ export default function UsageHistory() {
 										<td className="py-3">
 											{item.seatName || item.description}
 										</td>
-										<td className="py-3">
-											{item.branchName || '-'}
-										</td>
 										<td className="py-3 text-right">
-											{item.durationMinutes}分
-										</td>
-										<td className="py-3 text-right font-medium">
-											{formatCurrency(item.amount)}
-										</td>
-										<td className="py-3 text-right">
-											{item.status === 'paid' ? (
-												<span className="inline-block bg-green-500/10 text-green-500 text-xs px-2 py-0.5 rounded">
-													支払済
-												</span>
-											) : (
-												<span className="inline-block bg-red-500/10 text-red-500 text-xs px-2 py-0.5 rounded">
-													{item.status}
-												</span>
-											)}
+											{Math.floor(item.durationMinutes / 60)}時間{item.durationMinutes % 60}分
+											（{Math.ceil(item.durationMinutes / 60)}時間ブロック）
 										</td>
 									</tr>
 								))}
