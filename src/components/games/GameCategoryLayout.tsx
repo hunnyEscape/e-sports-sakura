@@ -183,7 +183,7 @@ export default function GameCategoryLayout({
 							<div className="text-center pb-20">
 								<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">本格協力プレイ</h2>
 								<p className="text-lg text-muted-foreground mx-auto w-full">
-									密に協力するディープ達成感
+									密に協力するディープな達成感
 								</p>
 							</div>
 						</div>

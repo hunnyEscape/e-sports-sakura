@@ -38,8 +38,8 @@ export interface UserDocument {
 	email: string | null;
 	displayName: string | null;
 	photoURL: string | null;
-	createdAt: Timestamp | string;
-	lastLogin: Timestamp | string;
+	createdAt: TimestampOrString;
+	lastLogin: TimestampOrString;
 	registrationCompleted: boolean;
 	registrationCompletedAt?: string;
 	registrationStep?: number;
@@ -646,56 +646,39 @@ export {
   };-e 
 ### FILE: ./src/lib/firebase-admin.ts
 
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
+// src/lib/firebase-admin.ts
+import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
-/**
- * Firebase Adminアプリケーションを初期化
- * サーバーサイドでFirebaseリソースにアクセスするために使用
- */
-export function initAdminApp() {
+function initAdminApp() {
 	if (getApps().length === 0) {
-		// Firebase Admin SDKの初期化
 		const serviceAccount = {
 			projectId: process.env.FIREBASE_PROJECT_ID,
 			clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-			privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+			privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
 		};
 
-		// 環境変数が設定されているか確認
+		// 本番は必ず設定が入っている前提
 		if (!serviceAccount.projectId || !serviceAccount.clientEmail || !serviceAccount.privateKey) {
-			console.error('Firebase Admin環境変数が設定されていません');
-
-			// 開発環境の場合は処理を続行（ダミーアプリで初期化）
-			if (process.env.NODE_ENV === 'development') {
-				console.warn('開発環境: Firebase Adminをダミー設定で初期化します');
-				const app = initializeApp({
-					projectId: 'dummy-project',
-				});
-				return app;
-			} else {
-				// 本番環境では例外をスロー
-				throw new Error('Firebase Admin環境変数が設定されていません');
+			if (process.env.NODE_ENV !== 'development') {
+				throw new Error('Firebase Admin 環境変数が不足しています');
 			}
+			// 開発用ダミー
+			initializeApp({ projectId: 'dummy-project' });
+		} else {
+			initializeApp({ credential: cert(serviceAccount as any) });
 		}
-
-		// 正しい認証情報でアプリを初期化
-		return initializeApp({
-			credential: cert(serviceAccount as any)
-		});
 	}
-
-	// 既に初期化されている場合は最初のアプリを返す
-	return getApps()[0];
 }
 
-/**
- * Firebase Admin Firestoreインスタンスを取得
- */
-export function getAdminFirestore() {
-	initAdminApp();
-	return getFirestore();
-}-e 
+initAdminApp();                       // ① まず初期化
+export const auth = getAuth();        // ② デフォルト App に紐付く Auth インスタンス
+export const db = getFirestore();   // ③ ついでに Firestore も
+
+// 好みで以前の関数も残して OK
+export { initAdminApp };
+-e 
 ### FILE: ./src/lib/stripe.ts
 
 // Stripe統合用のユーティリティ
@@ -880,9 +863,9 @@ import { db } from './firebase';
 
 // 顧客情報のインターフェース
 interface CustomerData {
-    userId: string;
-    email: string;
-    name?: string;
+	userId: string;
+	email: string;
+	name?: string;
 }
 
 /**
@@ -890,109 +873,111 @@ interface CustomerData {
  * 既存ユーザーが存在する場合はそのUIDを返す、存在しない場合はnullを返す
  */
 export async function checkCardFingerprintDuplicate(fingerprint: string): Promise<string | null> {
-    try {
-        // fingerprintが一致するユーザーを検索
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('stripe.cardFingerprint', '==', fingerprint));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-            // 重複するユーザーがいる場合は最初のユーザーのUIDを返す
-            return querySnapshot.docs[0].id;
-        }
-        
-        return null;
-    } catch (error) {
-        console.error('Error checking card fingerprint duplicate:', error);
-        throw error;
-    }
+	try {
+		// fingerprintが一致するユーザーを検索
+		const usersRef = collection(db, 'users');
+		const q = query(usersRef, where('stripe.cardFingerprint', '==', fingerprint));
+		const querySnapshot = await getDocs(q);
+
+		if (!querySnapshot.empty) {
+			// 重複するユーザーがいる場合は最初のユーザーのUIDを返す
+			return querySnapshot.docs[0].id;
+		}
+
+		return null;
+	} catch (error) {
+		console.error('Error checking card fingerprint duplicate:', error);
+		throw error;
+	}
 }
 
 /**
  * 支払い方法からカードfingerprintを取得
  */
 export async function getCardFingerprint(paymentMethodId: string): Promise<string | null> {
-    try {
-        const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
-        
-        // カード支払いの場合のみfingerprintが存在
-        if (paymentMethod.type === 'card' && paymentMethod.card) {
-            return paymentMethod.card.fingerprint;
-        }
-        
-        return null;
-    } catch (error) {
-        console.error('Error retrieving card fingerprint:', error);
-        throw error;
-    }
+	try {
+		const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+		// カード支払いの場合のみfingerprintが存在
+		if (paymentMethod.type === 'card' && paymentMethod.card) {
+			const fingerprint = paymentMethod.card.fingerprint;
+			return typeof fingerprint === 'string' ? fingerprint : null;
+		}
+
+		return null;
+	} catch (error) {
+		console.error('Error retrieving card fingerprint:', error);
+		throw error;
+	}
 }
 
 /**
  * ユーザーにカード情報を保存
  */
 export async function saveCardInfoToUser(
-    userId: string, 
-    paymentMethodId: string,
-    fingerprint: string,
-    last4?: string,
-    brand?: string
+	userId: string,
+	paymentMethodId: string,
+	fingerprint: string,
+	last4?: string,
+	brand?: string
 ): Promise<void> {
-    try {
-        const userDocRef = doc(db, 'users', userId);
-        
-        await setDoc(userDocRef, {
-            stripe: {
-                paymentMethodId,
-                cardFingerprint: fingerprint,
-                last4,
-                brand,
-                paymentSetupCompleted: true
-            }
-        }, { merge: true });
-        
-    } catch (error) {
-        console.error('Error saving card info to user:', error);
-        throw error;
-    }
+	try {
+		const userDocRef = doc(db, 'users', userId);
+
+		await setDoc(userDocRef, {
+			stripe: {
+				paymentMethodId,
+				cardFingerprint: fingerprint,
+				last4,
+				brand,
+				paymentSetupCompleted: true
+			}
+		}, { merge: true });
+
+	} catch (error) {
+		console.error('Error saving card info to user:', error);
+		throw error;
+	}
 }
 
 /**
  * Stripe顧客を作成または取得する
  */
 export async function getOrCreateCustomer(userId: string, email: string, name?: string): Promise<Stripe.Customer> {
-    try {
-        // 既存の顧客を検索
-        const customers = await stripe.customers.list({
-            email: email,
-            limit: 1,
-        });
+	try {
+		// 既存の顧客を検索
+		const customers = await stripe.customers.list({
+			email: email,
+			limit: 1,
+		});
 
-        if (customers.data.length > 0) {
-            // 既存顧客が見つかった場合、metadataを更新
-            const customer = customers.data[0];
-            await stripe.customers.update(customer.id, {
-                metadata: {
-                    ...customer.metadata,
-                    userId: userId
-                }
-            });
-            return customer;
-        }
+		if (customers.data.length > 0) {
+			// 既存顧客が見つかった場合、metadataを更新
+			const customer = customers.data[0];
+			await stripe.customers.update(customer.id, {
+				metadata: {
+					...customer.metadata,
+					userId: userId
+				}
+			});
+			return customer;
+		}
 
-        // 新規顧客を作成
-        const newCustomer = await stripe.customers.create({
-            email: email,
-            name: name,
-            metadata: {
-                userId: userId,
-            },
-        });
+		// 新規顧客を作成
+		const newCustomer = await stripe.customers.create({
+			email: email || undefined, // ✅ string or undefined
+			name: name || undefined,   // ✅ string or undefined
+			metadata: {
+				userId: userId,
+			},
+		});
 
-        return newCustomer;
-    } catch (error) {
-        console.error('Error in getOrCreateCustomer:', error);
-        throw error;
-    }
+
+		return newCustomer;
+	} catch (error) {
+		console.error('Error in getOrCreateCustomer:', error);
+		throw error;
+	}
 }
 
 // 以下、既存の関数はそのまま...
@@ -1001,103 +986,103 @@ export async function getOrCreateCustomer(userId: string, email: string, name?: 
  * Setup Intentを作成する
  */
 export async function createSetupIntent(
-    customerId: string,
-    paymentMethods: PaymentMethodType[] = ['card']
+	customerId: string,
+	paymentMethods: PaymentMethodType[] = ['card']
 ): Promise<Stripe.SetupIntent> {
-    try {
-        const setupIntent = await stripe.setupIntents.create({
-            customer: customerId,
-            payment_method_types: paymentMethods,
-        });
-        return setupIntent;
-    } catch (error) {
-        console.error('Error creating Setup Intent:', error);
-        throw error;
-    }
+	try {
+		const setupIntent = await stripe.setupIntents.create({
+			customer: customerId,
+			payment_method_types: paymentMethods,
+		});
+		return setupIntent;
+	} catch (error) {
+		console.error('Error creating Setup Intent:', error);
+		throw error;
+	}
 }
 
 /**
  * 支払い方法をデフォルトとして設定
  */
 export async function setDefaultPaymentMethod(
-    customerId: string,
-    paymentMethodId: string
+	customerId: string,
+	paymentMethodId: string
 ): Promise<Stripe.Customer> {
-    try {
-        const customer = await stripe.customers.update(customerId, {
-            invoice_settings: {
-                default_payment_method: paymentMethodId,
-            },
-        });
-        return customer;
-    } catch (error) {
-        console.error('Error setting default payment method:', error);
-        throw error;
-    }
+	try {
+		const customer = await stripe.customers.update(customerId, {
+			invoice_settings: {
+				default_payment_method: paymentMethodId,
+			},
+		});
+		return customer;
+	} catch (error) {
+		console.error('Error setting default payment method:', error);
+		throw error;
+	}
 }
 
 /**
  * 利用に基づく請求書を作成
  */
 export async function createInvoiceForUsage(
-    customerId: string,
-    durationMinutes: number,
-    description: string = 'E-Sports Sakura利用料金'
+	customerId: string,
+	durationMinutes: number,
+	description: string = 'E-Sports Sakura利用料金'
 ): Promise<Stripe.Invoice> {
-    try {
-        // 10分単位で料金計算（10分あたり120円）
-        const units = Math.ceil(durationMinutes / 10);
-        const amountYen = units * 120;
+	try {
+		// 10分単位で料金計算（10分あたり120円）
+		const units = Math.ceil(durationMinutes / 10);
+		const amountYen = units * 120;
 
-        // 請求書の作成
-        const invoice = await stripe.invoices.create({
-            customer: customerId,
-            auto_advance: true, // 自動的に確定・支払い
-            description: description,
-            metadata: {
-                durationMinutes: String(durationMinutes),
-                units: String(units),
-            },
-        });
+		// 請求書の作成
+		const invoice = await stripe.invoices.create({
+			customer: customerId,
+			auto_advance: true, // 自動的に確定・支払い
+			description: description,
+			metadata: {
+				durationMinutes: String(durationMinutes),
+				units: String(units),
+			},
+		});
 
-        // 請求項目の追加
-        await stripe.invoiceItems.create({
-            customer: customerId,
-            amount: amountYen * 100, // 日本円をセントに変換
-            currency: 'jpy',
-            description: `利用時間: ${durationMinutes}分（${units}単位）`,
-            invoice: invoice.id,
-        });
+		// 請求項目の追加
+		await stripe.invoiceItems.create({
+			customer: customerId,
+			amount: amountYen * 100, // 日本円をセントに変換
+			currency: 'jpy',
+			description: `利用時間: ${durationMinutes}分（${units}単位）`,
+			invoice: invoice.id,
+		});
 
-        // 請求書の確定
-        if (!invoice.id) throw new Error('invoice.id is undefined');
-        const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
+		// 請求書の確定
+		if (!invoice.id) throw new Error('invoice.id is undefined');
+		const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
 
-        // 支払い処理
-        if (!finalizedInvoice.id) throw new Error('finalizedInvoice.id is undefined');
-        return await stripe.invoices.pay(finalizedInvoice.id);
-    } catch (error) {
-        console.error('Error creating invoice for usage:', error);
-        throw error;
-    }
+		// 支払い処理
+		if (!finalizedInvoice.id) throw new Error('finalizedInvoice.id is undefined');
+		return await stripe.invoices.pay(finalizedInvoice.id);
+	} catch (error) {
+		console.error('Error creating invoice for usage:', error);
+		throw error;
+	}
 }
 
 /**
  * 顧客の支払い方法一覧を取得
  */
 export async function getCustomerPaymentMethods(
-    customerId: string
+	customerId: string
 ): Promise<Stripe.PaymentMethod[]> {
-    try {
-        const paymentMethods = await stripe.paymentMethods.list({
-            customer: customerId,
-            type: 'card',
-        });
-        return paymentMethods.data;
-    } catch (error) {
-        console.error('Error getting customer payment methods:', error);
-        throw error;
-    }
+	try {
+		const paymentMethods = await stripe.paymentMethods.list({
+			customer: customerId,
+			type: 'card',
+		});
+		return paymentMethods.data;
+	} catch (error) {
+		console.error('Error getting customer payment methods:', error);
+		throw error;
+	}
 }-e 
 ### FILE: ./src/lib/gameData.ts
 
@@ -1321,248 +1306,6 @@ export const GAME_DATA: Record<string, CategoryData> = {
 		]
 	}
 };-e 
-### FILE: ./src/lib/face-verification-service.ts
-
-import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { getStorage, ref, getDownloadURL, deleteObject } from 'firebase/storage';
-import { UserDocument } from '@/types/firebase';
-
-/**
- * 顔認証サービスクラス
- * 顔動画の管理やステータス確認を行う
- */
-export class FaceVerificationService {
-  
-  /**
-   * ユーザーの顔認証ステータスを取得
-   * @param userId ユーザーID
-   * @returns 顔認証ステータス情報
-   */
-  static async getFaceVerificationStatus(userId: string): Promise<{
-    isCompleted: boolean;
-    isPending: boolean;
-    isRejected: boolean;
-    rejectionReason?: string;
-  }> {
-    try {
-      const db = getFirestore();
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      
-      if (!userDoc.exists()) {
-        throw new Error('ユーザーが見つかりません');
-      }
-      
-      const userData = userDoc.data() as UserDocument;
-      const faceVideo = userData.faceVideo;
-      
-      if (!faceVideo) {
-        return {
-          isCompleted: false,
-          isPending: false,
-          isRejected: false
-        };
-      }
-      
-      return {
-        isCompleted: true,
-        isPending: faceVideo.confirmed === null || faceVideo.confirmed === undefined,
-        isRejected: faceVideo.confirmed === false,
-        rejectionReason: faceVideo.rejectionReason
-      };
-    } catch (error) {
-      console.error('顔認証ステータス取得エラー:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * 顔動画の一時的なダウンロードURL生成
-   * @param userId ユーザーID
-   * @param expirationTimeMinutes URLの有効期限（分）
-   * @returns 署名付きURL
-   */
-  static async getTemporaryDownloadUrl(userId: string, expirationTimeMinutes: number = 5): Promise<string> {
-    try {
-      const db = getFirestore();
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      
-      if (!userDoc.exists()) {
-        throw new Error('ユーザーが見つかりません');
-      }
-      
-      const userData = userDoc.data() as UserDocument;
-      
-      if (!userData.faceVideo?.storagePath) {
-        throw new Error('顔動画が登録されていません');
-      }
-      
-      const storage = getStorage();
-      const videoRef = ref(storage, userData.faceVideo.storagePath);
-      
-      // Firebase Storageの署名付きURL（デフォルトで一時的なURLが生成される）
-      // 注: この方法では厳密な有効期限指定はできないが、一般的には短期間の有効期限となる
-      const downloadUrl = await getDownloadURL(videoRef);
-      
-      return downloadUrl;
-    } catch (error) {
-      console.error('ダウンロードURL生成エラー:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * 顔認証の再試行（既存のデータをリセット）
-   * @param userId ユーザーID
-   * @returns 成功したかどうか
-   */
-  static async resetFaceVerification(userId: string): Promise<boolean> {
-    try {
-      const db = getFirestore();
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      
-      if (!userDoc.exists()) {
-        throw new Error('ユーザーが見つかりません');
-      }
-      
-      const userData = userDoc.data() as UserDocument;
-      
-      // 既存の顔動画がある場合は削除
-      if (userData.faceVideo?.storagePath) {
-        const storage = getStorage();
-        const videoRef = ref(storage, userData.faceVideo.storagePath);
-        await deleteObject(videoRef);
-      }
-      
-      // Firestoreのデータもリセット
-      await updateDoc(doc(db, 'users', userId), {
-        faceVideo: null
-      });
-      
-      return true;
-    } catch (error) {
-      console.error('顔認証リセットエラー:', error);
-      return false;
-    }
-  }
-  
-  /**
-   * 管理者用: フラグ付きユーザーの一覧取得
-   * @returns フラグ付きユーザーリスト
-   */
-  static async getFlaggedUsers(): Promise<UserDocument[]> {
-    try {
-      const db = getFirestore();
-      const usersRef = collection(db, 'users');
-      
-      // フラグが立っているユーザーを検索
-      const q = query(
-        usersRef, 
-        where('faceVideo.flagged', '==', true)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const flaggedUsers: UserDocument[] = [];
-      
-      querySnapshot.forEach((doc) => {
-        flaggedUsers.push(doc.data() as UserDocument);
-      });
-      
-      return flaggedUsers;
-    } catch (error) {
-      console.error('フラグ付きユーザー取得エラー:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * 管理者用: 顔認証ステータスの手動更新
-   * @param userId ユーザーID
-   * @param status 更新するステータス情報
-   * @returns 成功したかどうか
-   */
-  static async updateVerificationStatus(
-    userId: string,
-    status: {
-      confirmed: boolean;
-      flagged?: boolean;
-      rejectionReason?: string | null;
-    }
-  ): Promise<boolean> {
-    try {
-      const db = getFirestore();
-      const userDocRef = doc(db, 'users', userId);
-      
-      // 既存のfaceVideo情報を維持しつつステータスのみ更新
-      await updateDoc(userDocRef, {
-        'faceVideo.confirmed': status.confirmed,
-        'faceVideo.flagged': status.flagged ?? false,
-        'faceVideo.rejectionReason': status.rejectionReason || null,
-        'faceVideo.checkedAt': new Date().toISOString()
-      });
-      
-      return true;
-    } catch (error) {
-      console.error('ステータス更新エラー:', error);
-      return false;
-    }
-  }
-}
-
-export default FaceVerificationService;-e 
-### FILE: ./src/app/camera-test/page.tsx
-
-'use client';
-
-import React from 'react';
-import CameraTest from '@/components/verification/camera-test';
-import Link from 'next/link';
-
-export default function CameraTestPage() {
-	return (
-		<div className="min-h-screen bg-background text-foreground">
-			<header className="bg-background/80 backdrop-blur-sm border-b border-border">
-				<div className="container mx-auto px-4">
-					<div className="flex items-center justify-between h-16">
-						<Link href="/" className="font-bold text-xl text-accent">
-							E-Sports Sakura
-						</Link>
-
-						<nav>
-							<Link href="/dashboard" className="text-foreground/70 hover:text-accent">
-								ダッシュボードに戻る
-							</Link>
-						</nav>
-					</div>
-				</div>
-			</header>
-
-			<main className="container mx-auto px-4 py-8 max-w-2xl">
-				<div className="mb-6">
-					<h1 className="text-2xl font-bold mb-2">カメラテストツール</h1>
-					<p className="text-foreground/70">
-						このページはカメラの動作確認テスト用です。異なるカメラを選択して、正しく映像が表示されるか確認できます。
-					</p>
-				</div>
-
-				<CameraTest />
-
-				<div className="mt-8 bg-border/5 p-4 rounded-lg">
-					<h2 className="text-lg font-medium mb-2">使い方:</h2>
-					<ol className="list-decimal pl-5 space-y-2">
-						<li>「カメラを選択」からテストしたいカメラデバイスを選びます</li>
-						<li>「カメラを開始」ボタンをクリックしてカメラを起動します</li>
-						<li>カメラの映像が表示されることを確認します</li>
-						<li>「フレームキャプチャ」ボタンで現在の映像をキャプチャし、画像データを確認できます</li>
-						<li>「カメラを停止」でテストを終了します</li>
-					</ol>
-					<p className="mt-4 text-sm text-foreground/60">
-						<strong>注意:</strong> カメラが表示されない場合は、ブラウザのカメラ許可設定を確認してください。また、他のアプリケーションがカメラを使用している場合は、それらを閉じてからお試しください。
-					</p>
-				</div>
-			</main>
-		</div>
-	);
-}-e 
 ### FILE: ./src/app/login/page.tsx
 
 'use client';
@@ -3584,9 +3327,9 @@ import { stripe } from '@/lib/stripe';
 
 export async function POST(request: NextRequest) {
 	try {
-		// ユーザー認証
+		/* ────────── 1. 認証 ────────── */
 		const authHeader = request.headers.get('authorization');
-		if (!authHeader || !authHeader.startsWith('Bearer ')) {
+		if (!authHeader?.startsWith('Bearer ')) {
 			return NextResponse.json({ error: '認証エラー' }, { status: 401 });
 		}
 
@@ -3594,57 +3337,68 @@ export async function POST(request: NextRequest) {
 		const decodedToken = await auth.verifyIdToken(token);
 		const userId = decodedToken.uid;
 
-		// リクエストボディを取得
-		const body = await request.json();
-		const { paymentMethodId } = body;
-
+		/* ────────── 2. リクエスト解析 ────────── */
+		const { paymentMethodId } = await request.json();
 		if (!paymentMethodId) {
 			return NextResponse.json({ error: '支払い方法IDが必要です' }, { status: 400 });
 		}
 
-		// Stripeから支払い方法の詳細を取得
+		/* ────────── 3. PaymentMethod 取得 ────────── */
 		const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
 
-		// カード支払いの場合
+		/* ────────── 4. カードの場合のみ処理 ────────── */
 		if (paymentMethod.type === 'card' && paymentMethod.card) {
-			const fingerprint = paymentMethod.card.fingerprint;
-			const last4 = paymentMethod.card.last4;
-			const brand = paymentMethod.card.brand;
+			const { fingerprint, last4, brand } = paymentMethod.card;
 
-			// 重複チェック
+			/* === ガード節：fingerprint が無いカードを拒否 === */
+			if (!fingerprint) {
+				return NextResponse.json(
+					{
+						error: 'fingerprint_unavailable',
+						message:
+							'このカードは識別用フィンガープリントを取得できません。別のカードをご利用ください。'
+					},
+					{ status: 400 }
+				);
+			}
+
+			/* ─────── 5. 重複チェック ─────── */
 			const existingUserId = await stripeService.checkCardFingerprintDuplicate(fingerprint);
 
 			if (existingUserId && existingUserId !== userId) {
-				// 別のユーザーが同じカードを使用している場合
-				return NextResponse.json({
-					error: 'duplicate_card',
-					message: 'この支払い方法は既に別のアカウントで使用されています。ご自身の既存アカウントにログインするか、別の支払い方法をご利用ください。'
-				}, { status: 409 });
+				return NextResponse.json(
+					{
+						error: 'duplicate_card',
+						message:
+							'この支払い方法は既に別のアカウントで使用されています。ご自身の既存アカウントにログインするか、別の支払い方法をご利用ください。'
+					},
+					{ status: 409 }
+				);
 			}
 
-			// ユーザーにカード情報を保存
+			/* ─────── 6. カード情報を保存 ─────── */
 			await stripeService.saveCardInfoToUser(userId, paymentMethodId, fingerprint, last4, brand);
 
 			return NextResponse.json({
 				success: true,
-				paymentMethod: {
-					id: paymentMethodId,
-					last4,
-					brand
-				}
+				paymentMethod: { id: paymentMethodId, last4, brand }
 			});
 		}
 
+		/* ────────── 7. 非対応タイプ ────────── */
 		return NextResponse.json({ error: '対応していない支払い方法です' }, { status: 400 });
-
-	} catch (error: any) {
+	} catch (error) {
 		console.error('Error registering payment method:', error);
-		return NextResponse.json({
-			error: 'server_error',
-			message: 'サーバーエラーが発生しました。時間をおいて再度お試しください。'
-		}, { status: 500 });
+		return NextResponse.json(
+			{
+				error: 'server_error',
+				message: 'サーバーエラーが発生しました。時間をおいて再度お試しください。'
+			},
+			{ status: 500 }
+		);
 	}
-}-e 
+}
+-e 
 ### FILE: ./src/app/api/stripe/confirm-payment-setup/route.ts
 
 // src/app/api/stripe/confirm-payment-setup/route.ts
@@ -5056,498 +4810,6 @@ export default function ProtectedRoute({
 
 	return user ? <>{children}</> : null;
 }-e 
-### FILE: ./src/components/verification/verification-status-v2.tsx
-
-'use client';
-
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import Button from '@/components/ui/button';
-import LoadingSpinner from '@/components/ui/loading-spinner';
-import { useAuth } from '@/context/auth-context';
-import {
-	VerifiedIcon,
-	VerificationFailedIcon,
-	VerificationPendingIcon,
-	VerificationBadge
-} from '@/components/icons/verification-icons';
-
-export default function VerificationStatusV2() {
-	const router = useRouter();
-	const { user } = useAuth();
-	const { ekycData, isLoading, error: ekycError, resetEkycStatus } = useEkyc();
-	const [isStartingVerification, setIsStartingVerification] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const [countdown, setCountdown] = useState(5);
-	const [showHelpSection, setShowHelpSection] = useState(false);
-
-	// 検証完了時の自動リダイレクト
-	useEffect(() => {
-		if (ekycData?.status === 'completed') {
-			const timer = setInterval(() => {
-				setCountdown((prev) => {
-					if (prev <= 1) {
-						clearInterval(timer);
-						router.push('/register/payment');
-						return 0;
-					}
-					return prev - 1;
-				});
-			}, 1000);
-
-			return () => clearInterval(timer);
-		}
-	}, [ekycData, router]);
-
-	// 本人確認を開始
-	const startVerification = async () => {
-		if (!user || !user.email) {
-			setError('ユーザー情報が取得できません。ログインし直してください。');
-			return;
-		}
-
-		setIsStartingVerification(true);
-		setError(null);
-
-		try {
-			// Firebase IDトークンを取得
-			const idToken = await user.getIdToken();
-
-			// APIを呼び出してVeriffセッションを作成
-			const response = await fetch('/api/veriff/create-session', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${idToken}`
-				}
-			});
-
-			if (!response.ok) {
-				const errorData = await response.json();
-				throw new Error(errorData.error || '本人確認の開始に失敗しました');
-			}
-
-			const data = await response.json();
-
-			// すでに検証が完了している場合
-			if (data.status === 'completed') {
-				return;
-			}
-
-			// Veriffのページにリダイレクト
-			window.location.href = data.sessionUrl;
-
-		} catch (err) {
-			console.error('Error starting verification:', err);
-			setError(`本人確認の開始中にエラーが発生しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
-			setIsStartingVerification(false);
-		}
-	};
-
-	// 開発用: 検証完了をシミュレート
-	const simulateVerification = async () => {
-		if (!user) return;
-
-		setIsStartingVerification(true);
-		setError(null);
-
-		try {
-			// 開発環境用のAPIエンドポイント
-			const response = await fetch('/api/veriff/simulate-complete', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${await user.getIdToken()}`
-				}
-			});
-
-			if (!response.ok) {
-				throw new Error('シミュレーション失敗');
-			}
-
-			// APIレスポンスを待つ必要はなく、Firestoreリスナーが状態を更新
-			setTimeout(() => {
-				setIsStartingVerification(false);
-			}, 1500);
-
-		} catch (err) {
-			console.error('Error in simulation:', err);
-			setError('シミュレーション中にエラーが発生しました');
-			setIsStartingVerification(false);
-		}
-	};
-
-	// 検証をリセット
-	const handleReset = async () => {
-		setIsStartingVerification(true);
-		try {
-			await resetEkycStatus();
-			setIsStartingVerification(false);
-		} catch (err) {
-			setIsStartingVerification(false);
-		}
-	};
-
-	// ステータスに応じたコンテンツをレンダリング
-	const renderStatusContent = () => {
-		if (isLoading) {
-			return (
-				<div className="flex justify-center items-center py-10">
-					<LoadingSpinner size="large" />
-				</div>
-			);
-		}
-
-		switch (ekycData?.status) {
-			case 'completed':
-				return (
-					<motion.div
-						initial={{ opacity: 0, y: 20 }}
-						animate={{ opacity: 1, y: 0 }}
-						className="bg-green-500/10 text-green-600 p-6 rounded-xl"
-					>
-						<div className="flex items-center mb-4">
-							<div className="bg-green-100 rounded-full p-2 mr-4">
-								<VerifiedIcon size={32} />
-							</div>
-							<div>
-								<h3 className="text-lg font-medium">本人確認が完了しました</h3>
-								<p className="text-sm opacity-80">
-									{ekycData.verifiedAt ?
-										`確認日時: ${new Date(ekycData.verifiedAt).toLocaleString('ja-JP')}` :
-										'正常に認証されました'}
-								</p>
-							</div>
-						</div>
-
-						<div className="bg-white/50 rounded-lg p-4 mb-4">
-							<div className="flex items-center">
-								<VerificationBadge className="mr-3" />
-								<div>
-									<p className="font-medium">E-Sports Sakura 認証済みユーザー</p>
-									<p className="text-sm opacity-80">本人確認済みのユーザーとして登録されました</p>
-								</div>
-							</div>
-						</div>
-
-						<div className="flex items-center justify-between">
-							<span className="text-sm">
-								{`${countdown}秒後に決済情報登録へ移動します...`}
-							</span>
-							<Button
-								onClick={() => router.push('/register/payment')}
-								className="bg-green-600 hover:bg-green-700 text-white"
-							>
-								今すぐ次へ
-							</Button>
-						</div>
-					</motion.div>
-				);
-
-			case 'failed':
-				return (
-					<motion.div
-						initial={{ opacity: 0, y: 20 }}
-						animate={{ opacity: 1, y: 0 }}
-						className="bg-red-500/10 text-red-600 p-6 rounded-xl"
-					>
-						<div className="flex items-center mb-4">
-							<div className="bg-red-100 rounded-full p-2 mr-4">
-								<VerificationFailedIcon size={32} />
-							</div>
-							<div>
-								<h3 className="text-lg font-medium">本人確認に失敗しました</h3>
-								<p className="text-sm opacity-80">
-									問題が発生したため、本人確認プロセスを完了できませんでした
-								</p>
-							</div>
-						</div>
-
-						<div className="bg-white/50 rounded-lg p-4 mb-4">
-							<h4 className="font-medium mb-2">考えられる原因:</h4>
-							<ul className="list-disc pl-5 text-sm space-y-1">
-								<li>写真が鮮明でなかった</li>
-								<li>身分証明書が有効でなかった</li>
-								<li>顔と身分証の写真が一致しなかった</li>
-								<li>ネットワーク接続に問題があった</li>
-							</ul>
-						</div>
-
-						<div className="flex justify-end space-x-4">
-							<Button
-								onClick={handleReset}
-								variant="outline"
-								disabled={isStartingVerification}
-							>
-								初めからやり直す
-							</Button>
-							<Button
-								onClick={startVerification}
-								disabled={isStartingVerification}
-							>
-								{isStartingVerification ? <LoadingSpinner size="small" /> : '再試行する'}
-							</Button>
-						</div>
-					</motion.div>
-				);
-
-			case 'pending':
-			default:
-				return (
-					<div className="space-y-6">
-						<div className="bg-blue-500/10 text-blue-600 p-6 rounded-xl">
-							<div className="flex items-center mb-4">
-								<div className="bg-blue-100 rounded-full p-2 mr-4">
-									<VerificationPendingIcon size={32} />
-								</div>
-								<div>
-									<h3 className="text-lg font-medium">本人確認を開始しましょう</h3>
-									<p className="text-sm opacity-80">
-										安全なサービス提供のため、身分証明書による本人確認が必要です
-									</p>
-								</div>
-							</div>
-
-							<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-								<div className="bg-blue-500/5 p-4 rounded-lg">
-									<div className="text-center mb-2">
-										<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto" viewBox="0 0 20 20" fill="currentColor">
-											<path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm3 1h6v4H7V5zm8 8v2h1v1H4v-1h1v-2a1 1 0 011-1h8a1 1 0 011 1z" clipRule="evenodd" />
-										</svg>
-									</div>
-									<h4 className="font-medium text-center mb-1">身分証撮影</h4>
-									<p className="text-xs text-center">
-										身分証明書の表面と裏面を撮影します
-									</p>
-								</div>
-								<div className="bg-blue-500/5 p-4 rounded-lg">
-									<div className="text-center mb-2">
-										<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto" viewBox="0 0 20 20" fill="currentColor">
-											<path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-										</svg>
-									</div>
-									<h4 className="font-medium text-center mb-1">顔写真撮影</h4>
-									<p className="text-xs text-center">
-										自撮りで本人確認用の写真を撮影します
-									</p>
-								</div>
-								<div className="bg-blue-500/5 p-4 rounded-lg">
-									<div className="text-center mb-2">
-										<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto" viewBox="0 0 20 20" fill="currentColor">
-											<path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-										</svg>
-									</div>
-									<h4 className="font-medium text-center mb-1">自動審査</h4>
-									<p className="text-xs text-center">
-										AIによる自動審査ですぐに結果が出ます
-									</p>
-								</div>
-							</div>
-						</div>
-
-						<AnimatePresence>
-							{showHelpSection && (
-								<motion.div
-									initial={{ opacity: 0, height: 0 }}
-									animate={{ opacity: 1, height: 'auto' }}
-									exit={{ opacity: 0, height: 0 }}
-									transition={{ duration: 0.3 }}
-									className="overflow-hidden"
-								>
-									<div className="bg-border/5 rounded-xl p-6 shadow-soft">
-										<h3 className="text-lg font-medium mb-3">本人確認に必要なもの</h3>
-										<ul className="list-disc pl-5 space-y-2">
-											<li>有効な身分証明書（運転免許証、パスポート、マイナンバーカードなど）</li>
-											<li>カメラ付きデバイス（スマートフォン、PC）</li>
-											<li>良好な照明環境</li>
-										</ul>
-
-										<h4 className="font-medium mt-4 mb-2">準備のポイント</h4>
-										<ul className="list-disc pl-5 space-y-1 text-sm">
-											<li>身分証明書の情報が鮮明に見えるようにしてください</li>
-											<li>反射や影が写り込まないよう注意してください</li>
-											<li>顔写真撮影時は、明るい場所で正面から撮影してください</li>
-											<li>眼鏡やマスクは外してください</li>
-										</ul>
-									</div>
-								</motion.div>
-							)}
-						</AnimatePresence>
-
-						<div className="flex flex-col space-y-4">
-							<Button
-								onClick={() => setShowHelpSection(!showHelpSection)}
-								variant="outline"
-								className="self-start"
-							>
-								{showHelpSection ? '準備のポイントを隠す' : '準備のポイントを表示する'}
-							</Button>
-
-							<div className="pt-2">
-								{process.env.NODE_ENV === 'development' ? (
-									<div className="space-y-4">
-										<Button
-											onClick={startVerification}
-											disabled={isStartingVerification}
-											className="w-full"
-										>
-											{isStartingVerification ? <LoadingSpinner size="small" /> : '本人確認を開始する'}
-										</Button>
-										<Button
-											onClick={simulateVerification}
-											disabled={isStartingVerification}
-											className="w-full bg-gray-500 hover:bg-gray-600"
-										>
-											{isStartingVerification ? <LoadingSpinner size="small" /> : '(開発用) 検証完了をシミュレート'}
-										</Button>
-									</div>
-								) : (
-									<Button
-										onClick={startVerification}
-										disabled={isStartingVerification}
-										className="w-full"
-									>
-										{isStartingVerification ? <LoadingSpinner size="small" /> : '本人確認を開始する'}
-									</Button>
-								)}
-							</div>
-						</div>
-					</div>
-				);
-		}
-	};
-
-	return (
-		<div className="bg-border/5 rounded-xl shadow-soft p-6">
-			<h2 className="text-xl font-semibold mb-6">本人確認 (eKYC)</h2>
-
-			{(error || ekycError) && (
-				<div className="bg-red-500/10 text-red-500 p-4 rounded-lg mb-6">
-					{error || ekycError}
-				</div>
-			)}
-
-			{renderStatusContent()}
-		</div>
-	);
-}-e 
-### FILE: ./src/components/verification/verification-complete.tsx
-
-'use client';
-
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Image from 'next/image';
-import { motion } from 'framer-motion';
-import Button from '@/components/ui/button';
-import { useEkyc } from '@/context/ekyc-context';
-
-interface VerificationCompleteProps {
-	onContinue?: () => void;
-	autoRedirectDelay?: number; // 秒数
-	redirectUrl?: string;
-}
-
-export default function VerificationComplete({
-	onContinue,
-	autoRedirectDelay = 5,
-	redirectUrl = '/register/payment'
-}: VerificationCompleteProps) {
-	const router = useRouter();
-	const { ekycData } = useEkyc();
-	const [countdown, setCountdown] = useState(autoRedirectDelay);
-	const [isRedirecting, setIsRedirecting] = useState(false);
-
-	// 本人確認が完了している場合のみカウントダウン
-	useEffect(() => {
-		if (ekycData?.status === 'completed' && !isRedirecting) {
-			const timer = setInterval(() => {
-				setCountdown((prev) => {
-					if (prev <= 1) {
-						clearInterval(timer);
-						handleContinue();
-						return 0;
-					}
-					return prev - 1;
-				});
-			}, 1000);
-
-			return () => clearInterval(timer);
-		}
-	}, [ekycData, isRedirecting]);
-
-	// 次へ進むハンドラー
-	const handleContinue = () => {
-		setIsRedirecting(true);
-
-		if (onContinue) {
-			onContinue();
-		} else {
-			router.push(redirectUrl);
-		}
-	};
-
-	if (ekycData?.status !== 'completed') {
-		return null;
-	}
-
-	return (
-		<motion.div
-			initial={{ opacity: 0, y: 20 }}
-			animate={{ opacity: 1, y: 0 }}
-			transition={{ duration: 0.5 }}
-			className="bg-green-500/10 text-green-600 p-6 rounded-xl"
-		>
-			<div className="flex items-center mb-4">
-				<div className="bg-green-100 rounded-full p-2 mr-4">
-					<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" viewBox="0 0 20 20" fill="currentColor">
-						<path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-					</svg>
-				</div>
-				<div>
-					<h3 className="text-lg font-medium">本人確認が完了しました</h3>
-					<p className="text-sm opacity-80">
-						{ekycData.verifiedAt ?
-							`確認日時: ${new Date(ekycData.verifiedAt).toLocaleString('ja-JP')}` :
-							'正常に認証されました'}
-					</p>
-				</div>
-			</div>
-
-			<div className="bg-white/50 rounded-lg p-4 mb-4">
-				<div className="flex items-center">
-					<Image
-						src="/images/verification-badge.svg"
-						alt="認証済みバッジ"
-						width={48}
-						height={48}
-						className="mr-3"
-					/>
-					<div>
-						<p className="font-medium">E-Sports Sakura 認証済みユーザー</p>
-						<p className="text-sm opacity-80">本人確認済みのユーザーとして登録されました</p>
-					</div>
-				</div>
-			</div>
-
-			<div className="flex items-center justify-between">
-				<span className="text-sm">
-					{isRedirecting ?
-						'次のステップへ移動中...' :
-						`${countdown}秒後に自動的に次のステップへ移動します...`}
-				</span>
-				<Button
-					onClick={handleContinue}
-					disabled={isRedirecting}
-					className="bg-green-600 hover:bg-green-700 text-white"
-				>
-					今すぐ次へ
-				</Button>
-			</div>
-		</motion.div>
-	);
-}-e 
 ### FILE: ./src/components/games/AudioPermissionModal.tsx
 
 'use client';
@@ -6057,7 +5319,7 @@ export default function GameCategoryLayout({
 							<div className="text-center pb-20">
 								<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">本格協力プレイ</h2>
 								<p className="text-lg text-muted-foreground mx-auto w-full">
-									密に協力するディープ達成感
+									密に協力するディープな達成感
 								</p>
 							</div>
 						</div>
@@ -10195,7 +9457,7 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Calendar, Info, Building, MapPin } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { BranchDocument } from '@/types/firebase';
+import { BranchDocument, ReservationDocument } from '@/types/firebase';
 
 interface AvailabilityCalendarProps {
 	onDateSelect?: (date: Date) => void;
@@ -10303,16 +9565,14 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
 
 					const reservationsSnapshot = await getDocs(reservationsQuery);
 
-					// メモリ内でフィルタリング - インデックス対応まで一時的対応
-					const filteredReservations = reservationsSnapshot.docs
-						.map(doc => ({
+					// ① ReservationDocument 型としてキャストして全予約を取得
+					const filteredReservations = reservationsSnapshot.docs.map(doc => {
+						const data = doc.data() as ReservationDocument;
+						return {
 							id: doc.id,
-							...doc.data()
-						}))
-						.filter(res =>
-							res.date >= startDateStr &&
-							res.date <= endDateStr
-						);
+							...data
+						};
+					});
 
 					// 日付ごとに予約をカウント
 					const reservationCountByDate: Record<string, { total: number, uniqueSeats: Set<string> }> = {};
@@ -10887,14 +10147,13 @@ export default function HeroSection() {
 						</div>
 					</h1>
 
-					{/* サブキャッチコピー */}
 					<motion.p
-						className="text-xl md:text-2xl text-foreground/90 mb-8"
+						className="text-2xl md:text-3xl text-foreground/90 mb-8"
 						initial={{ opacity: 0, scale: 0.9 }}
 						animate={{ opacity: 1, scale: 1 }}
 						transition={{ duration: 0.7, delay: 0.5 }}
 					>
-						コスパもいいし。ふらっと寄れるゲームカフェ
+						ふらっと寄れるゲームカフェ
 					</motion.p>
 
 					{/* CTAボタン */}
@@ -11261,14 +10520,14 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ currentStep }) => {
 			id: 2,
 			name: '決済情報',
 			description: 'お支払い方法の登録',
-			status: currentStep === 1 ? 'current' : currentStep > 1 ? 'complete' : 'upcoming',
+			status: activeStep === 2 ? 'current' : activeStep > 2 ? 'complete' : 'upcoming',
 			href: '/register/payment',
 		},
 		{
 			id: 3,
 			name: '登録完了',
 			description: 'QRコードの発行',
-			status: currentStep === 2 ? 'current' : 'upcoming',
+			status: activeStep === 3 ? 'current' : activeStep > 3 ? 'complete' : 'upcoming',
 			href: '/register/complete',
 		},
 	];

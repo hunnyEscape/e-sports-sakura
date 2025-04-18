@@ -44,8 +44,6 @@
 │   │   │       │   └── route.ts
 │   │   │       └── reset-status
 │   │   │           └── route.ts
-│   │   ├── camera-test
-│   │   │   └── page.tsx
 │   │   ├── dashboard
 │   │   │   └── page.tsx
 │   │   ├── favicon.ico
@@ -117,13 +115,10 @@
 │   │   │   ├── reservation-form.tsx
 │   │   │   ├── seat-selector.tsx
 │   │   │   └── time-grid.tsx
-│   │   ├── ui
-│   │   │   ├── PageTransition.tsx
-│   │   │   ├── button.tsx
-│   │   │   └── loading-spinner.tsx
-│   │   └── verification
-│   │       ├── verification-complete.tsx
-│   │       └── verification-status-v2.tsx
+│   │   └── ui
+│   │       ├── PageTransition.tsx
+│   │       ├── button.tsx
+│   │       └── loading-spinner.tsx
 │   ├── context
 │   │   ├── AudioContext.tsx
 │   │   ├── auth-context.tsx
@@ -132,7 +127,6 @@
 │   ├── hooks
 │   │   └── use-veriff.ts
 │   ├── lib
-│   │   ├── face-verification-service.ts
 │   │   ├── firebase-admin.ts
 │   │   ├── firebase-storage-rules.txt
 │   │   ├── firebase.ts
@@ -149,4 +143,4 @@
 ├── tailwind.config.js
 └── tsconfig.json
 
-47 directories, 102 files
+45 directories, 98 files

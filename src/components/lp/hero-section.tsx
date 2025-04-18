@@ -87,14 +87,13 @@ export default function HeroSection() {
 						</div>
 					</h1>
 
-					{/* サブキャッチコピー */}
 					<motion.p
-						className="text-xl md:text-2xl text-foreground/90 mb-8"
+						className="text-2xl md:text-3xl text-foreground/90 mb-8"
 						initial={{ opacity: 0, scale: 0.9 }}
 						animate={{ opacity: 1, scale: 1 }}
 						transition={{ duration: 0.7, delay: 0.5 }}
 					>
-						コスパもいいし。ふらっと寄れるゲームカフェ
+						ふらっと寄れるゲームカフェ
 					</motion.p>
 
 					{/* CTAボタン */}
