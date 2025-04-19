@@ -45,7 +45,7 @@ export interface UserDocument {
 		paymentMethodId?: string;
 		cardFingerprint?: string; // 追加: カードの一意識別子
 		last4?: string;           // オプション: 下4桁（表示用）
-		brand?: string;           // オプション: カードブランド（表示用）
+		brand?: string;           // オプション: カードブランド（表示用
 		paymentSetupCompleted?: boolean;
 	};
 }
