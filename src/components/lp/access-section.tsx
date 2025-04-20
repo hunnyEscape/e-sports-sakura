@@ -55,12 +55,8 @@ export default function AccessSection() {
 								<span className="text-xl font-bold text-foreground/70">¥600<span className="text-sm font-normal">/時間</span></span>
 							</div>
 							<div className="flex justify-between items-center border-b border-border pb-3">
-								<span className="text-foreground/70">初回利用で</span>
-								<span className="text-xl font-bold text-accent">900円分のクーポン</span>
-							</div>
-							<div className="flex justify-between items-center border-b border-border pb-3">
-								<span className="text-foreground/70">20日以内の再来店で</span>
-								<span className="text-2xl font-bold text-accent">¥400<span className="text-sm font-normal">/時間</span></span>
+								<span className="text-foreground/70">会員登録で</span>
+								<span className="text-xl font-bold text-accent">1000円分のクーポン</span>
 							</div>
 							<div className="flex justify-between items-center pb-3">
 								<span className="text-foreground/70">ドリンク・お菓子</span>

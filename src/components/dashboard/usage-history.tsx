@@ -111,7 +111,6 @@ export default function UsageHistory() {
 					seatId: activeData.seatId,
 					seatName: seatName,
 					branchName: branchName,
-					invoiceId: activeData.billingId || '',
 					isActive: true,
 				};
 
@@ -186,8 +185,6 @@ export default function UsageHistory() {
 
 				return {
 					id: doc.id,
-					amount: data.amount || Math.ceil(data.durationMinutes * (data.pricePerHour / 60)), // 金額計算 (時間単位の料金を分単位に変換)
-					durationMinutes: data.durationMinutes,
 					description,
 					timestamp: endTimeDate.toISOString(),
 					startTime: startTimeDate.toISOString(),
@@ -195,7 +192,6 @@ export default function UsageHistory() {
 					seatId: data.seatId,
 					seatName: seatName,
 					branchName: branchName,
-					invoiceId: data.billingId || '',
 					isActive: false,
 				};
 			});

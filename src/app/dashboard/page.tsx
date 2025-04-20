@@ -10,8 +10,9 @@ import ProtectedRoute from '@/components/auth/protected-route';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
 import QrCodeDisplay from '@/components/dashboard/qr-code';
-import UsageHistory from '@/components/dashboard/usage-history';
+import MonthlyUsageHistory from '@/components/dashboard/monthly-usage-history';
 import ReservationHistory from '@/components/dashboard/reservation-history';
+import CouponsTab from '@/components/dashboard/coupons';
 import { Calendar, Clock, CreditCard } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -97,7 +98,6 @@ export default function DashboardPage() {
 							</div>
 						)}
 
-						{/* 登録完了している場合は会員情報を表示 */}
 						{userData && userData.registrationCompleted && (
 							<>
 								{/* タブナビゲーション */}
@@ -142,6 +142,11 @@ export default function DashboardPage() {
 
 								{/* タブコンテンツ */}
 								<div className="grid md:grid-cols-1 gap-8">
+									{activeTab === 'coupon' && (
+										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+											<CouponsTab />
+										</div>
+									)}
 
 									{activeTab === 'reservations' && (
 										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
@@ -151,7 +156,7 @@ export default function DashboardPage() {
 
 									{activeTab === 'usage' && (
 										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-											<UsageHistory />
+											<MonthlyUsageHistory />
 										</div>
 									)}
 

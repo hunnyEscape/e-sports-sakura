@@ -74,6 +74,7 @@
 │   │   │   ├── email-password-form.tsx
 │   │   │   └── protected-route.tsx
 │   │   ├── dashboard
+│   │   │   ├── monthly-usage-history.tsx
 │   │   │   ├── qr-code.tsx
 │   │   │   ├── reservation-history.tsx
 │   │   │   └── usage-history.tsx
@@ -143,4 +144,4 @@
 ├── tailwind.config.js
 └── tsconfig.json
 
-45 directories, 98 files
+45 directories, 99 files

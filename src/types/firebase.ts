@@ -57,11 +57,18 @@ export interface SessionDocument {
 	seatId: string;
 	startTime: TimestampOrString;
 	endTime: TimestampOrString;
-	durationMinutes: number;
 	amount: number;
-	pricePerHour: number;
 	active: boolean;
-	billingId?: string;
+	duration: number;
+	hourBlocks: number;
+	// --- Blockchain 保存ステータス ---
+	blockchainStatus: 'pending' | 'confirmed' | 'error';
+	blockchainTxId: string | null;        // トランザクションハッシュ
+	blockchainBlockNumber: number | null; // ブロック番号
+	blockchainConfirmedAt: Timestamp | null; // 確定タイムスタンプ
+	blockchainChainId: string | null;     // チェーン ID
+	blockchainNetworkId: number | null;   // ネットワーク ID
+	blockchainErrorMessage: string | null; // エラー詳細（任意）
 }
 
 // 座席情報
@@ -112,4 +119,28 @@ export interface UsageHistoryDocument {
 	status: string;         // 状態（"paid", "pending"など）
 	timestamp: TimestampOrString; // 利用日時
 	seatId?: string;        // 座席ID（あれば）
+}
+
+// クーポン定義（管理者が作成するマスターデータ）
+export interface CouponDefinition {
+	id: string;
+    code: string;              // 管理用コード
+    name: string;              // クーポン名
+    description: string;       // 説明文
+    discountValue: number;     // 割引額
+    validityPeriod: number;    // 有効期間（日数）- 発行日からの期間
+    isActive: boolean;         // 有効/無効フラグ
+}
+
+// ユーザークーポン（ユーザーに発行されたクーポン）
+export interface UserCoupon {
+    id: string;
+    userId: string;
+    name: string;              // 表示用
+    code: string;              // 表示用
+    description: string;       // 表示用
+    discountValue: number;
+    status: 'available' | 'used';  // 利用可能or使用済み
+    issuedAt: TimestampOrString;   // 発行日
+    appliedMonthPeriod?: string;   // 適用された月（"2025-04"形式）
 }

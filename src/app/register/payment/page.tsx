@@ -47,7 +47,7 @@ export default function PaymentPage() {
 				<div className="bg-border/10 text-white p-4 rounded-lg mb-6">
 					<p>
 						会費は<span className="text-highlight">無料です</span>。<br/>
-						施設を利用しない限り料金は発生しません。ご利用に基づいて月末締めに請求書を発行します。ご登録のクレジットカードにて自動で<span className="text-highlight">後払い</span>されます。
+						施設を利用しない限り料金は発生しません。ご利用に基づいて翌月初旬にクレジットカードにて<span className="text-highlight">後払い</span>されます。
 					</p>
 				</div>
 				<div className="space-y-6 mb-8">
@@ -60,12 +60,8 @@ export default function PaymentPage() {
 								<span className="text-s font-bold text-foreground/70">¥600 <span className="text-sm font-normal">/時間</span></span>
 							</div>
 							<div className="flex justify-between items-center mb-2">
-								<span className="font-medium">20日以内の再来店で</span>
-								<span className="text-xl font-bold text-accent">¥400 <span className="text-sm font-normal">/時間</span></span>
-							</div>
-							<div className="flex justify-between items-center mb-2">
-								<span className="font-medium">初回利用で</span>
-								<span className="text-s font-bold text-accent">900円分のクーポン付き</span>
+								<span className="font-medium">新規会員登録で</span>
+								<span className="text-s font-bold text-accent">1000円分のクーポン付き</span>
 							</div>
 							<ul className="text-sm text-foreground/70 space-y-1">
 								<li>• ドリンク/お菓子付き</li>
