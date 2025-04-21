@@ -18,7 +18,7 @@ import { Calendar, Clock, CreditCard } from 'lucide-react';
 export default function DashboardPage() {
 	const { user, userData, signOut } = useAuth();
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
-	const [activeTab, setActiveTab] = useState('reservations');
+	const [activeTab, setActiveTab] = useState('coupon');
 	const router = useRouter();
 
 	const handleSignOut = async () => {

@@ -47,7 +47,8 @@ export default function PaymentPage() {
 				<div className="bg-border/10 text-white p-4 rounded-lg mb-6">
 					<p>
 						会費は<span className="text-highlight">無料です</span>。<br/>
-						施設を利用しない限り料金は発生しません。ご利用に基づいて翌月初旬にクレジットカードにて<span className="text-highlight">後払い</span>されます。
+						施設を利用しない限り料金は発生しません。<br/>
+						ご利用に基づいて翌月初旬にクレジットカードで<span className="text-highlight">後払い</span>されます。
 					</p>
 				</div>
 				<div className="space-y-6 mb-8">
