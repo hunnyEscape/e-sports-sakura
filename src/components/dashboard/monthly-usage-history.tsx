@@ -4,10 +4,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/auth-context';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
-import { ExternalLink, ChevronDown, ChevronUp, Calendar, Clock } from 'lucide-react';
+import { ExternalLink, ChevronDown, ChevronUp, Calendar, Clock, Tag, Info } from 'lucide-react';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { SessionDocument, SeatDocument } from '@/types/firebase';
+import { SessionDocument, SeatDocument, UserCoupon } from '@/types/firebase';
 
 // セッション情報の拡張インターフェース（表示用）
 interface SessionDisplay extends SessionDocument {
@@ -21,6 +21,14 @@ interface SessionDisplay extends SessionDocument {
 	blockchainStatusText: string;
 }
 
+// クーポン適用情報のインターフェース
+interface AppliedCoupon {
+	id: string;
+	name: string;
+	code: string;
+	discountValue: number;
+}
+
 // 月ごとのグループ化されたデータ
 interface MonthGroup {
 	monthKey: string; // YYYY-MM
@@ -28,8 +36,9 @@ interface MonthGroup {
 	sessions: SessionDisplay[];
 	totalHourBlocks: number;
 	totalAmount: number;
-	appliedCoupons: number; // クーポン適用額
-	finalAmount: number; // 最終金額
+	appliedCoupons: AppliedCoupon[]; // 適用されたクーポン配列
+	totalDiscountAmount: number; // 合計割引額
+	finalAmount: number; // 最終金額（totalAmount - totalDiscountAmount）
 	isPaid: boolean; // 支払い済みかどうか
 }
 
@@ -41,6 +50,7 @@ export default function MonthlyUsageHistory() {
 	const [monthGroups, setMonthGroups] = useState<MonthGroup[]>([]);
 	const [seats, setSeats] = useState<{ [key: string]: SeatDocument }>({});
 	const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+	const [availableCoupons, setAvailableCoupons] = useState<UserCoupon[]>([]);
 
 	// 座席情報を取得
 	const fetchSeats = async () => {
@@ -56,6 +66,44 @@ export default function MonthlyUsageHistory() {
 			return seatsData;
 		} catch (err) {
 			console.error('Error fetching seats:', err);
+			throw err;
+		}
+	};
+
+	// 利用可能なクーポンを取得
+	const fetchAvailableCoupons = async () => {
+		if (!user) return [];
+
+		try {
+			const couponsQuery = query(
+				collection(db, 'userCoupons'),
+				where('userId', '==', user.uid),
+				where('status', '==', 'available'),
+				orderBy('discountValue', 'desc') // 割引額の大きい順にソート
+			);
+
+			const couponsSnapshot = await getDocs(couponsQuery);
+			const coupons: UserCoupon[] = [];
+
+			couponsSnapshot.docs.forEach(doc => {
+				const data = doc.data() as any;
+				const issuedAtDate = getDateFromTimestamp(data.issuedAt);
+
+				coupons.push({
+					id: doc.id,
+					userId: data.userId,
+					name: data.name,
+					code: data.code,
+					description: data.description,
+					discountValue: data.discountValue,
+					status: data.status,
+					issuedAt: issuedAtDate
+				} as UserCoupon);
+			});
+
+			return coupons;
+		} catch (err) {
+			console.error('Error fetching coupons:', err);
 			throw err;
 		}
 	};
@@ -184,6 +232,56 @@ export default function MonthlyUsageHistory() {
 		}
 	};
 
+	// クーポンを適用する
+	const applyCouponsToMonthGroups = (groups: MonthGroup[], coupons: UserCoupon[]): MonthGroup[] => {
+		// ディープコピーを作成
+		const updatedGroups = JSON.parse(JSON.stringify(groups)) as MonthGroup[];
+
+		// 利用可能なクーポンをディープコピー（操作するため）
+		let availableCoupons = JSON.parse(JSON.stringify(coupons));
+
+		// 現在の日付を取得して、当月を判定
+		const now = new Date();
+		const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+		// 各月ごとにクーポン適用処理
+		updatedGroups.forEach(group => {
+			// デフォルト値の設定
+			group.appliedCoupons = [];
+			group.totalDiscountAmount = 0;
+			group.finalAmount = group.totalAmount;
+
+			// 当月のみクーポン適用（過去の月には適用しない）
+			// もし過去の月にも適用したい場合は、この条件を変更
+			if (group.monthKey === currentMonthKey) {
+				// 割引額の大きい順に並んでいるクーポンを順に適用
+				availableCoupons.forEach(coupon => {
+					// まだ支払い額が残っていて、クーポンが適用可能な場合
+					if (group.finalAmount > 0) {
+						// 適用する割引額（残額よりも大きい場合は残額まで）
+						const discountToApply = Math.min(coupon.discountValue, group.finalAmount);
+
+						// クーポンを適用
+						group.appliedCoupons.push({
+							id: coupon.id,
+							name: coupon.name,
+							code: coupon.code,
+							discountValue: discountToApply
+						});
+
+						// 合計割引額を更新
+						group.totalDiscountAmount += discountToApply;
+
+						// 最終金額を更新
+						group.finalAmount = group.totalAmount - group.totalDiscountAmount;
+					}
+				});
+			}
+		});
+
+		return updatedGroups;
+	};
+
 	// セッションを月ごとにグループ化する
 	const groupSessionsByMonth = (sessions: SessionDisplay[]): MonthGroup[] => {
 		const groups: { [key: string]: MonthGroup } = {};
@@ -207,8 +305,9 @@ export default function MonthlyUsageHistory() {
 					sessions: [],
 					totalHourBlocks: 0,
 					totalAmount: 0,
-					appliedCoupons: 0, // ここではダミーデータ、実際はクーポンAPIから取得
-					finalAmount: 0,
+					appliedCoupons: [], // 初期化
+					totalDiscountAmount: 0, // 初期化
+					finalAmount: 0, // 初期化
 					isPaid: false // 支払い済みフラグ、実際は支払いAPIから取得
 				};
 			}
@@ -218,10 +317,9 @@ export default function MonthlyUsageHistory() {
 			groups[monthKey].totalAmount += session.amount || 0;
 		});
 
-		// 各月の最終金額を計算（クーポン適用後）
+		// 各月の最終金額を初期化（クーポン適用前）
 		Object.values(groups).forEach(group => {
-			// ここではダミーロジック、実際はクーポン適用ロジックを実装
-			group.finalAmount = group.totalAmount - group.appliedCoupons;
+			group.finalAmount = group.totalAmount;
 
 			// 前月の場合は支払い済みフラグをtrueに（デモ用）
 			const now = new Date();
@@ -251,6 +349,10 @@ export default function MonthlyUsageHistory() {
 			const seatsData = await fetchSeats();
 			setSeats(seatsData);
 
+			// 利用可能なクーポンを取得
+			const coupons = await fetchAvailableCoupons();
+			setAvailableCoupons(coupons);
+
 			// アクティブセッションの取得
 			const activeSession = await fetchActiveSession(seatsData);
 			setActiveSession(activeSession);
@@ -266,7 +368,11 @@ export default function MonthlyUsageHistory() {
 			}
 
 			// 月ごとにグループ化
-			const groups = groupSessionsByMonth(allSessions);
+			let groups = groupSessionsByMonth(allSessions);
+
+			// クーポンを適用
+			groups = applyCouponsToMonthGroups(groups, coupons);
+
 			setMonthGroups(groups);
 
 			// 現在の月を展開
@@ -420,10 +526,11 @@ export default function MonthlyUsageHistory() {
 							</div>
 							<div className="flex items-center">
 								<div className="text-right mr-3">
-									<p className="font-semibold">{formatCurrency(group.finalAmount)}</p>
-									{group.appliedCoupons > 0 && (
-										<p className="text-xs text-green-600">
-											クーポン適用 -{formatCurrency(group.appliedCoupons)}
+									{/* クーポン適用情報 */}
+									{group.appliedCoupons.length > 0 && (
+										<p className="text-xs text-green-600 flex items-center">
+											<Tag className="w-3 h-3 mr-1" />
+											クーポン適用 -{formatCurrency(group.totalDiscountAmount)}
 										</p>
 									)}
 								</div>
@@ -438,6 +545,35 @@ export default function MonthlyUsageHistory() {
 						{/* 詳細セクション */}
 						{expandedMonths.has(group.monthKey) && (
 							<div className="p-4">
+								{/* 適用されたクーポンがある場合の表示 */}
+								{group.appliedCoupons.length > 0 && (
+									<div className="mb-4 p-3 bg-green-500/5 border border-green-500/20 rounded-lg">
+										<div className="flex items-start">
+											<Info className="w-4 h-4 text-green-500 mt-0.5 mr-2 flex-shrink-0" />
+											<div>
+												<p className="text-sm font-medium text-green-700">適用されたクーポン</p>
+												<div className="mt-2 space-y-1">
+													{group.appliedCoupons.map((coupon, idx) => (
+														<div key={idx} className="flex justify-between text-sm">
+															<span className="text-foreground/80">{coupon.name}</span>
+															<span className="font-medium text-green-600">-{formatCurrency(coupon.discountValue)}</span>
+														</div>
+													))}
+												</div>
+												<div className="mt-2 pt-2 border-t border-green-500/10 flex justify-between">
+													<span className="text-sm">割引合計</span>
+													<span className="font-medium text-green-600">-{formatCurrency(group.totalDiscountAmount)}</span>
+												</div>
+												<div className="mt-1 flex justify-between font-medium">
+													<span className="text-sm">お支払い金額</span>
+													<span className="text-accent">{formatCurrency(group.finalAmount)}</span>
+												</div>
+											</div>
+										</div>
+									</div>
+								)}
+
+								{/* セッション一覧テーブル */}
 								<div className="overflow-x-auto">
 									<table className="w-full">
 										<thead>
@@ -513,6 +649,10 @@ export default function MonthlyUsageHistory() {
 			<div className="bg-accent/5 p-3 rounded-lg mb-4 text-sm">
 				<p>ご利用料金は時間単位で計算されます。1時間あたり600円、超過すると次の1時間分が加算されます。</p>
 				<p className="mt-1">月初に前月分の利用料金が請求されます。クーポンは自動的に適用されます。</p>
+				<p className="mt-1 text-accent flex items-center">
+					<Tag className="w-3 h-3 mr-1" />
+					<span>割引額の大きいクーポンから優先して適用されます。</span>
+				</p>
 			</div>
 
 			{error && (
