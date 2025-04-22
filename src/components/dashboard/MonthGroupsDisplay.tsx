@@ -7,6 +7,7 @@ import { useAuth } from '@/context/auth-context';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { SessionDocument, SeatDocument, UserCoupon } from '@/types/firebase';
+import MonthInvoice from "./MonthInvoice";
 
 export default function MonthGroupsDisplay() {
 	const { user } = useAuth();
@@ -363,22 +364,9 @@ export default function MonthGroupsDisplay() {
 							<h3 className="font-medium">
 								{group.displayMonth}
 							</h3>
-							{group.isPaid && (
-								<span className="ml-2 px-2 py-1 text-xs rounded-full bg-green-500/10 text-green-600">
-									支払い済み
-								</span>
-							)}
 						</div>
 						<div className="flex items-center">
-							<div className="text-right mr-3">
-								{/* クーポン適用情報 */}
-								{group.appliedCoupons.length > 0 && (
-									<p className="text-xs text-green-600 flex items-center">
-										<Tag className="w-3 h-3 mr-1" />
-										クーポン適用 -{formatCurrency(group.totalDiscountAmount)}
-									</p>
-								)}
-							</div>
+
 							{expandedMonths.has(group.monthKey) ? (
 								<ChevronUp className="w-5 h-5" />
 							) : (
@@ -390,34 +378,11 @@ export default function MonthGroupsDisplay() {
 					{/* 詳細セクション */}
 					{expandedMonths.has(group.monthKey) && (
 						<div className="p-4">
-							{/* 適用されたクーポンがある場合の表示 */}
-							{group.appliedCoupons.length > 0 && (
-								<div className="mb-4 p-3 bg-green-500/5 border border-green-500/20 rounded-lg">
-									<div className="flex items-start">
-										<Info className="w-4 h-4 text-green-500 mt-0.5 mr-2 flex-shrink-0" />
-										<div>
-											<p className="text-sm font-medium text-green-700">適用されたクーポン</p>
-											<div className="mt-2 space-y-1">
-												{group.appliedCoupons.map((coupon, idx) => (
-													<div key={idx} className="flex justify-between text-sm">
-														<span className="text-foreground/80">{coupon.name}</span>
-														<span className="font-medium text-green-600">-{formatCurrency(coupon.discountValue)}</span>
-													</div>
-												))}
-											</div>
-											<div className="mt-2 pt-2 border-t border-green-500/10 flex justify-between">
-												<span className="text-sm">割引合計</span>
-												<span className="font-medium text-green-600">-{formatCurrency(group.totalDiscountAmount)}</span>
-											</div>
-											<div className="mt-1 flex justify-between font-medium">
-												<span className="text-sm">お支払い金額</span>
-												<span className="text-accent">{formatCurrency(group.finalAmount)}</span>
-											</div>
-										</div>
-									</div>
-								</div>
-							)}
 
+							<MonthInvoice
+								monthKey={group.monthKey}
+								displayMonth={group.displayMonth}
+							/>
 							{/* セッション一覧テーブル */}
 							<div className="overflow-x-auto">
 								<table className="w-full">
@@ -482,8 +447,8 @@ export default function MonthGroupsDisplay() {
 							</div>
 							<div className="p-2 text-sm text-foreground/70">
 								<p>
-									ご利用料金は時間単位で計算されます。1時間あたり600円、超過すると次の1時間分が加算されます。
-									月初に前月分の利用料金が請求されます。クーポンは自動的に適用されます。
+									ご利用料金は1時間区切りで計算されます。1時間ブロックあたり600円、超過すると次の1時間分が加算されます。
+									翌月上旬に前月分の利用料金が請求されます。
 								</p>
 							</div>
 						</div>

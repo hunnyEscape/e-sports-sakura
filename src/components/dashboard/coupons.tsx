@@ -46,7 +46,7 @@ export default function CouponsTab() {
 	});
 
 	// マイクーポンセクションの折りたたみ状態
-	const [myCouponsExpanded, setMyCouponsExpanded] = useState(true);
+	const [myCouponsExpanded, setMyCouponsExpanded] = useState(false);
 
 	// アクティブなタブ
 	const [activeTab, setActiveTab] = useState<CouponTab>('available');
@@ -225,14 +225,6 @@ export default function CouponsTab() {
 				<div className="font-semibold text-highlight text-lg mb-2">
 					{coupon.discountValue.toLocaleString()}円引き
 				</div>
-
-				{/* Validity Period */}
-				{coupon.validityPeriod && (
-					<div className="text-xs text-foreground/60 flex items-center">
-						<Calendar className="w-3 h-3 mr-1" />
-						有効期間: {coupon.validityPeriod}日間
-					</div>
-				)}
 			</motion.div>
 		);
 	};
@@ -456,9 +448,8 @@ export default function CouponsTab() {
 								<div className="flex items-center">
 									<Gift className="w-5 h-5 mr-2 text-accent" />
 									<h3 className="text-lg font-medium text-foreground">マイクーポン</h3>
-									
 									<span className="ml-2 text-sm px-2 py-0.5 bg-accent/10 text-accent rounded-full">
-										{coupons.available.length + coupons.used.length}枚
+										{coupons.available.length}枚
 									</span>
 								</div>
 
@@ -468,7 +459,6 @@ export default function CouponsTab() {
 									<ChevronDown className="w-5 h-5 text-accent" />
 								)}
 							</button>
-
 
 							{/* マイクーポンコンテンツ（折りたたみ可能） */}
 							<AnimatePresence>
@@ -511,7 +501,7 @@ export default function CouponsTab() {
 											<div className="flex items-start">
 												<div className="text-sm">
 													<p className="mb-1 text-foreground/50">
-														獲得したクーポンは<span className="font-medium">次月の請求時に自動的に適用</span>されます。<span className="text-accent">割引額が小さいもの</span>が優先適用されます。
+														クーポンは<span className="font-medium">翌月の請求書発行時に自動的に適用</span>されます。<span className="text-accent">割引額が大きいもの</span>が優先適用されます。
 													</p>
 												</div>
 											</div>

@@ -127,9 +127,10 @@ export default function DashboardPage() {
 
 								{/* タブコンテンツ */}
 								<div className="grid md:grid-cols-1 gap-8">
-									{activeTab === 'coupon' && (
+
+									{activeTab === 'usage' && (
 										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
-											<CouponsTab />
+											<MonthlyUsageHistory />
 										</div>
 									)}
 
@@ -138,13 +139,6 @@ export default function DashboardPage() {
 											<ReservationHistory />
 										</div>
 									)}
-
-									{activeTab === 'usage' && (
-										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
-											<MonthlyUsageHistory />
-										</div>
-									)}
-
 									{activeTab === 'payment' && (
 										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
 											<h2 className="text-lg font-semibold mb-4">決済情報管理</h2>
