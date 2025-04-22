@@ -10,7 +10,7 @@ import ProtectedRoute from '@/components/auth/protected-route';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
 import QrCodeDisplay from '@/components/dashboard/qr-code';
-import MonthlyUsageHistory from '@/components/dashboard/monthly-usage-history';
+import MonthlyUsageHistory from '@/components/dashboard/monthly-usage-history2';
 import ReservationHistory from '@/components/dashboard/reservation-history';
 import CouponsTab from '@/components/dashboard/coupons';
 import { Calendar, Clock, CreditCard } from 'lucide-react';
