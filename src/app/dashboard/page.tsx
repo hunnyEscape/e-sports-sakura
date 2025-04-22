@@ -36,10 +36,13 @@ export default function DashboardPage() {
 		<ProtectedRoute>
 			<ReservationProvider>
 				<div className="min-h-screen bg-background text-foreground">
-					{/* ヘッダー */}
-					<header className="bg-background/80 backdrop-blur-sm border-b border-border sticky top-0 z-10">
-						<div className="container mx-auto px-4">
-							<div className="flex items-center justify-between h-16">
+					<main className="container mx-auto px-4 py-3 md:py-8">
+						{userData && userData.registrationCompleted && (<>
+							<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+								<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>
+								<QrCodeDisplay />
+							</div>
+							<div className="flex items-center justify-between h-16 border-b border-border">
 								<Link href="/lp" className="flex items-center">
 									<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 								</Link>
@@ -61,15 +64,6 @@ export default function DashboardPage() {
 										{isLoggingOut ? <LoadingSpinner size="small" /> : 'ログアウト'}
 									</button>
 								</div>
-							</div>
-						</div>
-					</header>
-
-					<main className="container mx-auto px-4 py-3 md:py-8">
-						{userData && userData.registrationCompleted && (<>
-							<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-								<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>
-								<QrCodeDisplay />
 							</div>
 							<div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-8">
 								<Link
@@ -127,7 +121,7 @@ export default function DashboardPage() {
 											: 'text-foreground/70 hover:text-foreground'
 											}`}
 									>
-										過去の利用
+										利用状況
 									</button>
 									<button
 										onClick={() => setActiveTab('payment')}
@@ -143,25 +137,25 @@ export default function DashboardPage() {
 								{/* タブコンテンツ */}
 								<div className="grid md:grid-cols-1 gap-8">
 									{activeTab === 'coupon' && (
-										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
 											<CouponsTab />
 										</div>
 									)}
 
 									{activeTab === 'reservations' && (
-										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
 											<ReservationHistory />
 										</div>
 									)}
 
 									{activeTab === 'usage' && (
-										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
 											<MonthlyUsageHistory />
 										</div>
 									)}
 
 									{activeTab === 'payment' && (
-										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
 											<h2 className="text-lg font-semibold mb-4">決済情報管理</h2>
 											{userData?.stripe?.paymentMethodId ? (
 												<div className="space-y-6">

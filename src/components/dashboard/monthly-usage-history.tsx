@@ -376,10 +376,7 @@ export default function MonthlyUsageHistory() {
 			setMonthGroups(groups);
 
 			// 現在の月を展開
-			if (groups.length > 0) {
-				const currentMonthKey = groups[0].monthKey;
-				setExpandedMonths(new Set([currentMonthKey]));
-			}
+			setExpandedMonths(new Set());
 		} catch (err) {
 			console.error('Error fetching data:', err);
 			setError(err instanceof Error ? err.message : 'データの取得中にエラーが発生しました');
@@ -515,9 +512,6 @@ export default function MonthlyUsageHistory() {
 								<h3 className="font-medium">
 									{isNaN(parseInt(group.displayMonth)) ? group.displayMonth : `${new Date().getFullYear()}年${new Date().getMonth() + 1}月`}
 								</h3>
-								<span className="ml-3 px-2 py-1 text-xs rounded-full bg-primary/10 text-primary">
-									{group.totalHourBlocks}時間ブロック
-								</span>
 								{group.isPaid && (
 									<span className="ml-2 px-2 py-1 text-xs rounded-full bg-green-500/10 text-green-600">
 										支払い済み
@@ -644,15 +638,12 @@ export default function MonthlyUsageHistory() {
 	};
 
 	return (
-		<div className="bg-border/5 rounded-2xl shadow-soft p-4 md:p-6">
-			<h2 className="text-lg font-semibold mb-2">月別利用履歴</h2>
-			<div className="bg-accent/5 p-3 rounded-lg mb-4 text-sm">
-				<p>ご利用料金は時間単位で計算されます。1時間あたり600円、超過すると次の1時間分が加算されます。</p>
-				<p className="mt-1">月初に前月分の利用料金が請求されます。クーポンは自動的に適用されます。</p>
-				<p className="mt-1 text-accent flex items-center">
-					<Tag className="w-3 h-3 mr-1" />
-					<span>割引額の大きいクーポンから優先して適用されます。</span>
-				</p>
+		<div className="p-0 md:p-6">
+			<div className="ml-1">
+				<h2 className="text-lg font-semibold mb-0">月別利用履歴</h2>
+				<div className="mb-4 text-sm text-foreground/70">
+					<p>ご利用料金は時間単位で計算されます。1時間あたり600円、超過すると次の1時間分が加算されます。月初に前月分の利用料金が請求されます。クーポンは自動的に適用されます。</p>
+				</div>
 			</div>
 
 			{error && (

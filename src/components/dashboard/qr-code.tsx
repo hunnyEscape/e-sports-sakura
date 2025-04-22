@@ -69,8 +69,7 @@ export default function QrCodeDisplay() {
 						/>
 					</div>
 					<p className="text-sm text-foreground/70 mb-4">
-						店舗の入口リーダーにかざして入室できます。<br/>
-						席のリーダーにかざすとPCを起動できます。<br/>
+						店舗の入口や席のQRリーダーにかざしてください<br/>
 					</p>
 					<Button
 						variant="outline"

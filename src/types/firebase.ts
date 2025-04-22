@@ -124,23 +124,63 @@ export interface UsageHistoryDocument {
 // クーポン定義（管理者が作成するマスターデータ）
 export interface CouponDefinition {
 	id: string;
-    code: string;              // 管理用コード
-    name: string;              // クーポン名
-    description: string;       // 説明文
-    discountValue: number;     // 割引額
-    validityPeriod: number;    // 有効期間（日数）- 発行日からの期間
-    isActive: boolean;         // 有効/無効フラグ
+	code: string;              // 管理用コード
+	name: string;              // クーポン名
+	description: string;       // 説明文
+	discountValue: number;     // 割引額
+	validityPeriod: number;    // 有効期間（日数）- 発行日からの期間
+	isActive: boolean;         // 有効/無効フラグ
 }
 
 // ユーザークーポン（ユーザーに発行されたクーポン）
 export interface UserCoupon {
-    id: string;
-    userId: string;
-    name: string;              // 表示用
-    code: string;              // 表示用
-    description: string;       // 表示用
-    discountValue: number;
-    status: 'available' | 'used';  // 利用可能or使用済み
-    issuedAt: TimestampOrString;   // 発行日
-    appliedMonthPeriod?: string;   // 適用された月（"2025-04"形式）
+	id: string;
+	userId: string;
+	name: string;              // 表示用
+	code: string;              // 表示用
+	description: string;       // 表示用
+	discountValue: number;
+	status: 'available' | 'used';  // 利用可能or使用済み
+	issuedAt: TimestampOrString;   // 発行日
+	appliedMonthPeriod?: string;   // 適用された月（"2025-04"形式）
+}
+
+export interface InvoiceDocument {
+	invoiceId: string;
+	userId: string;
+	userEmail: string;
+	periodStart: TimestampOrString;
+	periodEnd: TimestampOrString;
+	periodString: string; // 'YYYY-MM'形式
+	subtotalAmount: number;
+	discountAmount: number;
+	finalAmount: number;
+	sessions: InvoiceSessionItem[];
+	appliedCoupons: InvoiceAppliedCoupon[];
+	status: 'pending_stripe' | 'pending' | 'paid' | 'failed';
+	stripeInvoiceId?: string;
+	stripeInvoiceUrl?: string;
+	createdAt: TimestampOrString;
+	paidAt?: TimestampOrString;
+}
+
+// 請求書に含まれるセッション項目
+export interface InvoiceSessionItem {
+	sessionId: string;
+	startTime: TimestampOrString;
+	endTime: TimestampOrString;
+	hourBlocks: number;
+	amount: number;
+	seatId: string;
+	seatName: string;
+	branchName: string;
+	blockchainTxId?: string;
+}
+
+// 適用されたクーポン情報
+export interface InvoiceAppliedCoupon {
+	couponId: string;
+	code: string;
+	name: string;
+	discountValue: number;
 }
