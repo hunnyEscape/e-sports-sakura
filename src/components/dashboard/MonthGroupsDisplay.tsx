@@ -347,7 +347,10 @@ export default function MonthGroupsDisplay() {
 	}
 
 	return (
-		<div className="space-y-6">
+		<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-3">
+			<div className="ml-1">
+				<h2 className="text-lg font-semibold my-4">利用履歴</h2>
+			</div>
 			{monthGroups.map((group) => (
 				<div key={group.monthKey} className="border border-border/50 rounded-lg overflow-hidden">
 					{/* 月のヘッダー */}

@@ -10,7 +10,7 @@ import ProtectedRoute from '@/components/auth/protected-route';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
 import QrCodeDisplay from '@/components/dashboard/qr-code';
-import MonthlyUsageHistory from '@/components/dashboard/monthly-usage-history2';
+import MonthlyUsageHistory from '@/components/dashboard/monthly-usage-history';
 import ReservationHistory from '@/components/dashboard/reservation-history';
 import CouponsTab from '@/components/dashboard/coupons';
 import { Calendar, Clock, CreditCard } from 'lucide-react';
@@ -18,7 +18,7 @@ import { Calendar, Clock, CreditCard } from 'lucide-react';
 export default function DashboardPage() {
 	const { user, userData, signOut } = useAuth();
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
-	const [activeTab, setActiveTab] = useState('coupon');
+	const [activeTab, setActiveTab] = useState('usage');
 	const router = useRouter();
 
 	const handleSignOut = async () => {
@@ -97,13 +97,13 @@ export default function DashboardPage() {
 								{/* タブナビゲーション */}
 								<div className="flex border-b border-border mb-6">
 									<button
-										onClick={() => setActiveTab('coupon')}
-										className={`py-2 px-4 font-medium ${activeTab === 'coupon'
+										onClick={() => setActiveTab('usage')}
+										className={`py-2 px-4 font-medium ${activeTab === 'usage'
 											? 'text-accent border-b-2 border-accent'
 											: 'text-foreground/70 hover:text-foreground'
 											}`}
 									>
-										クーポン
+										利用状況
 									</button>
 									<button
 										onClick={() => setActiveTab('reservations')}
@@ -113,15 +113,6 @@ export default function DashboardPage() {
 											}`}
 									>
 										予約情報
-									</button>
-									<button
-										onClick={() => setActiveTab('usage')}
-										className={`py-2 px-4 font-medium ${activeTab === 'usage'
-											? 'text-accent border-b-2 border-accent'
-											: 'text-foreground/70 hover:text-foreground'
-											}`}
-									>
-										利用状況
 									</button>
 									<button
 										onClick={() => setActiveTab('payment')}

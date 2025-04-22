@@ -170,7 +170,7 @@ export default function ActiveSessionDisplay() {
 	if (!activeSession) return null;
 
 	return (
-		<div className="mb-6">
+		<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-3">
 			<div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
 				<div className="flex flex-col md:flex-row justify-between md:items-start">
 					<div>

@@ -1,5 +1,3 @@
-// src/components/dashboard/coupons.tsx
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -20,6 +18,9 @@ type CouponTimeGroup = 'thisMonth' | 'lastMonth' | 'older';
 type AcquirableCoupon = CouponDefinition & {
 	isAcquirable: boolean;
 };
+
+// タブの種類
+type CouponTab = 'available' | 'used';
 
 export default function CouponsTab() {
 	const { user } = useAuth();
@@ -44,22 +45,11 @@ export default function CouponsTab() {
 		}
 	});
 
-	// 折り畳み状態の管理
-	const [expanded, setExpanded] = useState<{
-		lastMonth: boolean;
-		older: boolean;
-	}>({
-		lastMonth: false,
-		older: false
-	});
+	// マイクーポンセクションの折りたたみ状態
+	const [myCouponsExpanded, setMyCouponsExpanded] = useState(true);
 
-	// 折り畳みの切り替え
-	const toggleExpand = (section: 'lastMonth' | 'older') => {
-		setExpanded(prev => ({
-			...prev,
-			[section]: !prev[section]
-		}));
-	};
+	// アクティブなタブ
+	const [activeTab, setActiveTab] = useState<CouponTab>('available');
 
 	/** クーポンのグループ分け処理 */
 	const categorizeCoupons = (coupons: UIUserCoupon[]) => {
@@ -350,26 +340,78 @@ export default function CouponsTab() {
 	const hasAcquirableCoupons = acquirableCoupons.length > 0;
 	const hasCoupons = hasUserCoupons || hasAcquirableCoupons;
 
-	return (
-		<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-			<h2 className="text-xl font-bold text-foreground mb-6 flex items-center">
-				<Gift className="mr-2" /> クーポン管理
-			</h2>
+	// クーポンがある時期に発行されたかを表示するヘッダー
+	const TimeGroupHeader = ({ title }: { title: string }) => (
+		<div className="text-sm font-medium text-foreground/70 mt-6 mb-3 pl-2 border-l-2 border-accent/30">
+			{title}
+		</div>
+	);
 
-			{/* クーポン自動適用に関する説明 */}
-			<div className="bg-accent/5 p-4 rounded-lg mb-6">
-				<div className="flex items-start">
-					<Info className="w-5 h-5 text-accent mt-0.5 mr-2 flex-shrink-0" />
-					<div className="text-sm">
-						<p className="mb-1">
-							獲得したクーポンは<span className="font-medium">月初の請求時に自動的に適用</span>されます。
-						</p>
-						<p className="text-foreground/70">
-							適用優先順位は<span className="text-accent">割引額の大きいもの</span>が優先されます。
-						</p>
-					</div>
+	// 時期ごとのクーポン表示
+	const renderCouponsByTimeGroup = (couponsToRender: UIUserCoupon[]) => {
+		// 表示するクーポンが空の場合
+		if (couponsToRender.length === 0) {
+			return (
+				<div className="text-center py-8 bg-border/5 rounded-lg">
+					<p className="text-foreground/70">クーポンがありません</p>
 				</div>
-			</div>
+			);
+		}
+
+		// 時期ごとにグループ分け
+		const thisMonthCoupons = couponsToRender.filter(coupon =>
+			coupons.byTimeGroup.thisMonth.some(c => c.id === coupon.id)
+		);
+
+		const lastMonthCoupons = couponsToRender.filter(coupon =>
+			coupons.byTimeGroup.lastMonth.some(c => c.id === coupon.id)
+		);
+
+		const olderCoupons = couponsToRender.filter(coupon =>
+			coupons.byTimeGroup.older.some(c => c.id === coupon.id)
+		);
+
+		return (
+			<>
+				{thisMonthCoupons.length > 0 && (
+					<>
+						<TimeGroupHeader title="今月獲得したクーポン" />
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							{thisMonthCoupons.map(coupon => (
+								<UserCouponCard key={coupon.id} coupon={coupon} />
+							))}
+						</div>
+					</>
+				)}
+
+				{lastMonthCoupons.length > 0 && (
+					<>
+						<TimeGroupHeader title="先月獲得したクーポン" />
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							{lastMonthCoupons.map(coupon => (
+								<UserCouponCard key={coupon.id} coupon={coupon} />
+							))}
+						</div>
+					</>
+				)}
+
+				{olderCoupons.length > 0 && (
+					<>
+						<TimeGroupHeader title="過去のクーポン" />
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							{olderCoupons.map(coupon => (
+								<UserCouponCard key={coupon.id} coupon={coupon} />
+							))}
+						</div>
+					</>
+				)}
+			</>
+		);
+	};
+
+	return (
+		<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-3">
+
 
 			{!hasCoupons ? (
 				// クーポンが存在しない場合のUI
@@ -403,47 +445,34 @@ export default function CouponsTab() {
 						</div>
 					)}
 
-					{/* 今月獲得したクーポン */}
-					{coupons.byTimeGroup.thisMonth.length > 0 && (
-						<div>
-							<h3 className="text-lg font-medium text-foreground mb-4 flex items-center">
-								<Calendar className="w-5 h-5 mr-2 text-accent" />
-								今月獲得したクーポン
-								<span className="ml-2 text-sm px-2 py-0.5 bg-accent/10 text-accent rounded-full">
-									{coupons.byTimeGroup.thisMonth.length}枚
-								</span>
-							</h3>
-							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-								{coupons.byTimeGroup.thisMonth.map(coupon => (
-									<UserCouponCard key={coupon.id} coupon={coupon} />
-								))}
-							</div>
-						</div>
-					)}
-
-					{/* 先月獲得したクーポン（折りたたみ可能） */}
-					{coupons.byTimeGroup.lastMonth.length > 0 && (
-						<div>
+					{/* マイクーポン（折りたたみ可能セクション） */}
+					{hasUserCoupons && (
+						<div className="border border-border/20 rounded-lg overflow-hidden">
+							{/* マイクーポンヘッダー */}
 							<button
-								onClick={() => toggleExpand('lastMonth')}
-								className="flex justify-between items-center w-full text-left text-lg font-medium text-foreground mb-2 hover:text-accent transition-colors"
+								onClick={() => setMyCouponsExpanded(!myCouponsExpanded)}
+								className="w-full flex justify-between items-center p-4 bg-border/5 hover:bg-border/10 transition-colors"
 							>
 								<div className="flex items-center">
-									<Calendar className="w-5 h-5 mr-2 text-accent/70" />
-									先月獲得したクーポン
+									<Gift className="w-5 h-5 mr-2 text-accent" />
+									<h3 className="text-lg font-medium text-foreground">マイクーポン</h3>
+									
 									<span className="ml-2 text-sm px-2 py-0.5 bg-accent/10 text-accent rounded-full">
-										{coupons.byTimeGroup.lastMonth.length}枚
+										{coupons.available.length + coupons.used.length}枚
 									</span>
 								</div>
-								{expanded.lastMonth ? (
+
+								{myCouponsExpanded ? (
 									<ChevronUp className="w-5 h-5 text-accent" />
 								) : (
 									<ChevronDown className="w-5 h-5 text-accent" />
 								)}
 							</button>
 
+
+							{/* マイクーポンコンテンツ（折りたたみ可能） */}
 							<AnimatePresence>
-								{expanded.lastMonth && (
+								{myCouponsExpanded && (
 									<motion.div
 										initial={{ height: 0, opacity: 0 }}
 										animate={{ height: 'auto', opacity: 1 }}
@@ -451,51 +480,48 @@ export default function CouponsTab() {
 										transition={{ duration: 0.2 }}
 										className="overflow-hidden"
 									>
-										<div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-											{coupons.byTimeGroup.lastMonth.map(coupon => (
-												<UserCouponCard key={coupon.id} coupon={coupon} />
-											))}
-										</div>
-									</motion.div>
-								)}
-							</AnimatePresence>
-						</div>
-					)}
+										<div className="p-4">
+											{/* タブナビゲーション */}
+											<div className="flex border-b border-border/20 mb-4">
+												<button
+													onClick={() => setActiveTab('available')}
+													className={`py-2 px-4 font-medium text-sm transition-colors ${activeTab === 'available'
+														? 'text-accent border-b-2 border-accent'
+														: 'text-foreground/60 hover:text-foreground'
+														}`}
+												>
+													利用可能
+													<span className="ml-2 px-1.5 py-0.5 bg-accent/10 text-accent rounded-full text-xs">
+														{coupons.available.length}
+													</span>
+												</button>
+												<button
+													onClick={() => setActiveTab('used')}
+													className={`py-2 px-4 font-medium text-sm transition-colors ${activeTab === 'used'
+														? 'text-accent border-b-2 border-accent'
+														: 'text-foreground/60 hover:text-foreground'
+														}`}
+												>
+													使用済み
+													<span className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full text-xs">
+														{coupons.used.length}
+													</span>
+												</button>
+											</div>
+											<div className="flex items-start">
+												<div className="text-sm">
+													<p className="mb-1 text-foreground/50">
+														獲得したクーポンは<span className="font-medium">次月の請求時に自動的に適用</span>されます。<span className="text-accent">割引額が小さいもの</span>が優先適用されます。
+													</p>
+												</div>
+											</div>
 
-					{/* それ以前のクーポン（折りたたみ可能） */}
-					{coupons.byTimeGroup.older.length > 0 && (
-						<div>
-							<button
-								onClick={() => toggleExpand('older')}
-								className="flex justify-between items-center w-full text-left text-lg font-medium text-foreground mb-2 hover:text-accent transition-colors"
-							>
-								<div className="flex items-center">
-									<Calendar className="w-5 h-5 mr-2 text-accent/70" />
-									過去のクーポン
-									<span className="ml-2 text-sm px-2 py-0.5 bg-accent/10 text-accent rounded-full">
-										{coupons.byTimeGroup.older.length}枚
-									</span>
-								</div>
-								{expanded.older ? (
-									<ChevronUp className="w-5 h-5 text-accent" />
-								) : (
-									<ChevronDown className="w-5 h-5 text-accent" />
-								)}
-							</button>
 
-							<AnimatePresence>
-								{expanded.older && (
-									<motion.div
-										initial={{ height: 0, opacity: 0 }}
-										animate={{ height: 'auto', opacity: 1 }}
-										exit={{ height: 0, opacity: 0 }}
-										transition={{ duration: 0.2 }}
-										className="overflow-hidden"
-									>
-										<div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-											{coupons.byTimeGroup.older.map(coupon => (
-												<UserCouponCard key={coupon.id} coupon={coupon} />
-											))}
+											{/* タブコンテンツ */}
+											<div className="mt-2">
+												{activeTab === 'available' && renderCouponsByTimeGroup(coupons.available)}
+												{activeTab === 'used' && renderCouponsByTimeGroup(coupons.used)}
+											</div>
 										</div>
 									</motion.div>
 								)}
