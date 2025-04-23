@@ -12,7 +12,7 @@ export default function ActiveSessionDisplay() {
 	const { user } = useAuth();
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [activeSession, setActiveSession] = useState<SessionDisplay | null>(null);
+	const [activeSessions, setActiveSessions] = useState<SessionDisplay[]>([]);
 
 	// 座席情報を取得
 	const fetchSeats = async () => {
@@ -32,26 +32,31 @@ export default function ActiveSessionDisplay() {
 		}
 	};
 
-	// アクティブセッションの取得
-	const fetchActiveSession = async () => {
-		if (!user) return null;
+	// アクティブセッションの取得（すべて）
+	const fetchActiveSessions = async () => {
+		if (!user) return [];
 
 		try {
 			// 座席情報を先に取得
 			const seatsData = await fetchSeats();
 
-			const activeSessionQuery = query(
+			const activeSessionsQuery = query(
 				collection(db, 'sessions'),
 				where('userId', '==', user.uid),
 				where('active', '==', true),
 				orderBy('startTime', 'desc')
 			);
 
-			const activeSessionSnapshot = await getDocs(activeSessionQuery);
+			const activeSessionsSnapshot = await getDocs(activeSessionsQuery);
 
-			if (!activeSessionSnapshot.empty) {
-				const activeData = activeSessionSnapshot.docs[0].data() as SessionDocument;
-				const sessionId = activeSessionSnapshot.docs[0].id;
+			if (activeSessionsSnapshot.empty) {
+				return [];
+			}
+
+			// すべてのアクティブセッションを処理
+			return activeSessionsSnapshot.docs.map(doc => {
+				const activeData = doc.data() as SessionDocument;
+				const sessionId = doc.id;
 
 				// タイムスタンプの処理
 				const startTimeDate = getDateFromTimestamp(activeData.startTime);
@@ -80,11 +85,9 @@ export default function ActiveSessionDisplay() {
 					blockchainStatusClass: 'bg-blue-500/10 text-blue-500',
 					blockchainStatusText: '利用中'
 				} as SessionDisplay;
-			}
-
-			return null;
+			});
 		} catch (err) {
-			console.error('Error fetching active session:', err);
+			console.error('Error fetching active sessions:', err);
 			throw err;
 		}
 	};
@@ -96,9 +99,9 @@ export default function ActiveSessionDisplay() {
 			setLoading(true);
 			setError(null);
 
-			// アクティブセッションの取得
-			const session = await fetchActiveSession();
-			setActiveSession(session);
+			// すべてのアクティブセッションを取得
+			const sessions = await fetchActiveSessions();
+			setActiveSessions(sessions);
 
 		} catch (err) {
 			console.error('Error fetching active session data:', err);
@@ -117,14 +120,14 @@ export default function ActiveSessionDisplay() {
 
 	// アクティブセッションがある場合、定期的に更新
 	useEffect(() => {
-		if (!user || !activeSession) return;
+		if (!user || activeSessions.length === 0) return;
 
 		const intervalId = setInterval(() => {
 			fetchData();
 		}, 60000); // 1分ごとに更新
 
 		return () => clearInterval(intervalId);
-	}, [user, activeSession]);
+	}, [user, activeSessions]);
 
 	// ヘルパー関数: タイムスタンプからDateオブジェクトを取得
 	function getDateFromTimestamp(timestamp: any): Date {
@@ -167,31 +170,35 @@ export default function ActiveSessionDisplay() {
 	}
 
 	if (loading) return null;
-	if (!activeSession) return null;
+	if (activeSessions.length === 0) return null;
 
 	return (
-		<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-3">
-			<div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
-				<div className="flex flex-col md:flex-row justify-between md:items-start">
-					<div>
-						<p className="font-medium">{activeSession.seatName}</p>
-						{activeSession.branchName && (
-							<p className="text-sm text-foreground/70">{activeSession.branchName}</p>
-						)}
-						<p className="text-sm text-foreground/70">開始時間: {activeSession.formattedStartTime}</p>
-						<p className="text-sm text-foreground/70">
-							現在の利用時間: {activeSession.durationText}
-							（{activeSession.hourBlocks}時間ブロック）
-						</p>
-					</div>
-					<div className="mt-3 md:mt-0 md:text-right">
-						<p className="text-lg font-semibold">{formatCurrency(activeSession.amount)}</p>
-						<span className="inline-block bg-blue-500/10 text-blue-500 text-xs px-2 py-0.5 rounded">
-							利用中
-						</span>
+		<div className="space-y-3">
+			{activeSessions.map((session) => (
+				<div key={session.sessionId} className="bg-border/5 rounded-2xl shadow-soft p-6">
+					<div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+						<div className="flex flex-col md:flex-row justify-between md:items-start">
+							<div>
+								<p className="font-medium">{session.seatName}</p>
+								{session.branchName && (
+									<p className="text-sm text-foreground/70">{session.branchName}</p>
+								)}
+								<p className="text-sm text-foreground/70">開始時間: {session.formattedStartTime}</p>
+								<p className="text-sm text-foreground/70">
+									現在の利用時間: {session.durationText}
+									（{session.hourBlocks}時間ブロック）
+								</p>
+							</div>
+							<div className="mt-3 md:mt-0 md:text-right">
+								<p className="text-lg font-semibold">{formatCurrency(session.amount)}</p>
+								<span className="inline-block bg-blue-500/10 text-blue-500 text-xs px-2 py-0.5 rounded">
+									利用中
+								</span>
+							</div>
+						</div>
 					</div>
 				</div>
-			</div>
+			))}
 		</div>
 	);
 }
