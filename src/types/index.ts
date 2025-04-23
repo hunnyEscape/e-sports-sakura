@@ -1,5 +1,5 @@
 // src/types/index.ts
-
+import { SessionDocument } from './firebase' 
 // 基本型
 export type Timestamp = {
 	seconds: number;
@@ -49,4 +49,42 @@ export interface StripeInfo {
 	paymentStatus?: string;
 	lastPaymentError?: string;
 	lastPaymentErrorAt?: string;
+}
+
+// 既に定義済みでなければ SessionDisplay も追加
+// ← 既存のインターフェース定義群 ……
+
+// 画面表示用に拡張したセッション型
+export interface SessionDisplay extends SessionDocument {
+	sessionId: string;
+	formattedStartTime: string;
+	formattedEndTime: string;
+	durationText: string;
+	seatName: string;
+	branchName: string;
+	amount: number;
+	hourBlocks: number;
+	blockchainStatusClass: string;
+	blockchainStatusText?: string;
+  }
+  
+// MonthGroupsDisplay で使うクーポン適用情報
+export interface AppliedCoupon {
+	id: string
+	name: string
+	code: string
+	discountValue: number
+}
+
+// 月ごとのグループ
+export interface MonthGroup {
+	monthKey: string            // "2025-04" など
+	displayMonth: string        // "2025年4月" など
+	sessions: SessionDisplay[]  // その月のセッション一覧
+	totalHourBlocks: number     // 合計時間ブロック数
+	totalAmount: number         // 合計金額
+	appliedCoupons: AppliedCoupon[]  // 適用済みクーポン
+	totalDiscountAmount: number      // 合計割引額
+	finalAmount: number              // クーポン適用後の金額
+	isPaid: boolean                   // 支払い済みフラグ
 }

@@ -162,6 +162,7 @@ export interface InvoiceDocument {
 	stripeInvoiceUrl?: string;
 	createdAt: TimestampOrString;
 	paidAt?: TimestampOrString;
+	errorMessage?: string;
 }
 
 // 請求書に含まれるセッション項目

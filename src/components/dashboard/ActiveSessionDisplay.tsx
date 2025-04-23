@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Clock } from 'lucide-react';
-import { SessionDisplay } from './types';
+import { SessionDisplay } from '../../types/index';
 import { useAuth } from '@/context/auth-context';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Calendar, ChevronDown, ChevronUp, Clock, Tag, Info, ExternalLink } from 'lucide-react';
-import { MonthGroup, SessionDisplay, AppliedCoupon } from './types';
+import { MonthGroup, SessionDisplay, AppliedCoupon } from '../../types/index';
 import { useAuth } from '@/context/auth-context';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -36,45 +36,33 @@ export default function MonthGroupsDisplay() {
 	};
 
 	// 利用可能なクーポンを取得
-	const fetchAvailableCoupons = async () => {
+	const fetchAvailableCoupons = async (): Promise<UserCoupon[]> => {
 		if (!user) return [];
 
-		try {
-			const couponsQuery = query(
-				collection(db, 'userCoupons'),
-				where('userId', '==', user.uid),
-				where('status', '==', 'available'),
-				orderBy('discountValue', 'desc') // 割引額の大きい順にソート
-			);
+		const couponsQuery = query(
+			collection(db, 'userCoupons'),
+			where('userId', '==', user.uid),
+			where('status', '==', 'available'),
+			orderBy('discountValue', 'desc')
+		);
+		const snapshot = await getDocs(couponsQuery);
 
-			const couponsSnapshot = await getDocs(couponsQuery);
-			const coupons: UserCoupon[] = [];
-
-			couponsSnapshot.docs.forEach(doc => {
-				const data = doc.data() as any;
-				const issuedAtDate = getDateFromTimestamp(data.issuedAt);
-
-				coupons.push({
-					id: doc.id,
-					userId: data.userId,
-					name: data.name,
-					code: data.code,
-					description: data.description,
-					discountValue: data.discountValue,
-					status: data.status,
-					issuedAt: issuedAtDate
-				} as UserCoupon);
-			});
-
-			return coupons;
-		} catch (err) {
-			console.error('Error fetching coupons:', err);
-			throw err;
-		}
+		return snapshot.docs.map(doc => {
+			const data = doc.data() as any;
+			return {
+				// Firestore にある他のフィールドをまるっと展開
+				...data,
+				// ドキュメントID を追加
+				id: doc.id,
+				// issuedAt だけ日付オブジェクトに変換
+				issuedAt: getDateFromTimestamp(data.issuedAt)
+			} as UserCoupon;
+		});
 	};
 
+
 	// 過去のセッションを取得
-	const fetchSessionHistory = async () => {
+	const fetchSessionHistory = async (): Promise<SessionDisplay[]> => {
 		if (!user) return [];
 
 		try {
@@ -87,11 +75,9 @@ export default function MonthGroupsDisplay() {
 				where('active', '==', false),
 				orderBy('endTime', 'desc')
 			);
+			const snapshot = await getDocs(sessionsQuery);
 
-			const sessionsSnapshot = await getDocs(sessionsQuery);
-			const sessions: SessionDisplay[] = [];
-
-			sessionsSnapshot.docs.forEach(doc => {
+			return snapshot.docs.map(doc => {
 				const data = doc.data() as SessionDocument;
 				const sessionId = doc.id;
 
@@ -100,19 +86,20 @@ export default function MonthGroupsDisplay() {
 				const endTimeDate = getDateFromTimestamp(data.endTime);
 
 				// 利用時間の計算
-				const durationMinutes = Math.floor((endTimeDate.getTime() - startTimeDate.getTime()) / (1000 * 60));
+				const durationMinutes = Math.floor(
+					(endTimeDate.getTime() - startTimeDate.getTime()) / (1000 * 60)
+				);
 				const hourBlocks = data.hourBlocks || Math.ceil(durationMinutes / 60);
 				const amount = hourBlocks * 600;
 
-				// 座席情報を取得
+				// 座席情報
 				const seatInfo = seatsData[data.seatId];
 				const seatName = seatInfo?.name || `座席 ${data.seatId}`;
 				const branchName = seatInfo?.branchName || '';
 
-				// ブロックチェーンステータスのスタイルマッピング
+				// ブロックチェーンステータス
 				let blockchainStatusClass = 'bg-gray-200 text-gray-700';
 				let blockchainStatusText = '未記録';
-
 				if (data.blockchainStatus === 'confirmed') {
 					blockchainStatusClass = 'bg-green-500/10 text-green-600';
 					blockchainStatusText = '確認済み';
@@ -124,7 +111,7 @@ export default function MonthGroupsDisplay() {
 					blockchainStatusText = 'エラー';
 				}
 
-				sessions.push({
+				return {
 					...data,
 					sessionId,
 					formattedStartTime: formatDate(startTimeDate),
@@ -136,15 +123,14 @@ export default function MonthGroupsDisplay() {
 					hourBlocks,
 					blockchainStatusClass,
 					blockchainStatusText
-				});
+				} as SessionDisplay;
 			});
-
-			return sessions;
 		} catch (err) {
 			console.error('Error fetching session history:', err);
 			throw err;
 		}
 	};
+
 
 	// セッションを月ごとにグループ化する
 	const groupSessionsByMonth = (sessions: SessionDisplay[]): MonthGroup[] => {
@@ -202,54 +188,49 @@ export default function MonthGroupsDisplay() {
 	};
 
 	// クーポンを適用する
-	const applyCouponsToMonthGroups = (groups: MonthGroup[], coupons: UserCoupon[]): MonthGroup[] => {
-		// ディープコピーを作成
-		const updatedGroups = JSON.parse(JSON.stringify(groups)) as MonthGroup[];
+	const applyCouponsToMonthGroups = (
+		groups: MonthGroup[],
+		coupons: UserCoupon[]
+	): MonthGroup[] => {
+		// 浅いコピーでOKなら…
+		let availableCoupons: UserCoupon[] = [...coupons];
 
-		// 利用可能なクーポンをディープコピー（操作するため）
-		let availableCoupons = JSON.parse(JSON.stringify(coupons));
+		const updatedGroups = groups.map(group => ({ ...group }));
 
-		// 現在の日付を取得して、当月を判定
 		const now = new Date();
-		const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+		const currentMonthKey = `${now.getFullYear()}-${String(
+			now.getMonth() + 1
+		).padStart(2, '0')}`;
 
-		// 各月ごとにクーポン適用処理
-		updatedGroups.forEach(group => {
-			// デフォルト値の設定
+		return updatedGroups.map(group => {
 			group.appliedCoupons = [];
 			group.totalDiscountAmount = 0;
 			group.finalAmount = group.totalAmount;
 
-			// 当月のみクーポン適用（過去の月には適用しない）
-			// もし過去の月にも適用したい場合は、この条件を変更
 			if (group.monthKey === currentMonthKey) {
-				// 割引額の大きい順に並んでいるクーポンを順に適用
-				availableCoupons.forEach(coupon => {
-					// まだ支払い額が残っていて、クーポンが適用可能な場合
+				availableCoupons.forEach((coupon: UserCoupon) => {
 					if (group.finalAmount > 0) {
-						// 適用する割引額（残額よりも大きい場合は残額まで）
-						const discountToApply = Math.min(coupon.discountValue, group.finalAmount);
+						const discountToApply = Math.min(
+							coupon.discountValue,
+							group.finalAmount
+						);
 
-						// クーポンを適用
 						group.appliedCoupons.push({
 							id: coupon.id,
 							name: coupon.name,
 							code: coupon.code,
 							discountValue: discountToApply
 						});
-
-						// 合計割引額を更新
 						group.totalDiscountAmount += discountToApply;
-
-						// 最終金額を更新
 						group.finalAmount = group.totalAmount - group.totalDiscountAmount;
 					}
 				});
 			}
-		});
 
-		return updatedGroups;
+			return group;
+		});
 	};
+
 
 	// データ取得
 	const fetchData = async () => {

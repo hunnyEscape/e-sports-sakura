@@ -156,10 +156,11 @@ export default function UsageHistory() {
 			}
 
 			// 結果をマッピング
+			// 結果をマッピング
 			const newHistoryItems = sessionsSnapshot.docs.map(doc => {
 				const data = doc.data() as SessionDocument;
 
-				// Firestoreのタイムスタンプをフォーマット
+				// endTime / startTime を Date に
 				const endTimeDate =
 					typeof data.endTime === 'string'
 						? new Date(data.endTime)
@@ -174,27 +175,33 @@ export default function UsageHistory() {
 							? data.startTime.toDate()
 							: new Date();
 
+				// ── ここで利用時間（分）と金額を計算 ──
+				const durationMinutes = Math.floor((endTimeDate.getTime() - startTimeDate.getTime()) / (1000 * 60));
+				const hourBlocks = Math.ceil(durationMinutes / 60);
+				const amount = hourBlocks * 600;
 
 				// 座席情報を取得
 				const seatInfo = seats[data.seatId];
 				const seatName = seatInfo?.name || `座席 ${data.seatId}`;
 				const branchName = seatInfo?.branchName || '';
 
-				// 座席情報から説明を作成
 				const description = `${branchName ? branchName + 'の' : ''}${seatName}の利用`;
 
 				return {
 					id: doc.id,
+					amount,             // ← 追加
+					durationMinutes,    // ← 追加
 					description,
 					timestamp: endTimeDate.toISOString(),
 					startTime: startTimeDate.toISOString(),
-					status: 'paid', // 完了したセッションは支払い済みとみなす
+					status: 'paid',
 					seatId: data.seatId,
-					seatName: seatName,
-					branchName: branchName,
+					seatName,
+					branchName,
 					isActive: false,
-				};
+				} as HistoryItem;
 			});
+
 
 			// 既存の履歴と新しい履歴を結合（続きを読み込む場合）
 			if (isLoadMore) {
