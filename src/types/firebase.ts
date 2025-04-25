@@ -40,9 +40,9 @@ export interface UserDocument {
 	registrationCompleted: boolean;
 	registrationCompletedAt?: string;
 	registrationStep?: number;
-	currentMemberId: string;      // 現在の会員ID
-	previousMemberId: string;     // 前の会員ID
-	memberIdUpdatedAt: TimestampOrString; // 最終更新日時
+	currentMemberId?: string;      // 現在の会員ID
+	previousMemberId?: string;     // 前の会員ID
+	memberIdUpdatedAt?: TimestampOrString; // 最終更新日時
 	stripe?: {
 		customerId?: string;
 		paymentMethodId?: string;
