@@ -553,8 +553,45 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		return '予約可能';
 	};
 
+	//const [hoveredSlot, setHoveredSlot] = useState(null);
+	const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
+
+	// 画面サイズによってビューモードを自動的に切り替える
+	useEffect(() => {
+		const handleResize = () => {
+			if (window.innerWidth < 640) {
+				setViewMode('list');
+			} else {
+				setViewMode('grid');
+			}
+		};
+
+		// 初期設定
+		handleResize();
+
+		// リサイズイベントのリスナー設定
+		window.addEventListener('resize', handleResize);
+		return () => window.removeEventListener('resize', handleResize);
+	}, []);
+
+	// 時間帯を2時間ごとにグループ化（モバイル表示用）
+	const getTimeGroups = () => {
+		const groups = [];
+		for (let i = 0; i < timeSlots.length; i += 2) {
+			const startSlot = timeSlots[i];
+			const endSlot = i + 1 < timeSlots.length ? timeSlots[i + 1] : null;
+			groups.push({
+				start: startSlot,
+				end: endSlot
+			});
+		}
+		return groups;
+	};
+
+	const timeGroups = getTimeGroups();
+
 	return (
-		<div className="space-y-6 relative">
+		<div className="space-y-6 relative pb-5">
 			{/* Loading overlay */}
 			{(isLoading || !isDataLoaded) && (
 				<div className="absolute inset-0 bg-background/70 flex items-center justify-center z-10 rounded-lg">
@@ -572,99 +609,206 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 				</div>
 			)}
 
-			<div
-				className="w-full overflow-x-auto border border-border/20 rounded-lg bg-background/30"
-			>
-				<div className="min-w-max">
-					{/* Time slots header */}
-					<div className="flex border-b border-border/30 bg-border/5">
-						<div className="w-32 flex-shrink-0 p-2 font-medium text-foreground sticky left-0 bg-border/5">座席</div>
-						{timeSlots.map((slot) => (
+			{/* ビューモード切替ボタン - タブレットサイズ以上で表示 */}
+			<div className="flex justify-end mb-2 sm:flex hidden">
+				<div className="flex border rounded-md overflow-hidden">
+					<button
+						onClick={() => setViewMode('grid')}
+						className={`px-3 py-1 text-sm ${viewMode === 'grid' ? 'bg-accent text-white' : 'bg-border/10 text-foreground/70'
+							}`}
+					>
+						グリッド表示
+					</button>
+					<button
+						onClick={() => setViewMode('list')}
+						className={`px-3 py-1 text-sm ${viewMode === 'list' ? 'bg-accent text-white' : 'bg-border/10 text-foreground/70'
+							}`}
+					>
+						リスト表示
+					</button>
+				</div>
+			</div>
+
+			{/* グリッドビュー（PCとタブレット） */}
+			{viewMode === 'grid' && (
+				<div className="w-full overflow-x-auto border border-border/20 rounded-lg bg-background/30">
+					<div className="min-w-max">
+						{/* Time slots header */}
+						<div className="flex border-b border-border/30 bg-border/5">
+							<div className="w-32 flex-shrink-0 p-2 font-medium text-foreground sticky left-0 bg-border/5">座席</div>
+							{timeSlots.map((slot) => (
+								<div
+									key={slot.time}
+									className="w-16 flex-shrink-0 p-2 text-center text-sm border-l border-border/30 text-foreground/70"
+								>
+									{slot.formattedTime}
+								</div>
+							))}
+						</div>
+
+						{/* Seats and time slots grid */}
+						{filteredSeats.map((seat) => (
 							<div
-								key={slot.time}
-								className="w-16 flex-shrink-0 p-2 text-center text-sm border-l border-border/30 text-foreground/70"
+								key={seat.seatId}
+								className="flex border-b border-border/20 hover:bg-background/5"
 							>
-								{slot.formattedTime}
+								{/* Seat name */}
+								<div className="w-32 flex-shrink-0 p-2 border-r border-border/20 flex flex-col sticky left-0 bg-background">
+									<div className="flex items-center justify-between">
+										<span className="font-medium text-foreground">{seat.name}</span>
+										{selectedSeatIds.includes(seat.seatId) && (
+											<Check className="h-4 w-4 text-accent" />
+										)}
+									</div>
+									<span className="text-xs text-foreground/60">¥{seat.ratePerHour}/時間</span>
+								</div>
+
+								{/* Time slots */}
+								{timeSlots.map((slot) => {
+									const slotResult = isSlotUnavailable(seat.seatId, slot.time);
+									const isUnavailable = slotResult.unavailable;
+									const isSelected = isInSelectedRange(seat.seatId, slot.time);
+
+									const range = seatRanges[seat.seatId] || { rangeStart: null, rangeEnd: null };
+									const isRangeStart = range.rangeStart === slot.time;
+									const isRangeEnd = range.rangeEnd === slot.time;
+
+									// ホバー時に表示するツールチップのメッセージ
+									const tooltipMessage = getSlotTooltip(seat.seatId, slot.time);
+
+									return (
+										<motion.div
+											key={`${seat.seatId}-${slot.time}`}
+											className={`
+						  w-16 h-16 flex-shrink-0 border-l border-border/20
+						  ${getSlotStyle(seat.seatId, slot.time)}
+						  flex items-center justify-center relative
+						`}
+											whileHover={!isUnavailable ? { scale: 1.05 } : {}}
+											whileTap={!isUnavailable ? { scale: 0.95 } : {}}
+											onClick={() => !isUnavailable && handleSlotClick(seat.seatId, slot.time)}
+											onMouseEnter={() => setHoveredSlot({ seatId: seat.seatId, time: slot.time })}
+											onMouseLeave={() => setHoveredSlot(null)}
+										>
+											{isUnavailable && slotResult.reason === 'reserved' && (
+												<div className="w-8 h-1 bg-border rounded-full"></div>
+											)}
+
+											{isUnavailable && slotResult.reason === 'past' && (
+												<div className="w-8 h-1 bg-gray-400 rounded-full"></div>
+											)}
+
+											{isUnavailable && slotResult.reason === 'in-use' && (
+												<div className="w-2 h-5 bg-amber-400/70 rounded-full"></div>
+											)}
+
+											{(isRangeStart || isRangeEnd) && (
+												<div className="w-2 h-2 bg-white rounded-full"></div>
+											)}
+
+											{/* ホバー時のツールチップ */}
+											{hoveredSlot &&
+												hoveredSlot.seatId === seat.seatId &&
+												hoveredSlot.time === slot.time && (
+													<div className="absolute z-20 bottom-full left-1/2 transform -translate-x-1/2 mb-1 
+										px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap">
+														{tooltipMessage}
+													</div>
+												)}
+										</motion.div>
+									);
+								})}
 							</div>
 						))}
 					</div>
+				</div>
+			)}
 
-					{/* Seats and time slots grid */}
+			{/* リストビュー（モバイル向け） */}
+			{viewMode === 'list' && (
+				<div className="space-y-4">
 					{filteredSeats.map((seat) => (
 						<div
 							key={seat.seatId}
-							className="flex border-b border-border/20 hover:bg-background/5"
+							className="border border-border/20 rounded-lg bg-background/30 overflow-hidden"
 						>
-							{/* Seat name */}
-							<div className="w-32 flex-shrink-0 p-2 border-r border-border/20 flex flex-col sticky left-0 bg-background">
-								<div className="flex items-center justify-between">
-									<span className="font-medium text-foreground">{seat.name}</span>
-									{selectedSeatIds.includes(seat.seatId) && (
-										<Check className="h-4 w-4 text-accent" />
-									)}
+							{/* 座席ヘッダー */}
+							<div className="p-3 bg-border/10 flex items-center justify-between">
+								<div>
+									<div className="font-medium text-foreground">{seat.name}</div>
+									<div className="text-xs text-foreground/60">¥{seat.ratePerHour}/時間</div>
 								</div>
-								<span className="text-xs text-foreground/60">¥{seat.ratePerHour}/時間</span>
+								{selectedSeatIds.includes(seat.seatId) && (
+									<div className="flex items-center text-xs text-accent">
+										<Check className="h-4 w-4 mr-1" />
+										<span>選択中</span>
+									</div>
+								)}
 							</div>
 
-							{/* Time slots */}
-							{timeSlots.map((slot) => {
-								const slotResult = isSlotUnavailable(seat.seatId, slot.time);
-								const isUnavailable = slotResult.unavailable;
-								const isSelected = isInSelectedRange(seat.seatId, slot.time);
+							{/* 時間スロットのリスト表示 - 2時間ごとにグループ化 */}
+							<div className="p-2">
+								<div className="grid grid-cols-2 gap-2">
+									{timeGroups.map((group, groupIndex) => {
+										if (!group.end) {
+											// 奇数個の場合、最後のスロットは単独で表示
+											const slot = group.start;
+											const slotResult = isSlotUnavailable(seat.seatId, slot.time);
+											const isUnavailable = slotResult.unavailable;
 
-								const range = seatRanges[seat.seatId] || { rangeStart: null, rangeEnd: null };
-								const isRangeStart = range.rangeStart === slot.time;
-								const isRangeEnd = range.rangeEnd === slot.time;
+											return (
+												<motion.div
+													key={`${seat.seatId}-${slot.time}`}
+													className={`
+							  p-2 rounded-md flex flex-col items-center justify-center
+							  ${getSlotStyle(seat.seatId, slot.time)}
+							  ${isUnavailable ? 'opacity-50' : 'opacity-100'}
+							`}
+													whileTap={!isUnavailable ? { scale: 0.95 } : {}}
+													onClick={() => !isUnavailable && handleSlotClick(seat.seatId, slot.time)}
+												>
+													<div className="text-center font-medium">{slot.formattedTime}</div>
+													<div className="text-xs mt-1">
+														{isUnavailable ? getUnavailableText(slotResult.reason) : '利用可能'}
+													</div>
+												</motion.div>
+											);
+										}
 
-								// ホバー時に表示するツールチップのメッセージ
-								const tooltipMessage = getSlotTooltip(seat.seatId, slot.time);
+										// 2時間のグループ
+										return (
+											<div key={groupIndex} className="col-span-2 grid grid-cols-2 gap-2">
+												{[group.start, group.end].map(slot => {
+													const slotResult = isSlotUnavailable(seat.seatId, slot.time);
+													const isUnavailable = slotResult.unavailable;
 
-								return (
-									<motion.div
-										key={`${seat.seatId}-${slot.time}`}
-										className={`
-        w-16 h-16 flex-shrink-0 border-l border-border/20
-        ${getSlotStyle(seat.seatId, slot.time)}
-        flex items-center justify-center relative
-      `}
-										whileHover={!isUnavailable ? { scale: 1.05 } : {}}
-										whileTap={!isUnavailable ? { scale: 0.95 } : {}}
-										onClick={() => !isUnavailable && handleSlotClick(seat.seatId, slot.time)}
-										onMouseEnter={() => setHoveredSlot({ seatId: seat.seatId, time: slot.time })}
-										onMouseLeave={() => setHoveredSlot(null)}
-									>
-										{isUnavailable && slotResult.reason === 'reserved' && (
-											<div className="w-8 h-1 bg-border rounded-full"></div>
-										)}
-
-										{isUnavailable && slotResult.reason === 'past' && (
-											<div className="w-8 h-1 bg-gray-400 rounded-full"></div>
-										)}
-
-										{isUnavailable && slotResult.reason === 'in-use' && (
-											<div className="w-2 h-5 bg-amber-400/70 rounded-full"></div>
-										)}
-
-										{(isRangeStart || isRangeEnd) && (
-											<div className="w-2 h-2 bg-white rounded-full"></div>
-										)}
-
-										{/* ホバー時のツールチップ */}
-										{hoveredSlot &&
-											hoveredSlot.seatId === seat.seatId &&
-											hoveredSlot.time === slot.time && (
-												<div className="absolute z-20 bottom-full left-1/2 transform -translate-x-1/2 mb-1 
-                        px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap">
-													{tooltipMessage}
-												</div>
-											)}
-									</motion.div>
-								);
-							})}
+													return (
+														<motion.div
+															key={`${seat.seatId}-${slot.time}`}
+															className={`
+								  p-2 rounded-md flex flex-col items-center justify-center
+								  ${getSlotStyle(seat.seatId, slot.time)}
+								  ${isUnavailable ? 'opacity-50' : 'opacity-100'}
+								`}
+															whileTap={!isUnavailable ? { scale: 0.95 } : {}}
+															onClick={() => !isUnavailable && handleSlotClick(seat.seatId, slot.time)}
+														>
+															<div className="text-center font-medium">{slot.formattedTime}</div>
+															<div className="text-xs mt-1">
+																{isUnavailable ? getUnavailableText(slotResult.reason) : '利用可能'}
+															</div>
+														</motion.div>
+													);
+												})}
+											</div>
+										);
+									})}
+								</div>
+							</div>
 						</div>
 					))}
 				</div>
-			</div>
+			)}
 
 			{hasSelection ? (
 				<motion.div
@@ -700,10 +844,12 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 												</div>
 												<div className="flex items-center mt-1">
 													<Clock className="w-4 h-4 text-accent mr-2" />
-													<span className="text-foreground/80">
-														{info.startTime} から {info.endTime} まで
-														<span className="ml-1 text-sm">({info.duration}分)</span>
-													</span>
+													<div className="text-foreground/80">
+														<div className="sm:flex block">
+															<span>{info.startTime} から {info.endTime} まで</span>
+															<span className="sm:ml-1 block sm:inline-block text-sm">({info.duration}分)</span>
+														</div>
+													</div>
 												</div>
 												<div className="text-sm text-foreground/70 mt-1">
 													予想料金: ¥{info.cost.toLocaleString()}
@@ -714,7 +860,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 								</div>
 
 								<div className="pt-3 mt-2 border-t border-border/20">
-									<div className="flex justify-between items-center">
+									<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
 										<span className="font-medium text-foreground/80">合計予想料金 (予約時に料金は発生しません)</span>
 										<span className="font-bold text-lg text-foreground">¥{calculateTotalCost().toLocaleString()}</span>
 									</div>
@@ -747,5 +893,17 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		</div>
 	);
 };
+function getUnavailableText(reason) {
+	switch (reason) {
+	  case 'reserved':
+		return '予約済み';
+	  case 'past':
+		return '過去の時間';
+	  case 'in-use':
+		return '使用中';
+	  default:
+		return '利用不可';
+	}
+  }
 
 export default TimeGrid;

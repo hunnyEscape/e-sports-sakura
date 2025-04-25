@@ -329,12 +329,12 @@ export default function MonthGroupsDisplay() {
 	}
 
 	return (
-		<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-3">
+		<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6 mb-3">
 			<div className="ml-1">
 				<h2 className="text-lg font-semibold my-4">利用履歴</h2>
 			</div>
 			{monthGroups.map((group) => (
-				<div key={group.monthKey} className="border border-border/50 rounded-lg overflow-hidden">
+				<div key={group.monthKey} className="border border-border/50 rounded-lg overflow-hidden mb-4">
 					{/* 月のヘッダー */}
 					<div
 						className="flex items-center justify-between p-4 bg-accent/5 cursor-pointer"
@@ -347,7 +347,6 @@ export default function MonthGroupsDisplay() {
 							</h3>
 						</div>
 						<div className="flex items-center">
-
 							{expandedMonths.has(group.monthKey) ? (
 								<ChevronUp className="w-5 h-5" />
 							) : (
@@ -359,41 +358,109 @@ export default function MonthGroupsDisplay() {
 					{/* 詳細セクション */}
 					{expandedMonths.has(group.monthKey) && (
 						<div className="p-4">
-
+							{/* MonthInvoice コンポーネントはそのまま使用 */}
 							<MonthInvoice
 								monthKey={group.monthKey}
 								displayMonth={group.displayMonth}
 							/>
-							{/* セッション一覧テーブル */}
-							<div className="overflow-x-auto">
-								<table className="w-full">
-									<thead>
-										<tr className="text-left text-foreground/70 border-b border-border">
-											<th className="pb-2">日時</th>
-											<th className="pb-2">座席</th>
-											<th className="pb-2">利用時間</th>
-											<th className="pb-2">料金</th>
-											<th className="pb-2">ステータス</th>
-											<th className="pb-2"></th>
-										</tr>
-									</thead>
-									<tbody>
-										{group.sessions.map((session) => (
-											<tr key={session.sessionId} className="border-b border-border/20">
-												<td className="py-3">
-													<div>{session.formattedStartTime.split(' ')[0]}</div>
+
+							{/* レスポンシブセッション表示 - デスクトップではテーブル、モバイルではカード */}
+							<div>
+								{/* デスクトップ用テーブル - md以上の画面サイズで表示 */}
+								<div className="hidden md:block overflow-x-auto">
+									<table className="w-full">
+										<thead>
+											<tr className="text-left text-foreground/70 border-b border-border">
+												<th className="pb-2">日時</th>
+												<th className="pb-2">座席</th>
+												<th className="pb-2">利用時間</th>
+												<th className="pb-2">料金</th>
+												<th className="pb-2">ステータス</th>
+												<th className="pb-2"></th>
+											</tr>
+										</thead>
+										<tbody>
+											{group.sessions.map((session) => (
+												<tr key={session.sessionId} className="border-b border-border/20">
+													<td className="py-3">
+														<div>{session.formattedStartTime.split(' ')[0]}</div>
+														<div className="text-xs text-foreground/70">
+															{session.formattedStartTime.split(' ')[1]} -
+															{session.active ? "利用中" : session.formattedEndTime.split(' ')[1]}
+														</div>
+													</td>
+													<td className="py-3">
+														<div>{session.seatName}</div>
+														{session.branchName && (
+															<div className="text-xs text-foreground/70">{session.branchName}</div>
+														)}
+													</td>
+													<td className="py-3">
+														<div className="flex items-center">
+															<Clock className="w-4 h-4 mr-1 text-foreground/70" />
+															<span>{session.durationText}</span>
+														</div>
+														<div className="text-xs text-foreground/70">
+															{session.hourBlocks}時間ブロック
+														</div>
+													</td>
+													<td className="py-3">{formatCurrency(session.amount)}</td>
+													<td className="py-3">
+														<span className={`inline-block text-xs px-2 py-0.5 rounded ${session.blockchainStatusClass}`}>
+															{session.blockchainStatusText}
+														</span>
+													</td>
+													<td className="py-3 text-right">
+														{session.blockchainStatus === 'confirmed' && session.blockchainTxId && (
+															<a
+																href={`https://snowtrace.io/tx/${session.blockchainTxId}`}
+																target="_blank"
+																rel="noopener noreferrer"
+																className="inline-flex items-center text-primary hover:text-primary/80"
+															>
+																<span className="text-xs mr-1">ブロックチェーン証明</span>
+																<ExternalLink className="w-3 h-3" />
+															</a>
+														)}
+													</td>
+												</tr>
+											))}
+										</tbody>
+									</table>
+								</div>
+
+								{/* モバイル用カードビュー - md未満の画面サイズで表示 */}
+								<div className="md:hidden space-y-4">
+									{group.sessions.map((session) => (
+										<div key={session.sessionId} className="bg-background border border-border/30 rounded-lg p-3">
+											{/* 日時と場所のヘッダー */}
+											<div className="flex justify-between items-start mb-3">
+												<div>
+													<div className="font-medium">{session.formattedStartTime.split(' ')[0]}</div>
 													<div className="text-xs text-foreground/70">
 														{session.formattedStartTime.split(' ')[1]} -
 														{session.active ? "利用中" : session.formattedEndTime.split(' ')[1]}
 													</div>
-												</td>
-												<td className="py-3">
-													<div>{session.seatName}</div>
-													{session.branchName && (
-														<div className="text-xs text-foreground/70">{session.branchName}</div>
-													)}
-												</td>
-												<td className="py-3">
+												</div>
+												<span className={`inline-block text-xs px-2 py-0.5 rounded ${session.blockchainStatusClass}`}>
+													{session.blockchainStatusText}
+												</span>
+											</div>
+
+											{/* カード内容 - グリッドレイアウト */}
+											<div className="grid grid-cols-2 gap-2 text-sm">
+												<div>
+													<div className="text-foreground/70">座席:</div>
+													<div>
+														{session.seatName}
+														{session.branchName && (
+															<div className="text-xs text-foreground/70">{session.branchName}</div>
+														)}
+													</div>
+												</div>
+
+												<div>
+													<div className="text-foreground/70">利用時間:</div>
 													<div className="flex items-center">
 														<Clock className="w-4 h-4 mr-1 text-foreground/70" />
 														<span>{session.durationText}</span>
@@ -401,32 +468,34 @@ export default function MonthGroupsDisplay() {
 													<div className="text-xs text-foreground/70">
 														{session.hourBlocks}時間ブロック
 													</div>
-												</td>
-												<td className="py-3">{formatCurrency(session.amount)}</td>
-												<td className="py-3">
-													<span className={`inline-block text-xs px-2 py-0.5 rounded ${session.blockchainStatusClass}`}>
-														{session.blockchainStatusText}
-													</span>
-												</td>
-												<td className="py-3 text-right">
-													{session.blockchainStatus === 'confirmed' && session.blockchainTxId && (
-														<a
-															href={`https://snowtrace.io/tx/${session.blockchainTxId}`}
-															target="_blank"
-															rel="noopener noreferrer"
-															className="inline-flex items-center text-primary hover:text-primary/80"
-														>
-															<span className="text-xs mr-1">ブロックチェーン証明</span>
-															<ExternalLink className="w-3 h-3" />
-														</a>
-													)}
-												</td>
-											</tr>
-										))}
-									</tbody>
-								</table>
+												</div>
+
+												<div className="col-span-2">
+													<div className="text-foreground/70">料金:</div>
+													<div className="font-medium">{formatCurrency(session.amount)}</div>
+												</div>
+											</div>
+
+											{/* ブロックチェーンリンク */}
+											{session.blockchainStatus === 'confirmed' && session.blockchainTxId && (
+												<div className="mt-3 text-right">
+													<a
+														href={`https://snowtrace.io/tx/${session.blockchainTxId}`}
+														target="_blank"
+														rel="noopener noreferrer"
+														className="inline-flex items-center text-primary hover:text-primary/80"
+													>
+														<span className="text-xs mr-1">ブロックチェーン証明</span>
+														<ExternalLink className="w-3 h-3" />
+													</a>
+												</div>
+											)}
+										</div>
+									))}
+								</div>
 							</div>
-							<div className="p-2 text-sm text-foreground/70">
+
+							<div className="p-2 mt-4 text-sm text-foreground/70">
 								<p>
 									ご利用料金は1時間区切りで計算されます。1時間ブロックあたり600円、超過すると次の1時間分が加算されます。
 									翌月上旬に前月分の利用料金が請求されます。
@@ -435,7 +504,6 @@ export default function MonthGroupsDisplay() {
 						</div>
 					)}
 				</div>
-
 			))}
 		</div>
 	);

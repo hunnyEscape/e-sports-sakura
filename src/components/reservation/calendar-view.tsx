@@ -142,7 +142,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 	today.setHours(0, 0, 0, 0);
 
 	return (
-		<div className="w-full">
+		<div className="w-full pb-5">
 			{/* Calendar Legend */}
 			<div className="flex items-center justify-center mb-6 gap-6 text-sm">
 				<div className="flex items-center">
@@ -267,7 +267,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 			<div className="mt-6 flex items-start text-sm text-foreground/70">
 				<Info size={16} className="mr-2 flex-shrink-0 mt-0.5" />
 				<p>
-					カレンダーの日付をクリックすると、その日の予約状況と空き枠を確認できます。実際に予約するには会員登録が必要です。
+					カレンダーの日付をクリックすると、その日の予約状況と空き枠を確認できます。
 				</p>
 			</div>
 		</div>

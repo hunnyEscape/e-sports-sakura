@@ -6,8 +6,8 @@ import { motion } from 'framer-motion';
 
 export default function HeroSection() {
 	// タイトルを2つのパートに分ける
-	const titlePart1 = "疲れたから";
-	const titlePart2 = "ゆるゲー気分";
+	const titlePart1 = "ふらっと寄れる";
+	const titlePart2 = "ゲームカフェ";
 	const [titleChars1, setTitleChars1] = useState<string[]>([]);
 	const [titleChars2, setTitleChars2] = useState<string[]>([]);
 
@@ -93,7 +93,7 @@ export default function HeroSection() {
 						animate={{ opacity: 1, scale: 1 }}
 						transition={{ duration: 0.7, delay: 0.5 }}
 					>
-						ふらっと寄れるゲームカフェ
+						今日はゆるゲー気分
 					</motion.p>
 
 					{/* CTAボタン */}

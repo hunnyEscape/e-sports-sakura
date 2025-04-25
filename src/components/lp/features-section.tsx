@@ -22,8 +22,8 @@ const usageScenes = [
 	},
 	{
 		id: 'scene-3',
-		title:'久々の自由時間',
-		description:'ゲームは好きだけどたまにしかやる時間が取れない！厳選された数多くのタイトルをご用意してます。',
+		title:'一日の楽しみ',
+		description:'仕事帰りにサクッと！厳選された数多くのタイトルをご用意してます。',
 		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/scene-solo.webp`,
 		alt: 'ソロゲーマー'
 	}

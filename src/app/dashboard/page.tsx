@@ -38,10 +38,6 @@ export default function DashboardPage() {
 				<div className="min-h-screen bg-background text-foreground">
 					<main className="container mx-auto px-4 py-3 md:py-8">
 						{userData && userData.registrationCompleted && (<>
-							<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-								<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>
-								<QrCodeDisplay />
-							</div>
 							<div className="flex items-center justify-between h-16 border-b border-border">
 								<Link href="/lp" className="flex items-center">
 									<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
@@ -65,16 +61,11 @@ export default function DashboardPage() {
 									</button>
 								</div>
 							</div>
-							<div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-8">
-								<Link
-									href="/reservation"
-									className="bg-border/5 hover:bg-border/10 rounded-xl p-4 flex flex-col items-center justify-center transition-colors"
-								>
-									<Calendar className="w-8 h-8 text-accent mb-2" />
-									<span className="font-medium text-foreground">新規予約</span>
-									<span className="text-sm text-foreground/60">座席を予約する</span>
-								</Link>
+							<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-6">
+								<h2 className="text-lg font-semibold mb-4">会員ページ</h2>
+								<QrCodeDisplay />
 							</div>
+
 						</>)}
 
 						{userData && !userData.registrationCompleted && (
@@ -95,7 +86,7 @@ export default function DashboardPage() {
 						{userData && userData.registrationCompleted && (
 							<>
 								{/* タブナビゲーション */}
-								<div className="flex border-b border-border mb-6">
+								<div className="flex justify-center md:justify-start border-b border-border mb-6">
 									<button
 										onClick={() => setActiveTab('usage')}
 										className={`py-2 px-4 font-medium ${activeTab === 'usage'
@@ -112,7 +103,7 @@ export default function DashboardPage() {
 											: 'text-foreground/70 hover:text-foreground'
 											}`}
 									>
-										予約情報
+										予約
 									</button>
 									<button
 										onClick={() => setActiveTab('payment')}
@@ -129,7 +120,7 @@ export default function DashboardPage() {
 								<div className="grid md:grid-cols-1 gap-8">
 
 									{activeTab === 'usage' && (
-										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
+										<div className="bg-border/5 rounded-2xl shadow-soft p-0 md:p-6">
 											<MonthlyUsageHistory />
 										</div>
 									)}

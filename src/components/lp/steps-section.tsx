@@ -7,9 +7,9 @@ import { motion, useInView } from 'framer-motion';
 const usageSteps = [
 	{
 		number: 1,
-		title: "QRコードで入室",
-		description: "会員QRコードを扉の読み取り機にかざして入室できます。",
-		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/qrEnter.webp`} alt="QRコードで入室" className="h-100 w-100" />
+		title: "スマートロックの解除",
+		description: "会員ページからワンクリックで可能です！",
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/enter.webp`} alt="QRコードで入室" className="h-100 w-100" />
 	},
 	{
 		number: 2,

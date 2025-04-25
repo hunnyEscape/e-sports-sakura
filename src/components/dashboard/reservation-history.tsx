@@ -5,7 +5,7 @@ import { Calendar, Clock, MapPin, Loader, Ban, CheckCircle, RefreshCw } from 'lu
 import { useAuth } from '@/context/auth-context';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-
+import Link from 'next/link';
 // 予約データの型定義
 interface Reservation {
 	id?: string;
@@ -316,19 +316,23 @@ const ReservationHistory: React.FC = () => {
 
 	return (
 		<div className="reservation-history">
-			<h2 className="text-xl font-bold text-foreground mb-6 flex items-center">
+			<div className="my-8 flex justify-center">
+				<Link
+					href="/reservation"
+					className="border border-border bg-border/5 hover:bg-border/10 rounded-xl p-6 flex flex-col items-center justify-center transition-colors w-full max-w-xs"
+				>
+					<Calendar className="w-8 h-8 text-accent mb-2" />
+					<span className="font-medium text-foreground">新規予約</span>
+					<span className="text-sm text-foreground/60">座席を予約する</span>
+				</Link>
+			</div>
+			<h2 className="text-xl font-bold text-foreground ml-3 mb-6 flex items-center">
 				<Calendar className="mr-2" /> 予約履歴
 			</h2>
 
 			{reservations.length === 0 ? (
 				<div className="p-6 text-center bg-border/10 rounded-lg">
 					<p className="text-foreground/70 mb-4">予約情報がありません</p>
-					<button
-						onClick={() => window.location.href = '/reservation'}
-						className="px-4 py-2 bg-accent text-white rounded-md hover:bg-accent/90 transition-colors"
-					>
-						新規予約をする
-					</button>
 				</div>
 			) : (
 				<>
@@ -347,7 +351,6 @@ const ReservationHistory: React.FC = () => {
 					{/* Past reservations */}
 					{pastReservations.length > 0 && (
 						<div>
-							<h3 className="text-lg font-medium text-foreground mb-4">過去の予約</h3>
 							<div>
 								{(showAll ? pastReservations : pastReservations.slice(0, 3)).map(reservation => (
 									<ReservationCard key={reservation.id} reservation={reservation} />

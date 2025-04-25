@@ -122,6 +122,71 @@ export interface UsageHistoryDocument {
 	status: string;         // 状態（"paid", "pending"など）
 	timestamp: TimestampOrString; // 利用日時
 	seatId?: string;        // 座席ID（あれば）
+}
+
+// クーポン定義（管理者が作成するマスターデータ）
+export interface CouponDefinition {
+	id: string;
+	code: string;              // 管理用コード
+	name: string;              // クーポン名
+	description: string;       // 説明文
+	discountValue: number;     // 割引額
+	validityPeriod: number;    // 有効期間（日数）- 発行日からの期間
+	isActive: boolean;         // 有効/無効フラグ
+}
+
+// ユーザークーポン（ユーザーに発行されたクーポン）
+export interface UserCoupon {
+	id: string;
+	userId: string;
+	name: string;              // 表示用
+	code: string;              // 表示用
+	description: string;       // 表示用
+	discountValue: number;
+	status: 'available' | 'used';  // 利用可能or使用済み
+	issuedAt: TimestampOrString;   // 発行日
+	appliedMonthPeriod?: string;   // 適用された月（"2025-04"形式）
+}
+
+export interface InvoiceDocument {
+	invoiceId: string;
+	userId: string;
+	userEmail: string;
+	periodStart: TimestampOrString;
+	periodEnd: TimestampOrString;
+	periodString: string; // 'YYYY-MM'形式
+	subtotalAmount: number;
+	discountAmount: number;
+	finalAmount: number;
+	sessions: InvoiceSessionItem[];
+	appliedCoupons: InvoiceAppliedCoupon[];
+	status: 'pending_stripe' | 'pending' | 'paid' | 'failed';
+	stripeInvoiceId?: string;
+	stripeInvoiceUrl?: string;
+	createdAt: TimestampOrString;
+	paidAt?: TimestampOrString;
+	errorMessage?: string;
+}
+
+// 請求書に含まれるセッション項目
+export interface InvoiceSessionItem {
+	sessionId: string;
+	startTime: TimestampOrString;
+	endTime: TimestampOrString;
+	hourBlocks: number;
+	amount: number;
+	seatId: string;
+	seatName: string;
+	branchName: string;
+	blockchainTxId?: string;
+}
+
+// 適用されたクーポン情報
+export interface InvoiceAppliedCoupon {
+	couponId: string;
+	code: string;
+	name: string;
+	discountValue: number;
 }-e 
 ### FILE: ./src/types/api.ts
 
@@ -447,7 +512,7 @@ export const useAuth = () => useContext(AuthContext);-e
 ### FILE: ./src/types/index.ts
 
 // src/types/index.ts
-
+import { SessionDocument } from './firebase' 
 // 基本型
 export type Timestamp = {
 	seconds: number;
@@ -497,7 +562,46 @@ export interface StripeInfo {
 	paymentStatus?: string;
 	lastPaymentError?: string;
 	lastPaymentErrorAt?: string;
-}-e 
+}
+
+// 既に定義済みでなければ SessionDisplay も追加
+// ← 既存のインターフェース定義群 ……
+
+// 画面表示用に拡張したセッション型
+export interface SessionDisplay extends SessionDocument {
+	sessionId: string;
+	formattedStartTime: string;
+	formattedEndTime: string;
+	durationText: string;
+	seatName: string;
+	branchName: string;
+	amount: number;
+	hourBlocks: number;
+	blockchainStatusClass: string;
+	blockchainStatusText?: string;
+  }
+  
+// MonthGroupsDisplay で使うクーポン適用情報
+export interface AppliedCoupon {
+	id: string
+	name: string
+	code: string
+	discountValue: number
+}
+
+// 月ごとのグループ
+export interface MonthGroup {
+	monthKey: string            // "2025-04" など
+	displayMonth: string        // "2025年4月" など
+	sessions: SessionDisplay[]  // その月のセッション一覧
+	totalHourBlocks: number     // 合計時間ブロック数
+	totalAmount: number         // 合計金額
+	appliedCoupons: AppliedCoupon[]  // 適用済みクーポン
+	totalDiscountAmount: number      // 合計割引額
+	finalAmount: number              // クーポン適用後の金額
+	isPaid: boolean                   // 支払い済みフラグ
+}
+-e 
 ### FILE: ./src/lib/stripe-payment-methods.ts
 
 // src/lib/stripe-payment-methods.ts
@@ -1461,12 +1565,13 @@ import Button from '@/components/ui/button';
 import QrCodeDisplay from '@/components/dashboard/qr-code';
 import MonthlyUsageHistory from '@/components/dashboard/monthly-usage-history';
 import ReservationHistory from '@/components/dashboard/reservation-history';
+import CouponsTab from '@/components/dashboard/coupons';
 import { Calendar, Clock, CreditCard } from 'lucide-react';
 
 export default function DashboardPage() {
 	const { user, userData, signOut } = useAuth();
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
-	const [activeTab, setActiveTab] = useState('reservations');
+	const [activeTab, setActiveTab] = useState('usage');
 	const router = useRouter();
 
 	const handleSignOut = async () => {
@@ -1484,10 +1589,13 @@ export default function DashboardPage() {
 		<ProtectedRoute>
 			<ReservationProvider>
 				<div className="min-h-screen bg-background text-foreground">
-					{/* ヘッダー */}
-					<header className="bg-background/80 backdrop-blur-sm border-b border-border sticky top-0 z-10">
-						<div className="container mx-auto px-4">
-							<div className="flex items-center justify-between h-16">
+					<main className="container mx-auto px-4 py-3 md:py-8">
+						{userData && userData.registrationCompleted && (<>
+							<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+								<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>
+								<QrCodeDisplay />
+							</div>
+							<div className="flex items-center justify-between h-16 border-b border-border">
 								<Link href="/lp" className="flex items-center">
 									<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
 								</Link>
@@ -1509,25 +1617,6 @@ export default function DashboardPage() {
 										{isLoggingOut ? <LoadingSpinner size="small" /> : 'ログアウト'}
 									</button>
 								</div>
-							</div>
-						</div>
-					</header>
-
-					<main className="container mx-auto px-4 py-3 md:py-8">
-						{userData && userData.registrationCompleted && (<>
-							<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-								<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>
-								<QrCodeDisplay />
-							</div>
-							<div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-8">
-								<Link
-									href="/reservation"
-									className="bg-border/5 hover:bg-border/10 rounded-xl p-4 flex flex-col items-center justify-center transition-colors"
-								>
-									<Calendar className="w-8 h-8 text-accent mb-2" />
-									<span className="font-medium text-foreground">新規予約</span>
-									<span className="text-sm text-foreground/60">座席を予約する</span>
-								</Link>
 							</div>
 						</>)}
 
@@ -1551,13 +1640,13 @@ export default function DashboardPage() {
 								{/* タブナビゲーション */}
 								<div className="flex border-b border-border mb-6">
 									<button
-										onClick={() => setActiveTab('coupon')}
-										className={`py-2 px-4 font-medium ${activeTab === 'coupon'
+										onClick={() => setActiveTab('usage')}
+										className={`py-2 px-4 font-medium ${activeTab === 'usage'
 											? 'text-accent border-b-2 border-accent'
 											: 'text-foreground/70 hover:text-foreground'
 											}`}
 									>
-										クーポン
+										利用状況
 									</button>
 									<button
 										onClick={() => setActiveTab('reservations')}
@@ -1566,16 +1655,7 @@ export default function DashboardPage() {
 											: 'text-foreground/70 hover:text-foreground'
 											}`}
 									>
-										予約情報
-									</button>
-									<button
-										onClick={() => setActiveTab('usage')}
-										className={`py-2 px-4 font-medium ${activeTab === 'usage'
-											? 'text-accent border-b-2 border-accent'
-											: 'text-foreground/70 hover:text-foreground'
-											}`}
-									>
-										過去の利用
+										予約
 									</button>
 									<button
 										onClick={() => setActiveTab('payment')}
@@ -1591,20 +1671,19 @@ export default function DashboardPage() {
 								{/* タブコンテンツ */}
 								<div className="grid md:grid-cols-1 gap-8">
 
-									{activeTab === 'reservations' && (
-										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-											<ReservationHistory />
-										</div>
-									)}
-
 									{activeTab === 'usage' && (
-										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
 											<MonthlyUsageHistory />
 										</div>
 									)}
 
+									{activeTab === 'reservations' && (
+										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
+											<ReservationHistory />
+										</div>
+									)}
 									{activeTab === 'payment' && (
-										<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
 											<h2 className="text-lg font-semibold mb-4">決済情報管理</h2>
 											{userData?.stripe?.paymentMethodId ? (
 												<div className="space-y-6">
@@ -4062,7 +4141,8 @@ export default function PaymentPage() {
 				<div className="bg-border/10 text-white p-4 rounded-lg mb-6">
 					<p>
 						会費は<span className="text-highlight">無料です</span>。<br/>
-						施設を利用しない限り料金は発生しません。ご利用に基づいて月末締めに請求書を発行します。ご登録のクレジットカードにて自動で<span className="text-highlight">後払い</span>されます。
+						施設を利用しない限り料金は発生しません。<br/>
+						ご利用に基づいて翌月初旬にクレジットカードで<span className="text-highlight">後払い</span>されます。
 					</p>
 				</div>
 				<div className="space-y-6 mb-8">
@@ -4075,12 +4155,8 @@ export default function PaymentPage() {
 								<span className="text-s font-bold text-foreground/70">¥600 <span className="text-sm font-normal">/時間</span></span>
 							</div>
 							<div className="flex justify-between items-center mb-2">
-								<span className="font-medium">20日以内の再来店で</span>
-								<span className="text-xl font-bold text-accent">¥400 <span className="text-sm font-normal">/時間</span></span>
-							</div>
-							<div className="flex justify-between items-center mb-2">
-								<span className="font-medium">初回利用で</span>
-								<span className="text-s font-bold text-accent">900円分のクーポン付き</span>
+								<span className="font-medium">新規会員登録で</span>
+								<span className="text-s font-bold text-accent">1000円分のクーポン付き</span>
 							</div>
 							<ul className="text-sm text-foreground/70 space-y-1">
 								<li>• ドリンク/お菓子付き</li>
@@ -6088,540 +6164,19 @@ export default function LoadingSpinner({ size = 'default' }: { size?: 'small' | 
 
 'use client';
 // /src/components/dashboard/monthly-usage-history.tsx
-import { useState, useEffect, useMemo } from 'react';
-import { useAuth } from '@/context/auth-context';
-import LoadingSpinner from '@/components/ui/loading-spinner';
-import Button from '@/components/ui/button';
-import { ExternalLink, ChevronDown, ChevronUp, Calendar, Clock } from 'lucide-react';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { SessionDocument, SeatDocument } from '@/types/firebase';
-
-// セッション情報の拡張インターフェース（表示用）
-interface SessionDisplay extends SessionDocument {
-	formattedStartTime: string;
-	formattedEndTime: string;
-	durationText: string;
-	seatName: string;
-	branchName: string;
-	amount: number;
-	blockchainStatusClass: string;
-	blockchainStatusText: string;
-}
-
-// 月ごとのグループ化されたデータ
-interface MonthGroup {
-	monthKey: string; // YYYY-MM
-	displayMonth: string; // 表示用（例：2023年4月）
-	sessions: SessionDisplay[];
-	totalHourBlocks: number;
-	totalAmount: number;
-	appliedCoupons: number; // クーポン適用額
-	finalAmount: number; // 最終金額
-	isPaid: boolean; // 支払い済みかどうか
-}
-
+import ActiveSessionDisplay from '@/components/dashboard/ActiveSessionDisplay';
+import MonthGroupsDisplay from '@/components/dashboard/MonthGroupsDisplay';
+import CouponsTab from '@/components/dashboard/coupons';
 export default function MonthlyUsageHistory() {
-	const { user } = useAuth();
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
-	const [activeSession, setActiveSession] = useState<SessionDisplay | null>(null);
-	const [monthGroups, setMonthGroups] = useState<MonthGroup[]>([]);
-	const [seats, setSeats] = useState<{ [key: string]: SeatDocument }>({});
-	const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
-
-	// 座席情報を取得
-	const fetchSeats = async () => {
-		try {
-			const seatsSnapshot = await getDocs(collection(db, 'seats'));
-			const seatsData: { [key: string]: SeatDocument } = {};
-
-			seatsSnapshot.docs.forEach(doc => {
-				const seatData = doc.data() as SeatDocument;
-				seatsData[seatData.seatId] = seatData;
-			});
-
-			return seatsData;
-		} catch (err) {
-			console.error('Error fetching seats:', err);
-			throw err;
-		}
-	};
-
-	// アクティブセッションの取得
-	const fetchActiveSession = async (seatsData: { [key: string]: SeatDocument }) => {
-		if (!user) return null;
-
-		try {
-			const activeSessionQuery = query(
-				collection(db, 'sessions'),
-				where('userId', '==', user.uid),
-				where('active', '==', true),
-				orderBy('startTime', 'desc')
-			);
-
-			const activeSessionSnapshot = await getDocs(activeSessionQuery);
-
-			if (!activeSessionSnapshot.empty) {
-				const activeData = activeSessionSnapshot.docs[0].data() as SessionDocument;
-				const sessionId = activeSessionSnapshot.docs[0].id;
-
-				// タイムスタンプの処理
-				const startTimeDate = getDateFromTimestamp(activeData.startTime);
-				const now = new Date();
-
-				// 現在の時点での利用時間（分）を計算
-				const currentDurationMinutes = Math.floor((now.getTime() - startTimeDate.getTime()) / (1000 * 60));
-				const currentHourBlocks = Math.ceil(currentDurationMinutes / 60);
-				const currentAmount = currentHourBlocks * 600;
-
-				// 座席情報を取得
-				const seatInfo = seatsData[activeData.seatId];
-				const seatName = seatInfo?.name || `座席 ${activeData.seatId}`;
-				const branchName = seatInfo?.branchName || '';
-
-				return {
-					...activeData,
-					sessionId,
-					formattedStartTime: formatDate(startTimeDate),
-					formattedEndTime: '利用中',
-					durationText: getElapsedTime(startTimeDate),
-					seatName,
-					branchName,
-					amount: currentAmount,
-					hourBlocks: currentHourBlocks,
-					blockchainStatusClass: 'bg-blue-500/10 text-blue-500',
-					blockchainStatusText: '利用中'
-				} as SessionDisplay;
-			}
-
-			return null;
-		} catch (err) {
-			console.error('Error fetching active session:', err);
-			throw err;
-		}
-	};
-
-	// 過去のセッションを取得して月ごとにグループ化
-	const fetchSessionHistory = async (seatsData: { [key: string]: SeatDocument }) => {
-		if (!user) return [];
-
-		try {
-			const sessionsQuery = query(
-				collection(db, 'sessions'),
-				where('userId', '==', user.uid),
-				where('active', '==', false),
-				orderBy('endTime', 'desc')
-			);
-
-			const sessionsSnapshot = await getDocs(sessionsQuery);
-			const sessions: SessionDisplay[] = [];
-
-			sessionsSnapshot.docs.forEach(doc => {
-				const data = doc.data() as SessionDocument;
-				const sessionId = doc.id;
-
-				// タイムスタンプの処理
-				const startTimeDate = getDateFromTimestamp(data.startTime);
-				const endTimeDate = getDateFromTimestamp(data.endTime);
-
-				// 利用時間の計算
-				const durationMinutes = Math.floor((endTimeDate.getTime() - startTimeDate.getTime()) / (1000 * 60));
-				const hourBlocks = data.hourBlocks || Math.ceil(durationMinutes / 60);
-				const amount = hourBlocks * 600;
-
-				// 座席情報を取得
-				const seatInfo = seatsData[data.seatId];
-				const seatName = seatInfo?.name || `座席 ${data.seatId}`;
-				const branchName = seatInfo?.branchName || '';
-
-				// ブロックチェーンステータスのスタイルマッピング
-				let blockchainStatusClass = 'bg-gray-200 text-gray-700';
-				let blockchainStatusText = '未記録';
-
-				if (data.blockchainStatus === 'confirmed') {
-					blockchainStatusClass = 'bg-green-500/10 text-green-600';
-					blockchainStatusText = '確認済み';
-				} else if (data.blockchainStatus === 'pending') {
-					blockchainStatusClass = 'bg-yellow-500/10 text-yellow-600';
-					blockchainStatusText = '保留中';
-				} else if (data.blockchainStatus === 'error') {
-					blockchainStatusClass = 'bg-red-500/10 text-red-600';
-					blockchainStatusText = 'エラー';
-				}
-
-				sessions.push({
-					...data,
-					sessionId,
-					formattedStartTime: formatDate(startTimeDate),
-					formattedEndTime: formatDate(endTimeDate),
-					durationText: `${Math.floor(durationMinutes / 60)}時間${durationMinutes % 60}分`,
-					seatName,
-					branchName,
-					amount,
-					hourBlocks,
-					blockchainStatusClass,
-					blockchainStatusText
-				});
-			});
-
-			return sessions;
-		} catch (err) {
-			console.error('Error fetching session history:', err);
-			throw err;
-		}
-	};
-
-	// セッションを月ごとにグループ化する
-	const groupSessionsByMonth = (sessions: SessionDisplay[]): MonthGroup[] => {
-		const groups: { [key: string]: MonthGroup } = {};
-
-		sessions.forEach(session => {
-			// タイムスタンプからDateオブジェクトを正しく取得
-			const startDate = getDateFromTimestamp(session.startTime);
-			// 有効な日付オブジェクトかチェック
-			if (isNaN(startDate.getTime())) {
-				console.error('Invalid date object:', session.startTime);
-				return; // 無効な日付の場合はスキップ
-			}
-
-			const monthKey = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
-			const displayMonth = `${startDate.getFullYear()}年${startDate.getMonth() + 1}月`;
-
-			if (!groups[monthKey]) {
-				groups[monthKey] = {
-					monthKey,
-					displayMonth,
-					sessions: [],
-					totalHourBlocks: 0,
-					totalAmount: 0,
-					appliedCoupons: 0, // ここではダミーデータ、実際はクーポンAPIから取得
-					finalAmount: 0,
-					isPaid: false // 支払い済みフラグ、実際は支払いAPIから取得
-				};
-			}
-
-			groups[monthKey].sessions.push(session);
-			groups[monthKey].totalHourBlocks += session.hourBlocks || 0;
-			groups[monthKey].totalAmount += session.amount || 0;
-		});
-
-		// 各月の最終金額を計算（クーポン適用後）
-		Object.values(groups).forEach(group => {
-			// ここではダミーロジック、実際はクーポン適用ロジックを実装
-			group.finalAmount = group.totalAmount - group.appliedCoupons;
-
-			// 前月の場合は支払い済みフラグをtrueに（デモ用）
-			const now = new Date();
-			const [year, month] = group.monthKey.split('-').map(Number);
-			const groupDate = new Date(year, month - 1);
-
-			if (groupDate.getFullYear() < now.getFullYear() ||
-				(groupDate.getFullYear() === now.getFullYear() &&
-					groupDate.getMonth() < now.getMonth())) {
-				group.isPaid = true;
-			}
-		});
-
-		// 月の降順でソート
-		return Object.values(groups).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
-	};
-
-	// データの取得
-	const fetchData = async () => {
-		if (!user) return;
-
-		try {
-			setLoading(true);
-			setError(null);
-
-			// 座席情報を取得
-			const seatsData = await fetchSeats();
-			setSeats(seatsData);
-
-			// アクティブセッションの取得
-			const activeSession = await fetchActiveSession(seatsData);
-			setActiveSession(activeSession);
-
-			// 過去のセッション履歴を取得
-			const sessions = await fetchSessionHistory(seatsData);
-
-			// アクティブセッションがある場合は、今月のグループに追加
-			let allSessions = [...sessions];
-
-			if (activeSession) {
-				allSessions.unshift(activeSession);
-			}
-
-			// 月ごとにグループ化
-			const groups = groupSessionsByMonth(allSessions);
-			setMonthGroups(groups);
-
-			// 現在の月を展開
-			if (groups.length > 0) {
-				const currentMonthKey = groups[0].monthKey;
-				setExpandedMonths(new Set([currentMonthKey]));
-			}
-		} catch (err) {
-			console.error('Error fetching data:', err);
-			setError(err instanceof Error ? err.message : 'データの取得中にエラーが発生しました');
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	// 初回読み込み
-	useEffect(() => {
-		if (user) {
-			fetchData();
-		}
-	}, [user]);
-
-	// アクティブセッションがある場合、定期的に更新
-	useEffect(() => {
-		if (!user || !activeSession) return;
-
-		const intervalId = setInterval(() => {
-			fetchData();
-		}, 60000); // 1分ごとに更新
-
-		return () => clearInterval(intervalId);
-	}, [user, activeSession]);
-
-	// 月のセクションの展開/折りたたみを切り替える
-	const toggleMonth = (monthKey: string) => {
-		setExpandedMonths(prev => {
-			const newSet = new Set(prev);
-			if (newSet.has(monthKey)) {
-				newSet.delete(monthKey);
-			} else {
-				newSet.add(monthKey);
-			}
-			return newSet;
-		});
-	};
-
-	// ヘルパー関数: タイムスタンプからDateオブジェクトを取得
-	function getDateFromTimestamp(timestamp: any): Date {
-		if (typeof timestamp === 'string') {
-			return new Date(timestamp);
-		} else if (timestamp && 'toDate' in timestamp) {
-			return timestamp.toDate();
-		}
-		return new Date();
-	}
-
-	// 日付フォーマット
-	function formatDate(date: Date): string {
-		return date.toLocaleString('ja-JP', {
-			year: 'numeric',
-			month: '2-digit',
-			day: '2-digit',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
-	}
-
-	// 金額フォーマット
-	function formatCurrency(amount: number): string {
-		return new Intl.NumberFormat('ja-JP', {
-			style: 'currency',
-			currency: 'JPY'
-		}).format(amount);
-	}
-
-	// 経過時間計算（アクティブセッション用）
-	function getElapsedTime(startTime: Date): string {
-		const now = new Date();
-		const elapsedMs = now.getTime() - startTime.getTime();
-
-		const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
-		const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
-
-		return `${hours}時間${minutes}分`;
-	}
-
-	// 現在のアクティブセッション表示
-	const ActiveSessionDisplay = useMemo(() => {
-		if (!activeSession) return null;
-
-		return (
-			<div className="mb-6">
-				<h3 className="text-md font-medium mb-3">現在利用中のセッション</h3>
-				<div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
-					<div className="flex flex-col md:flex-row justify-between md:items-start">
-						<div>
-							<p className="font-medium">{activeSession.seatName}</p>
-							{activeSession.branchName && (
-								<p className="text-sm text-foreground/70">{activeSession.branchName}</p>
-							)}
-							<p className="text-sm text-foreground/70">開始時間: {activeSession.formattedStartTime}</p>
-							<p className="text-sm text-foreground/70">
-								現在の利用時間: {activeSession.durationText}
-								（{activeSession.hourBlocks}時間ブロック）
-							</p>
-						</div>
-						<div className="mt-3 md:mt-0 md:text-right">
-							<p className="text-lg font-semibold">{formatCurrency(activeSession.amount)}</p>
-							<span className="inline-block bg-blue-500/10 text-blue-500 text-xs px-2 py-0.5 rounded">
-								利用中
-							</span>
-						</div>
-					</div>
-				</div>
-			</div>
-		);
-	}, [activeSession]);
-
-	// 月別グループの表示
-	const MonthGroupsDisplay = () => {
-		if (monthGroups.length === 0) {
-			return (
-				<div className="text-center py-8 text-foreground/70">
-					<p>まだ利用履歴はありません。</p>
-				</div>
-			);
-		}
-
-		return (
-			<div className="space-y-6">
-				{monthGroups.map((group) => (
-					<div key={group.monthKey} className="border border-border/50 rounded-lg overflow-hidden">
-						{/* 月のヘッダー */}
-						<div
-							className="flex items-center justify-between p-4 bg-accent/5 cursor-pointer"
-							onClick={() => toggleMonth(group.monthKey)}
-						>
-							<div className="flex items-center flex-wrap">
-								<Calendar className="w-5 h-5 mr-2 text-primary" />
-								<h3 className="font-medium">
-									{isNaN(parseInt(group.displayMonth)) ? group.displayMonth : `${new Date().getFullYear()}年${new Date().getMonth() + 1}月`}
-								</h3>
-								<span className="ml-3 px-2 py-1 text-xs rounded-full bg-primary/10 text-primary">
-									{group.totalHourBlocks}時間ブロック
-								</span>
-								{group.isPaid && (
-									<span className="ml-2 px-2 py-1 text-xs rounded-full bg-green-500/10 text-green-600">
-										支払い済み
-									</span>
-								)}
-							</div>
-							<div className="flex items-center">
-								<div className="text-right mr-3">
-									<p className="font-semibold">{formatCurrency(group.finalAmount)}</p>
-									{group.appliedCoupons > 0 && (
-										<p className="text-xs text-green-600">
-											クーポン適用 -{formatCurrency(group.appliedCoupons)}
-										</p>
-									)}
-								</div>
-								{expandedMonths.has(group.monthKey) ? (
-									<ChevronUp className="w-5 h-5" />
-								) : (
-									<ChevronDown className="w-5 h-5" />
-								)}
-							</div>
-						</div>
-
-						{/* 詳細セクション */}
-						{expandedMonths.has(group.monthKey) && (
-							<div className="p-4">
-								<div className="overflow-x-auto">
-									<table className="w-full">
-										<thead>
-											<tr className="text-left text-foreground/70 border-b border-border">
-												<th className="pb-2">日時</th>
-												<th className="pb-2">座席</th>
-												<th className="pb-2">利用時間</th>
-												<th className="pb-2">料金</th>
-												<th className="pb-2">ステータス</th>
-												<th className="pb-2"></th>
-											</tr>
-										</thead>
-										<tbody>
-											{group.sessions.map((session) => (
-												<tr key={session.sessionId} className="border-b border-border/20">
-													<td className="py-3">
-														<div>{session.formattedStartTime.split(' ')[0]}</div>
-														<div className="text-xs text-foreground/70">
-															{session.formattedStartTime.split(' ')[1]} -
-															{session.active ? "利用中" : session.formattedEndTime.split(' ')[1]}
-														</div>
-													</td>
-													<td className="py-3">
-														<div>{session.seatName}</div>
-														{session.branchName && (
-															<div className="text-xs text-foreground/70">{session.branchName}</div>
-														)}
-													</td>
-													<td className="py-3">
-														<div className="flex items-center">
-															<Clock className="w-4 h-4 mr-1 text-foreground/70" />
-															<span>{session.durationText}</span>
-														</div>
-														<div className="text-xs text-foreground/70">
-															{session.hourBlocks}時間ブロック
-														</div>
-													</td>
-													<td className="py-3">{formatCurrency(session.amount)}</td>
-													<td className="py-3">
-														<span className={`inline-block text-xs px-2 py-0.5 rounded ${session.blockchainStatusClass}`}>
-															{session.blockchainStatusText}
-														</span>
-													</td>
-													<td className="py-3 text-right">
-														{session.blockchainStatus === 'confirmed' && session.blockchainTxId && (
-															<a
-																href={`https://snowtrace.io/tx/${session.blockchainTxId}`}
-																target="_blank"
-																rel="noopener noreferrer"
-																className="inline-flex items-center text-primary hover:text-primary/80"
-															>
-																<span className="text-xs mr-1">ブロックチェーン証明</span>
-																<ExternalLink className="w-3 h-3" />
-															</a>
-														)}
-													</td>
-												</tr>
-											))}
-										</tbody>
-									</table>
-								</div>
-							</div>
-						)}
-					</div>
-				))}
-			</div>
-		);
-	};
-
 	return (
-		<div className="bg-border/5 rounded-2xl shadow-soft p-4 md:p-6">
-			<h2 className="text-lg font-semibold mb-2">月別利用履歴</h2>
-			<div className="bg-accent/5 p-3 rounded-lg mb-4 text-sm">
-				<p>ご利用料金は時間単位で計算されます。1時間あたり600円、超過すると次の1時間分が加算されます。</p>
-				<p className="mt-1">月初に前月分の利用料金が請求されます。クーポンは自動的に適用されます。</p>
-			</div>
-
-			{error && (
-				<div className="bg-red-500/10 text-red-500 p-4 rounded-lg mb-4">
-					{error}
-				</div>
-			)}
-
-			{loading ? (
-				<div className="flex justify-center items-center py-12">
-					<LoadingSpinner size="large" />
-				</div>
-			) : (
-				<>
-					{ActiveSessionDisplay}
-					<MonthGroupsDisplay />
-				</>
-			)}
+		<div className="p-0 md:p-6">
+			<ActiveSessionDisplay />
+			<CouponsTab/>
+			<MonthGroupsDisplay/>
 		</div>
 	);
-}-e 
+}
+-e 
 ### FILE: ./src/components/dashboard/usage-history.tsx
 
 'use client';
@@ -6782,10 +6337,11 @@ export default function UsageHistory() {
 			}
 
 			// 結果をマッピング
+			// 結果をマッピング
 			const newHistoryItems = sessionsSnapshot.docs.map(doc => {
 				const data = doc.data() as SessionDocument;
 
-				// Firestoreのタイムスタンプをフォーマット
+				// endTime / startTime を Date に
 				const endTimeDate =
 					typeof data.endTime === 'string'
 						? new Date(data.endTime)
@@ -6800,27 +6356,33 @@ export default function UsageHistory() {
 							? data.startTime.toDate()
 							: new Date();
 
+				// ── ここで利用時間（分）と金額を計算 ──
+				const durationMinutes = Math.floor((endTimeDate.getTime() - startTimeDate.getTime()) / (1000 * 60));
+				const hourBlocks = Math.ceil(durationMinutes / 60);
+				const amount = hourBlocks * 600;
 
 				// 座席情報を取得
 				const seatInfo = seats[data.seatId];
 				const seatName = seatInfo?.name || `座席 ${data.seatId}`;
 				const branchName = seatInfo?.branchName || '';
 
-				// 座席情報から説明を作成
 				const description = `${branchName ? branchName + 'の' : ''}${seatName}の利用`;
 
 				return {
 					id: doc.id,
+					amount,             // ← 追加
+					durationMinutes,    // ← 追加
 					description,
 					timestamp: endTimeDate.toISOString(),
 					startTime: startTimeDate.toISOString(),
-					status: 'paid', // 完了したセッションは支払い済みとみなす
+					status: 'paid',
 					seatId: data.seatId,
-					seatName: seatName,
-					branchName: branchName,
+					seatName,
+					branchName,
 					isActive: false,
-				};
+				} as HistoryItem;
 			});
+
 
 			// 既存の履歴と新しい履歴を結合（続きを読み込む場合）
 			if (isLoadMore) {
@@ -7067,8 +6629,7 @@ export default function QrCodeDisplay() {
 						/>
 					</div>
 					<p className="text-sm text-foreground/70 mb-4">
-						店舗の入口リーダーにかざして入室できます。<br/>
-						席のリーダーにかざすとPCを起動できます。<br/>
+						店舗の入口や席のQRリーダーにかざしてください<br/>
 					</p>
 					<Button
 						variant="outline"
@@ -7094,7 +6655,7 @@ import { Calendar, Clock, MapPin, Loader, Ban, CheckCircle, RefreshCw } from 'lu
 import { useAuth } from '@/context/auth-context';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-
+import Link from 'next/link';
 // 予約データの型定義
 interface Reservation {
 	id?: string;
@@ -7405,19 +6966,23 @@ const ReservationHistory: React.FC = () => {
 
 	return (
 		<div className="reservation-history">
-			<h2 className="text-xl font-bold text-foreground mb-6 flex items-center">
+			<div className="my-8 flex justify-center">
+				<Link
+					href="/reservation"
+					className="border border-border bg-border/5 hover:bg-border/10 rounded-xl p-6 flex flex-col items-center justify-center transition-colors w-full max-w-xs"
+				>
+					<Calendar className="w-8 h-8 text-accent mb-2" />
+					<span className="font-medium text-foreground">新規予約</span>
+					<span className="text-sm text-foreground/60">座席を予約する</span>
+				</Link>
+			</div>
+			<h2 className="text-xl font-bold text-foreground ml-3 mb-6 flex items-center">
 				<Calendar className="mr-2" /> 予約履歴
 			</h2>
 
 			{reservations.length === 0 ? (
 				<div className="p-6 text-center bg-border/10 rounded-lg">
 					<p className="text-foreground/70 mb-4">予約情報がありません</p>
-					<button
-						onClick={() => window.location.href = '/reservation'}
-						className="px-4 py-2 bg-accent text-white rounded-md hover:bg-accent/90 transition-colors"
-					>
-						新規予約をする
-					</button>
 				</div>
 			) : (
 				<>
@@ -7436,7 +7001,6 @@ const ReservationHistory: React.FC = () => {
 					{/* Past reservations */}
 					{pastReservations.length > 0 && (
 						<div>
-							<h3 className="text-lg font-medium text-foreground mb-4">過去の予約</h3>
 							<div>
 								{(showAll ? pastReservations : pastReservations.slice(0, 3)).map(reservation => (
 									<ReservationCard key={reservation.id} reservation={reservation} />
@@ -7460,6 +7024,1405 @@ const ReservationHistory: React.FC = () => {
 };
 
 export default ReservationHistory;-e 
+### FILE: ./src/components/dashboard/MonthGroupsDisplay.tsx
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Calendar, ChevronDown, ChevronUp, Clock, Tag, Info, ExternalLink } from 'lucide-react';
+import { MonthGroup, SessionDisplay, AppliedCoupon } from '../../types/index';
+import { useAuth } from '@/context/auth-context';
+import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { SessionDocument, SeatDocument, UserCoupon } from '@/types/firebase';
+import MonthInvoice from "./MonthInvoice";
+
+export default function MonthGroupsDisplay() {
+	const { user } = useAuth();
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [monthGroups, setMonthGroups] = useState<MonthGroup[]>([]);
+	const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+	const [availableCoupons, setAvailableCoupons] = useState<UserCoupon[]>([]);
+
+	// 座席情報を取得
+	const fetchSeats = async () => {
+		try {
+			const seatsSnapshot = await getDocs(collection(db, 'seats'));
+			const seatsData: { [key: string]: SeatDocument } = {};
+
+			seatsSnapshot.docs.forEach(doc => {
+				const seatData = doc.data() as SeatDocument;
+				seatsData[seatData.seatId] = seatData;
+			});
+
+			return seatsData;
+		} catch (err) {
+			console.error('Error fetching seats:', err);
+			throw err;
+		}
+	};
+
+	// 利用可能なクーポンを取得
+	const fetchAvailableCoupons = async (): Promise<UserCoupon[]> => {
+		if (!user) return [];
+
+		const couponsQuery = query(
+			collection(db, 'userCoupons'),
+			where('userId', '==', user.uid),
+			where('status', '==', 'available'),
+			orderBy('discountValue', 'desc')
+		);
+		const snapshot = await getDocs(couponsQuery);
+
+		return snapshot.docs.map(doc => {
+			const data = doc.data() as any;
+			return {
+				// Firestore にある他のフィールドをまるっと展開
+				...data,
+				// ドキュメントID を追加
+				id: doc.id,
+				// issuedAt だけ日付オブジェクトに変換
+				issuedAt: getDateFromTimestamp(data.issuedAt)
+			} as UserCoupon;
+		});
+	};
+
+
+	// 過去のセッションを取得
+	const fetchSessionHistory = async (): Promise<SessionDisplay[]> => {
+		if (!user) return [];
+
+		try {
+			// 座席情報を先に取得
+			const seatsData = await fetchSeats();
+
+			const sessionsQuery = query(
+				collection(db, 'sessions'),
+				where('userId', '==', user.uid),
+				where('active', '==', false),
+				orderBy('endTime', 'desc')
+			);
+			const snapshot = await getDocs(sessionsQuery);
+
+			return snapshot.docs.map(doc => {
+				const data = doc.data() as SessionDocument;
+				const sessionId = doc.id;
+
+				// タイムスタンプの処理
+				const startTimeDate = getDateFromTimestamp(data.startTime);
+				const endTimeDate = getDateFromTimestamp(data.endTime);
+
+				// 利用時間の計算
+				const durationMinutes = Math.floor(
+					(endTimeDate.getTime() - startTimeDate.getTime()) / (1000 * 60)
+				);
+				const hourBlocks = data.hourBlocks || Math.ceil(durationMinutes / 60);
+				const amount = hourBlocks * 600;
+
+				// 座席情報
+				const seatInfo = seatsData[data.seatId];
+				const seatName = seatInfo?.name || `座席 ${data.seatId}`;
+				const branchName = seatInfo?.branchName || '';
+
+				// ブロックチェーンステータス
+				let blockchainStatusClass = 'bg-gray-200 text-gray-700';
+				let blockchainStatusText = '未記録';
+				if (data.blockchainStatus === 'confirmed') {
+					blockchainStatusClass = 'bg-green-500/10 text-green-600';
+					blockchainStatusText = '確認済み';
+				} else if (data.blockchainStatus === 'pending') {
+					blockchainStatusClass = 'bg-yellow-500/10 text-yellow-600';
+					blockchainStatusText = '保留中';
+				} else if (data.blockchainStatus === 'error') {
+					blockchainStatusClass = 'bg-red-500/10 text-red-600';
+					blockchainStatusText = 'エラー';
+				}
+
+				return {
+					...data,
+					sessionId,
+					formattedStartTime: formatDate(startTimeDate),
+					formattedEndTime: formatDate(endTimeDate),
+					durationText: `${Math.floor(durationMinutes / 60)}時間${durationMinutes % 60}分`,
+					seatName,
+					branchName,
+					amount,
+					hourBlocks,
+					blockchainStatusClass,
+					blockchainStatusText
+				} as SessionDisplay;
+			});
+		} catch (err) {
+			console.error('Error fetching session history:', err);
+			throw err;
+		}
+	};
+
+
+	// セッションを月ごとにグループ化する
+	const groupSessionsByMonth = (sessions: SessionDisplay[]): MonthGroup[] => {
+		const groups: { [key: string]: MonthGroup } = {};
+
+		sessions.forEach(session => {
+			// タイムスタンプからDateオブジェクトを正しく取得
+			const startDate = getDateFromTimestamp(session.startTime);
+			// 有効な日付オブジェクトかチェック
+			if (isNaN(startDate.getTime())) {
+				console.error('Invalid date object:', session.startTime);
+				return; // 無効な日付の場合はスキップ
+			}
+
+			const monthKey = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
+			const displayMonth = `${startDate.getFullYear()}年${startDate.getMonth() + 1}月`;
+
+			if (!groups[monthKey]) {
+				groups[monthKey] = {
+					monthKey,
+					displayMonth,
+					sessions: [],
+					totalHourBlocks: 0,
+					totalAmount: 0,
+					appliedCoupons: [], // 初期化
+					totalDiscountAmount: 0, // 初期化
+					finalAmount: 0, // 初期化
+					isPaid: false // 支払い済みフラグ、実際は支払いAPIから取得
+				};
+			}
+
+			groups[monthKey].sessions.push(session);
+			groups[monthKey].totalHourBlocks += session.hourBlocks || 0;
+			groups[monthKey].totalAmount += session.amount || 0;
+		});
+
+		// 各月の最終金額を初期化（クーポン適用前）
+		Object.values(groups).forEach(group => {
+			group.finalAmount = group.totalAmount;
+
+			// 前月の場合は支払い済みフラグをtrueに（デモ用）
+			const now = new Date();
+			const [year, month] = group.monthKey.split('-').map(Number);
+			const groupDate = new Date(year, month - 1);
+
+			if (groupDate.getFullYear() < now.getFullYear() ||
+				(groupDate.getFullYear() === now.getFullYear() &&
+					groupDate.getMonth() < now.getMonth())) {
+				group.isPaid = true;
+			}
+		});
+
+		// 月の降順でソート
+		return Object.values(groups).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+	};
+
+	// クーポンを適用する
+	const applyCouponsToMonthGroups = (
+		groups: MonthGroup[],
+		coupons: UserCoupon[]
+	): MonthGroup[] => {
+		// 浅いコピーでOKなら…
+		let availableCoupons: UserCoupon[] = [...coupons];
+
+		const updatedGroups = groups.map(group => ({ ...group }));
+
+		const now = new Date();
+		const currentMonthKey = `${now.getFullYear()}-${String(
+			now.getMonth() + 1
+		).padStart(2, '0')}`;
+
+		return updatedGroups.map(group => {
+			group.appliedCoupons = [];
+			group.totalDiscountAmount = 0;
+			group.finalAmount = group.totalAmount;
+
+			if (group.monthKey === currentMonthKey) {
+				availableCoupons.forEach((coupon: UserCoupon) => {
+					if (group.finalAmount > 0) {
+						const discountToApply = Math.min(
+							coupon.discountValue,
+							group.finalAmount
+						);
+
+						group.appliedCoupons.push({
+							id: coupon.id,
+							name: coupon.name,
+							code: coupon.code,
+							discountValue: discountToApply
+						});
+						group.totalDiscountAmount += discountToApply;
+						group.finalAmount = group.totalAmount - group.totalDiscountAmount;
+					}
+				});
+			}
+
+			return group;
+		});
+	};
+
+
+	// データ取得
+	const fetchData = async () => {
+		if (!user) return;
+
+		try {
+			setLoading(true);
+			setError(null);
+
+			// 過去のセッション履歴を取得
+			const sessions = await fetchSessionHistory();
+
+			// 利用可能なクーポンを取得
+			const coupons = await fetchAvailableCoupons();
+			setAvailableCoupons(coupons);
+
+			// 月ごとにグループ化
+			let groups = groupSessionsByMonth(sessions);
+
+			// クーポンを適用
+			groups = applyCouponsToMonthGroups(groups, coupons);
+
+			setMonthGroups(groups);
+
+			// 初回は何も展開しない
+			setExpandedMonths(new Set());
+		} catch (err) {
+			console.error('Error fetching data:', err);
+			setError(err instanceof Error ? err.message : 'データの取得中にエラーが発生しました');
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	// 初回読み込み
+	useEffect(() => {
+		if (user) {
+			fetchData();
+		}
+	}, [user]);
+
+	// 月のセクションの展開/折りたたみを切り替える
+	const toggleMonth = (monthKey: string) => {
+		setExpandedMonths(prev => {
+			const newSet = new Set(prev);
+			if (newSet.has(monthKey)) {
+				newSet.delete(monthKey);
+			} else {
+				newSet.add(monthKey);
+			}
+			return newSet;
+		});
+	};
+
+	// ヘルパー関数: タイムスタンプからDateオブジェクトを取得
+	function getDateFromTimestamp(timestamp: any): Date {
+		if (typeof timestamp === 'string') {
+			return new Date(timestamp);
+		} else if (timestamp && 'toDate' in timestamp) {
+			return timestamp.toDate();
+		}
+		return new Date();
+	}
+
+	// 日付フォーマット
+	function formatDate(date: Date): string {
+		return date.toLocaleString('ja-JP', {
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit'
+		});
+	}
+
+	// 金額フォーマット
+	function formatCurrency(amount: number): string {
+		return new Intl.NumberFormat('ja-JP', {
+			style: 'currency',
+			currency: 'JPY'
+		}).format(amount);
+	}
+
+	if (loading) return (
+		<div className="text-center py-8 text-foreground/70">
+			<p>データを読み込み中...</p>
+		</div>
+	);
+
+	if (monthGroups.length === 0) {
+		return (
+			<div className="text-center py-8 text-foreground/70">
+				<p>まだ利用履歴はありません。</p>
+			</div>
+		);
+	}
+
+	return (
+		<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-3">
+			<div className="ml-1">
+				<h2 className="text-lg font-semibold my-4">利用履歴</h2>
+			</div>
+			{monthGroups.map((group) => (
+				<div key={group.monthKey} className="border border-border/50 rounded-lg overflow-hidden">
+					{/* 月のヘッダー */}
+					<div
+						className="flex items-center justify-between p-4 bg-accent/5 cursor-pointer"
+						onClick={() => toggleMonth(group.monthKey)}
+					>
+						<div className="flex items-center flex-wrap">
+							<Calendar className="w-5 h-5 mr-2 text-primary" />
+							<h3 className="font-medium">
+								{group.displayMonth}
+							</h3>
+						</div>
+						<div className="flex items-center">
+
+							{expandedMonths.has(group.monthKey) ? (
+								<ChevronUp className="w-5 h-5" />
+							) : (
+								<ChevronDown className="w-5 h-5" />
+							)}
+						</div>
+					</div>
+
+					{/* 詳細セクション */}
+					{expandedMonths.has(group.monthKey) && (
+						<div className="p-4">
+
+							<MonthInvoice
+								monthKey={group.monthKey}
+								displayMonth={group.displayMonth}
+							/>
+							{/* セッション一覧テーブル */}
+							<div className="overflow-x-auto">
+								<table className="w-full">
+									<thead>
+										<tr className="text-left text-foreground/70 border-b border-border">
+											<th className="pb-2">日時</th>
+											<th className="pb-2">座席</th>
+											<th className="pb-2">利用時間</th>
+											<th className="pb-2">料金</th>
+											<th className="pb-2">ステータス</th>
+											<th className="pb-2"></th>
+										</tr>
+									</thead>
+									<tbody>
+										{group.sessions.map((session) => (
+											<tr key={session.sessionId} className="border-b border-border/20">
+												<td className="py-3">
+													<div>{session.formattedStartTime.split(' ')[0]}</div>
+													<div className="text-xs text-foreground/70">
+														{session.formattedStartTime.split(' ')[1]} -
+														{session.active ? "利用中" : session.formattedEndTime.split(' ')[1]}
+													</div>
+												</td>
+												<td className="py-3">
+													<div>{session.seatName}</div>
+													{session.branchName && (
+														<div className="text-xs text-foreground/70">{session.branchName}</div>
+													)}
+												</td>
+												<td className="py-3">
+													<div className="flex items-center">
+														<Clock className="w-4 h-4 mr-1 text-foreground/70" />
+														<span>{session.durationText}</span>
+													</div>
+													<div className="text-xs text-foreground/70">
+														{session.hourBlocks}時間ブロック
+													</div>
+												</td>
+												<td className="py-3">{formatCurrency(session.amount)}</td>
+												<td className="py-3">
+													<span className={`inline-block text-xs px-2 py-0.5 rounded ${session.blockchainStatusClass}`}>
+														{session.blockchainStatusText}
+													</span>
+												</td>
+												<td className="py-3 text-right">
+													{session.blockchainStatus === 'confirmed' && session.blockchainTxId && (
+														<a
+															href={`https://snowtrace.io/tx/${session.blockchainTxId}`}
+															target="_blank"
+															rel="noopener noreferrer"
+															className="inline-flex items-center text-primary hover:text-primary/80"
+														>
+															<span className="text-xs mr-1">ブロックチェーン証明</span>
+															<ExternalLink className="w-3 h-3" />
+														</a>
+													)}
+												</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</div>
+							<div className="p-2 text-sm text-foreground/70">
+								<p>
+									ご利用料金は1時間区切りで計算されます。1時間ブロックあたり600円、超過すると次の1時間分が加算されます。
+									翌月上旬に前月分の利用料金が請求されます。
+								</p>
+							</div>
+						</div>
+					)}
+				</div>
+
+			))}
+		</div>
+	);
+}-e 
+### FILE: ./src/components/dashboard/ActiveSessionDisplay.tsx
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Clock } from 'lucide-react';
+import { SessionDisplay } from '../../types/index';
+import { useAuth } from '@/context/auth-context';
+import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { SessionDocument, SeatDocument } from '@/types/firebase';
+
+export default function ActiveSessionDisplay() {
+	const { user } = useAuth();
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [activeSessions, setActiveSessions] = useState<SessionDisplay[]>([]);
+
+	// 座席情報を取得
+	const fetchSeats = async () => {
+		try {
+			const seatsSnapshot = await getDocs(collection(db, 'seats'));
+			const seatsData: { [key: string]: SeatDocument } = {};
+
+			seatsSnapshot.docs.forEach(doc => {
+				const seatData = doc.data() as SeatDocument;
+				seatsData[seatData.seatId] = seatData;
+			});
+
+			return seatsData;
+		} catch (err) {
+			console.error('Error fetching seats:', err);
+			throw err;
+		}
+	};
+
+	// アクティブセッションの取得（すべて）
+	const fetchActiveSessions = async () => {
+		if (!user) return [];
+
+		try {
+			// 座席情報を先に取得
+			const seatsData = await fetchSeats();
+
+			const activeSessionsQuery = query(
+				collection(db, 'sessions'),
+				where('userId', '==', user.uid),
+				where('active', '==', true),
+				orderBy('startTime', 'desc')
+			);
+
+			const activeSessionsSnapshot = await getDocs(activeSessionsQuery);
+
+			if (activeSessionsSnapshot.empty) {
+				return [];
+			}
+
+			// すべてのアクティブセッションを処理
+			return activeSessionsSnapshot.docs.map(doc => {
+				const activeData = doc.data() as SessionDocument;
+				const sessionId = doc.id;
+
+				// タイムスタンプの処理
+				const startTimeDate = getDateFromTimestamp(activeData.startTime);
+				const now = new Date();
+
+				// 現在の時点での利用時間（分）を計算
+				const currentDurationMinutes = Math.floor((now.getTime() - startTimeDate.getTime()) / (1000 * 60));
+				const currentHourBlocks = Math.ceil(currentDurationMinutes / 60);
+				const currentAmount = currentHourBlocks * 600;
+
+				// 座席情報を取得
+				const seatInfo = seatsData[activeData.seatId];
+				const seatName = seatInfo?.name || `座席 ${activeData.seatId}`;
+				const branchName = seatInfo?.branchName || '';
+
+				return {
+					...activeData,
+					sessionId,
+					formattedStartTime: formatDate(startTimeDate),
+					formattedEndTime: '利用中',
+					durationText: getElapsedTime(startTimeDate),
+					seatName,
+					branchName,
+					amount: currentAmount,
+					hourBlocks: currentHourBlocks,
+					blockchainStatusClass: 'bg-blue-500/10 text-blue-500',
+					blockchainStatusText: '利用中'
+				} as SessionDisplay;
+			});
+		} catch (err) {
+			console.error('Error fetching active sessions:', err);
+			throw err;
+		}
+	};
+
+	const fetchData = async () => {
+		if (!user) return;
+
+		try {
+			setLoading(true);
+			setError(null);
+
+			// すべてのアクティブセッションを取得
+			const sessions = await fetchActiveSessions();
+			setActiveSessions(sessions);
+
+		} catch (err) {
+			console.error('Error fetching active session data:', err);
+			setError(err instanceof Error ? err.message : 'データの取得中にエラーが発生しました');
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	// 初回読み込み
+	useEffect(() => {
+		if (user) {
+			fetchData();
+		}
+	}, [user]);
+
+	// アクティブセッションがある場合、定期的に更新
+	useEffect(() => {
+		if (!user || activeSessions.length === 0) return;
+
+		const intervalId = setInterval(() => {
+			fetchData();
+		}, 60000); // 1分ごとに更新
+
+		return () => clearInterval(intervalId);
+	}, [user, activeSessions]);
+
+	// ヘルパー関数: タイムスタンプからDateオブジェクトを取得
+	function getDateFromTimestamp(timestamp: any): Date {
+		if (typeof timestamp === 'string') {
+			return new Date(timestamp);
+		} else if (timestamp && 'toDate' in timestamp) {
+			return timestamp.toDate();
+		}
+		return new Date();
+	}
+
+	// 日付フォーマット
+	function formatDate(date: Date): string {
+		return date.toLocaleString('ja-JP', {
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit'
+		});
+	}
+
+	// 金額フォーマット
+	function formatCurrency(amount: number): string {
+		return new Intl.NumberFormat('ja-JP', {
+			style: 'currency',
+			currency: 'JPY'
+		}).format(amount);
+	}
+
+	// 経過時間計算（アクティブセッション用）
+	function getElapsedTime(startTime: Date): string {
+		const now = new Date();
+		const elapsedMs = now.getTime() - startTime.getTime();
+
+		const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
+		const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+
+		return `${hours}時間${minutes}分`;
+	}
+
+	if (loading) return null;
+	if (activeSessions.length === 0) return null;
+
+	return (
+		<div className="space-y-3">
+			{activeSessions.map((session) => (
+				<div key={session.sessionId} className="bg-border/5 rounded-2xl shadow-soft p-6">
+					<div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+						<div className="flex flex-col md:flex-row justify-between md:items-start">
+							<div>
+								<p className="font-medium">{session.seatName}</p>
+								{session.branchName && (
+									<p className="text-sm text-foreground/70">{session.branchName}</p>
+								)}
+								<p className="text-sm text-foreground/70">開始時間: {session.formattedStartTime}</p>
+								<p className="text-sm text-foreground/70">
+									現在の利用時間: {session.durationText}
+									（{session.hourBlocks}時間ブロック）
+								</p>
+							</div>
+							<div className="mt-3 md:mt-0 md:text-right">
+								<p className="text-lg font-semibold">{formatCurrency(session.amount)}</p>
+								<span className="inline-block bg-blue-500/10 text-blue-500 text-xs px-2 py-0.5 rounded">
+									利用中
+								</span>
+							</div>
+						</div>
+					</div>
+				</div>
+			))}
+		</div>
+	);
+}-e 
+### FILE: ./src/components/dashboard/MonthInvoice.tsx
+
+'use client';
+
+import { FC, useState, useEffect } from 'react';
+import { Receipt, ExternalLink, AlertTriangle, Clock, CreditCard } from 'lucide-react';
+import { useAuth } from '@/context/auth-context';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { InvoiceDocument } from '@/types/firebase';
+
+interface MonthInvoiceProps {
+	monthKey: string;     // 例: "2025-03"
+	displayMonth: string; // 例: "2025年3月"
+}
+
+const MonthInvoice: FC<MonthInvoiceProps> = ({ monthKey, displayMonth }) => {
+	const { user } = useAuth();
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [invoice, setInvoice] = useState<InvoiceDocument | null>(null);
+
+	// 請求書情報を取得
+	useEffect(() => {
+		const fetchInvoice = async () => {
+			if (!user) return;
+
+			try {
+				setLoading(true);
+
+				// 対象の月の請求書をクエリ
+				const invoicesQuery = query(
+					collection(db, 'invoices'),
+					where('userId', '==', user.uid),
+					where('periodString', '==', monthKey),
+					orderBy('createdAt', 'desc'), // 最新の請求書を取得
+					limit(1)
+				);
+
+				const invoicesSnapshot = await getDocs(invoicesQuery);
+
+				if (invoicesSnapshot.empty) {
+					// 請求書がまだ存在しない
+					setInvoice(null);
+				} else {
+					// 請求書が存在する場合
+					const invoiceData = invoicesSnapshot.docs[0].data() as InvoiceDocument;
+					setInvoice(invoiceData);
+				}
+
+				setError(null);
+			} catch (err) {
+				console.error(`Error fetching invoice for ${monthKey}:`, err);
+				setError('請求書情報の取得に失敗しました');
+			} finally {
+				setLoading(false);
+			}
+		};
+
+		fetchInvoice();
+	}, [user, monthKey]);
+
+	// ヘルパー関数: 金額フォーマット
+	const formatCurrency = (amount: number): string => {
+		return new Intl.NumberFormat('ja-JP', {
+			style: 'currency',
+			currency: 'JPY'
+		}).format(amount);
+	};
+
+	// ステータスに応じたスタイルとテキストを返す
+	const getStatusInfo = () => {
+		if (!invoice) {
+			return {
+				text: '未請求',
+				bgColor: 'bg-border/10',
+				textColor: 'text-foreground/60',
+				icon: <Clock className="w-3 h-3 mr-1" />
+			};
+		}
+
+		switch (invoice.status) {
+			case 'paid':
+				return {
+					text: '支払い済み',
+					bgColor: 'bg-highlight/10',
+					textColor: 'text-highlight',
+					icon: <CreditCard className="w-3 h-3 mr-1" />
+				};
+			case 'pending':
+			case 'pending_stripe':
+				return {
+					text: '支払い待ち',
+					bgColor: 'bg-accent/10',
+					textColor: 'text-accent',
+					icon: <Clock className="w-3 h-3 mr-1" />
+				};
+			case 'failed':
+				return {
+					text: '支払い失敗',
+					bgColor: 'bg-red-500/10',
+					textColor: 'text-red-500',
+					icon: <AlertTriangle className="w-3 h-3 mr-1" />
+				};
+			default:
+				return {
+					text: 'その他',
+					bgColor: 'bg-border/10',
+					textColor: 'text-foreground/60',
+					icon: <Clock className="w-3 h-3 mr-1" />
+				};
+		}
+	};
+
+	// ローディング中の表示
+	if (loading) {
+		return (
+			<div className="px-4 py-3 border-t border-border/10 flex items-center justify-center">
+				<div className="animate-pulse flex items-center text-foreground/50 text-xs">
+					<Receipt className="w-4 h-4 mr-2 opacity-70" />
+					請求書情報を読み込み中...
+				</div>
+			</div>
+		);
+	}
+
+	// エラー時の表示
+	if (error) {
+		return (
+			<div className="px-4 py-3 border-t border-border/10 flex items-center justify-center">
+				<div className="flex items-center text-red-500 text-xs">
+					<AlertTriangle className="w-4 h-4 mr-2" />
+					{error}
+				</div>
+			</div>
+		);
+	}
+
+	// 請求書が存在しない場合
+	if (!invoice) {
+		return (
+			<div className="px-4 py-3 border-t border-border/10 flex items-center justify-center mb-5">
+				<div className="flex items-center text-foreground/50 text-xs">
+					<Receipt className="w-4 h-4 mr-2 opacity-70" />
+					{displayMonth}の請求書はまだ発行されていません
+				</div>
+			</div>
+		);
+	}
+
+	// ステータス情報の取得
+	const statusInfo = getStatusInfo();
+
+	return (
+		<div className="border-t border-border/10 overflow-hidden mb-5">
+			<div className="px-4 py-3 bg-border/5 flex flex-wrap items-center justify-between">
+				<div className="flex items-center">
+					<Receipt className="w-4 h-4 mr-2 text-accent" />
+					<span className="text-sm font-medium mr-3">請求書</span>
+					<span className={`flex items-center px-2 py-0.5 text-xs rounded-full ${statusInfo.bgColor} ${statusInfo.textColor}`}>
+						{statusInfo.icon}
+						{statusInfo.text}
+					</span>
+				</div>
+
+				<div className="flex items-center space-x-4">
+					{/* 小計・割引・最終金額の表示 */}
+					<div className="text-xs text-foreground/70">
+						<span className="mr-2">小計: {formatCurrency(invoice.subtotalAmount)}</span>
+						{invoice.discountAmount > 0 && (
+							<span className="mr-2 text-highlight">
+								割引: -{formatCurrency(invoice.discountAmount)}
+							</span>
+						)}
+						<span className="font-medium text-foreground">
+							合計: {formatCurrency(invoice.finalAmount)}
+						</span>
+					</div>
+
+					{/* 請求書URLがある場合はリンクを表示 */}
+					{invoice.stripeInvoiceUrl && (
+						<a
+							href={invoice.stripeInvoiceUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							className="inline-flex items-center px-2 py-1 text-xs rounded-md bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+							onClick={(e) => e.stopPropagation()}
+						>
+							<span className="mr-1">請求書を表示</span>
+							<ExternalLink className="w-3 h-3" />
+						</a>
+					)}
+				</div>
+			</div>
+
+			{/* 支払い失敗時のエラーメッセージを表示 */}
+			{invoice.status === 'failed' && invoice.errorMessage && (
+				<div className="px-4 py-2 bg-red-500/5 text-xs text-red-500 flex items-center">
+					<AlertTriangle className="w-3 h-3 mr-1 flex-shrink-0" />
+					<span>エラー: {invoice.errorMessage}</span>
+				</div>
+			)}
+
+			{/* 適用されたクーポンの表示 */}
+			{invoice.appliedCoupons && invoice.appliedCoupons.length > 0 && (
+				<div className="px-4 py-2 bg-highlight/5 text-xs text-highlight/90 flex items-center">
+					<div className="flex-1">
+						<span className="font-medium">適用クーポン: </span>
+						{invoice.appliedCoupons.map((coupon, idx) => (
+							<span key={idx} className="mr-2">
+								{coupon.name} (-{formatCurrency(coupon.discountValue)})
+								{idx < invoice.appliedCoupons.length - 1 ? ", " : ""}
+							</span>
+						))}
+					</div>
+				</div>
+			)}
+		</div>
+	);
+};
+
+export default MonthInvoice;-e 
+### FILE: ./src/components/dashboard/coupons.tsx
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/context/auth-context';
+import { Gift, ChevronDown, ChevronUp, Info, Calendar, Check, AlertCircle, Tag, Star } from 'lucide-react';
+import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { motion, AnimatePresence } from 'framer-motion';
+import { UserCoupon, CouponDefinition } from '../../types/index';
+
+// 表示用に issuedAt を Date 型にしたローカル型
+type UIUserCoupon = Omit<UserCoupon, 'issuedAt'> & { issuedAt: Date };
+
+// 期間グループを示す型
+type CouponTimeGroup = 'thisMonth' | 'lastMonth' | 'older';
+
+// 獲得可能なクーポン表示用の型
+type AcquirableCoupon = CouponDefinition & {
+	isAcquirable: boolean;
+};
+
+// タブの種類
+type CouponTab = 'available' | 'used';
+
+export default function CouponsTab() {
+	const { user } = useAuth();
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+
+	// 獲得可能なクーポン
+	const [acquirableCoupons, setAcquirableCoupons] = useState<AcquirableCoupon[]>([]);
+
+	// 所有しているクーポン
+	const [coupons, setCoupons] = useState<{
+		available: UIUserCoupon[];
+		used: UIUserCoupon[];
+		byTimeGroup: Record<CouponTimeGroup, UIUserCoupon[]>;
+	}>({
+		available: [],
+		used: [],
+		byTimeGroup: {
+			thisMonth: [],
+			lastMonth: [],
+			older: []
+		}
+	});
+
+	// マイクーポンセクションの折りたたみ状態
+	const [myCouponsExpanded, setMyCouponsExpanded] = useState(false);
+
+	// アクティブなタブ
+	const [activeTab, setActiveTab] = useState<CouponTab>('available');
+
+	/** クーポンのグループ分け処理 */
+	const categorizeCoupons = (coupons: UIUserCoupon[]) => {
+		const now = new Date();
+		const thisMonth = now.getMonth();
+		const thisYear = now.getFullYear();
+
+		// 先月の年月を計算
+		let lastMonth = thisMonth - 1;
+		let lastMonthYear = thisYear;
+		if (lastMonth < 0) {
+			lastMonth = 11;
+			lastMonthYear = thisYear - 1;
+		}
+
+		const available: UIUserCoupon[] = [];
+		const used: UIUserCoupon[] = [];
+		const byTimeGroup: Record<CouponTimeGroup, UIUserCoupon[]> = {
+			thisMonth: [],
+			lastMonth: [],
+			older: []
+		};
+
+		coupons.forEach(coupon => {
+			const couponYear = coupon.issuedAt.getFullYear();
+			const couponMonth = coupon.issuedAt.getMonth();
+
+			// 発行時期でグループ分け
+			if (couponYear === thisYear && couponMonth === thisMonth) {
+				byTimeGroup.thisMonth.push(coupon);
+			} else if (couponYear === lastMonthYear && couponMonth === lastMonth) {
+				byTimeGroup.lastMonth.push(coupon);
+			} else {
+				byTimeGroup.older.push(coupon);
+			}
+
+			// ステータス別に分類
+			if (coupon.status === 'available') {
+				available.push(coupon);
+			} else {
+				used.push(coupon);
+			}
+		});
+
+		return { available, used, byTimeGroup };
+	};
+
+	/** Firestore からデータを取得 */
+	const fetchCoupons = async () => {
+		if (!user) return;
+		try {
+			setLoading(true);
+			setError(null);
+
+			// 1. UserCoupons コレクションからユーザーのクーポンを取得
+			const userCouponsQuery = query(
+				collection(db, 'userCoupons'),
+				where('userId', '==', user.uid),
+				orderBy('issuedAt', 'desc')
+			);
+
+			const userCouponsSnapshot = await getDocs(userCouponsQuery);
+
+			// ユーザーが持っているクーポンコードのセット
+			const userCouponCodes = new Set<string>();
+
+			const fetchedUserCoupons: UIUserCoupon[] = userCouponsSnapshot.docs.map(doc => {
+				const data = doc.data() as any;
+				const raw = data.issuedAt;
+
+				// Timestamp か文字列かを判定して Date に変換
+				let issuedAtDate: Date;
+				if (raw?.toDate) {
+					issuedAtDate = raw.toDate();
+				} else {
+					issuedAtDate = new Date(raw);
+				}
+
+				// ユーザーが持っているクーポンコードを記録
+				userCouponCodes.add(data.code);
+
+				return {
+					id: doc.id,
+					userId: data.userId,
+					name: data.name,
+					code: data.code,
+					description: data.description,
+					discountValue: data.discountValue,
+					status: data.status,
+					issuedAt: issuedAtDate,
+				};
+			});
+
+			// 2. CouponDefinitions コレクションから有効なクーポン定義を取得
+			const couponDefsQuery = query(
+				collection(db, 'couponDefinitions'),
+				where('isActive', '==', true)
+			);
+
+			const couponDefsSnapshot = await getDocs(couponDefsQuery);
+
+			const fetchedAcquirableCoupons: AcquirableCoupon[] = [];
+
+			couponDefsSnapshot.forEach(doc => {
+				const data = doc.data() as any;
+
+				// ユーザーがまだ持っていないクーポンのみを「獲得可能」とする
+				const isAcquirable = !userCouponCodes.has(data.code);
+
+				if (isAcquirable) {
+					fetchedAcquirableCoupons.push({
+						id: doc.id,
+						code: data.code,
+						name: data.name,
+						description: data.description,
+						discountValue: data.discountValue,
+						validityPeriod: data.validityPeriod,
+						isActive: data.isActive,
+						isAcquirable: true
+					});
+				}
+			});
+
+			// 結果を設定
+			setCoupons(categorizeCoupons(fetchedUserCoupons));
+			setAcquirableCoupons(fetchedAcquirableCoupons);
+		} catch (e) {
+			console.error(e);
+			setError('クーポン情報の取得中にエラーが発生しました');
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		if (user) {
+			fetchCoupons();
+		}
+	}, [user]);
+
+	// 日付を日本語形式でフォーマット
+	const formatDate = (date: Date) => {
+		return date.toLocaleDateString('ja-JP', {
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric'
+		});
+	};
+
+	// 獲得可能クーポンカード
+	const AcquirableCouponCard = ({ coupon }: { coupon: AcquirableCoupon }) => {
+		return (
+			<motion.div
+				initial={{ opacity: 0, y: 5 }}
+				animate={{ opacity: 1, y: 0 }}
+				className="relative overflow-hidden border border-highlight/30 bg-highlight/5 rounded-lg p-4 transition-all"
+			>
+				{/* Status Badge */}
+				<div className="absolute top-3 right-3">
+					<span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-highlight/10 text-highlight">
+						<Star className="w-3 h-3 mr-1" />
+						獲得可能
+					</span>
+				</div>
+
+				{/* Coupon Content */}
+				<div className="mb-3">
+					<h4 className="font-medium text-foreground">{coupon.name}</h4>
+					<p className="text-sm text-foreground/70 mt-1">{coupon.description}</p>
+				</div>
+
+				{/* Discount Value */}
+				<div className="font-semibold text-highlight text-lg mb-2">
+					{coupon.discountValue.toLocaleString()}円引き
+				</div>
+			</motion.div>
+		);
+	};
+
+	// ユーザー所有クーポンカード
+	const UserCouponCard = ({ coupon }: { coupon: UIUserCoupon }) => {
+		const isAvailable = coupon.status === 'available';
+
+		return (
+			<motion.div
+				initial={{ opacity: 0, y: 5 }}
+				animate={{ opacity: 1, y: 0 }}
+				className={`
+          relative overflow-hidden border rounded-lg p-4 transition-all
+          ${isAvailable
+						? 'border-accent/30 bg-accent/5'
+						: 'border-border/40 bg-background/5 opacity-80'
+					}
+        `}
+			>
+				{/* Status Badge */}
+				<div className="absolute top-3 right-3">
+					<span
+						className={`
+              inline-flex items-center px-2 py-1 rounded-full text-xs
+              ${isAvailable
+								? 'bg-green-500/10 text-green-600'
+								: 'bg-gray-200 text-gray-600'
+							}
+            `}
+					>
+						{isAvailable ? (
+							<>
+								<Check className="w-3 h-3 mr-1" />
+								利用可能
+							</>
+						) : (
+							<>
+								<Check className="w-3 h-3 mr-1" />
+								使用済み
+							</>
+						)}
+					</span>
+				</div>
+
+				{/* Coupon Content */}
+				<div className="mb-3">
+					<h4 className="font-medium text-foreground">{coupon.name}</h4>
+					<p className="text-sm text-foreground/70 mt-1">{coupon.description}</p>
+				</div>
+
+				{/* Discount Value */}
+				<div className="font-semibold text-accent text-lg mb-2">
+					{coupon.discountValue.toLocaleString()}円引き
+				</div>
+
+				{/* Issue Date */}
+				<div className="text-xs text-foreground/60 flex items-center">
+					<Calendar className="w-3 h-3 mr-1" />
+					発行日: {formatDate(coupon.issuedAt)}
+				</div>
+			</motion.div>
+		);
+	};
+
+	// ローディング表示
+	if (loading) {
+		return (
+			<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+				<h2 className="text-lg font-semibold mb-6">クーポン管理</h2>
+				<div className="flex justify-center items-center py-12">
+					<div className="flex flex-col items-center">
+						<div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mb-4"></div>
+						<p className="text-foreground/70">クーポン情報を読み込み中...</p>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	// エラー表示
+	if (error) {
+		return (
+			<div className="bg-border/5 rounded-2xl shadow-soft p-6">
+				<h2 className="text-lg font-semibold mb-2">クーポン管理</h2>
+				<div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mt-4">
+					<div className="flex items-start">
+						<AlertCircle className="w-5 h-5 text-red-500 mt-0.5 mr-2 flex-shrink-0" />
+						<p className="text-red-500">{error}</p>
+					</div>
+					<button
+						onClick={fetchCoupons}
+						className="mt-3 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-md transition-colors text-sm flex items-center"
+					>
+						<Gift className="w-4 h-4 mr-2" />
+						再読み込み
+					</button>
+				</div>
+			</div>
+		);
+	}
+
+	// クーポンが存在しない場合
+	const hasUserCoupons = coupons.available.length > 0 || coupons.used.length > 0;
+	const hasAcquirableCoupons = acquirableCoupons.length > 0;
+	const hasCoupons = hasUserCoupons || hasAcquirableCoupons;
+
+	// クーポンがある時期に発行されたかを表示するヘッダー
+	const TimeGroupHeader = ({ title }: { title: string }) => (
+		<div className="text-sm font-medium text-foreground/70 mt-6 mb-3 pl-2 border-l-2 border-accent/30">
+			{title}
+		</div>
+	);
+
+	// 時期ごとのクーポン表示
+	const renderCouponsByTimeGroup = (couponsToRender: UIUserCoupon[]) => {
+		// 表示するクーポンが空の場合
+		if (couponsToRender.length === 0) {
+			return (
+				<div className="text-center py-8 bg-border/5 rounded-lg">
+					<p className="text-foreground/70">クーポンがありません</p>
+				</div>
+			);
+		}
+
+		// 時期ごとにグループ分け
+		const thisMonthCoupons = couponsToRender.filter(coupon =>
+			coupons.byTimeGroup.thisMonth.some(c => c.id === coupon.id)
+		);
+
+		const lastMonthCoupons = couponsToRender.filter(coupon =>
+			coupons.byTimeGroup.lastMonth.some(c => c.id === coupon.id)
+		);
+
+		const olderCoupons = couponsToRender.filter(coupon =>
+			coupons.byTimeGroup.older.some(c => c.id === coupon.id)
+		);
+
+		return (
+			<>
+				{thisMonthCoupons.length > 0 && (
+					<>
+						<TimeGroupHeader title="今月獲得したクーポン" />
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							{thisMonthCoupons.map(coupon => (
+								<UserCouponCard key={coupon.id} coupon={coupon} />
+							))}
+						</div>
+					</>
+				)}
+
+				{lastMonthCoupons.length > 0 && (
+					<>
+						<TimeGroupHeader title="先月獲得したクーポン" />
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							{lastMonthCoupons.map(coupon => (
+								<UserCouponCard key={coupon.id} coupon={coupon} />
+							))}
+						</div>
+					</>
+				)}
+
+				{olderCoupons.length > 0 && (
+					<>
+						<TimeGroupHeader title="過去のクーポン" />
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							{olderCoupons.map(coupon => (
+								<UserCouponCard key={coupon.id} coupon={coupon} />
+							))}
+						</div>
+					</>
+				)}
+			</>
+		);
+	};
+
+	return (
+		<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-3">
+
+
+			{!hasCoupons ? (
+				// クーポンが存在しない場合のUI
+				<div className="text-center py-12 bg-border/5 rounded-lg">
+					<Gift className="w-16 h-16 text-border/40 mx-auto mb-4" />
+					<h3 className="text-lg font-medium text-foreground mb-2">クーポンがありません</h3>
+					<p className="text-foreground/70 mb-6">
+						ご利用可能なクーポンはまだありません。<br />
+						サービスをご利用いただくとクーポンが発行されます。
+					</p>
+				</div>
+			) : (
+				// クーポンが存在する場合のUI
+				<div className="space-y-8">
+					{/* 獲得可能なクーポン */}
+					{hasAcquirableCoupons && (
+						<div>
+							<h3 className="text-lg font-medium text-foreground mb-4 flex items-center">
+								<Tag className="w-5 h-5 mr-2 text-highlight" />
+								獲得可能なクーポン
+								<span className="ml-2 text-sm px-2 py-0.5 bg-highlight/10 text-highlight rounded-full">
+									{acquirableCoupons.length}枚
+								</span>
+							</h3>
+
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+								{acquirableCoupons.map(coupon => (
+									<AcquirableCouponCard key={coupon.id} coupon={coupon} />
+								))}
+							</div>
+						</div>
+					)}
+
+					{/* マイクーポン（折りたたみ可能セクション） */}
+					{hasUserCoupons && (
+						<div className="border border-border/20 rounded-lg overflow-hidden">
+							{/* マイクーポンヘッダー */}
+							<button
+								onClick={() => setMyCouponsExpanded(!myCouponsExpanded)}
+								className="w-full flex justify-between items-center p-4 bg-border/5 hover:bg-border/10 transition-colors"
+							>
+								<div className="flex items-center">
+									<Gift className="w-5 h-5 mr-2 text-accent" />
+									<h3 className="text-lg font-medium text-foreground">マイクーポン</h3>
+									<span className="ml-2 text-sm px-2 py-0.5 bg-accent/10 text-accent rounded-full">
+										{coupons.available.length}枚
+									</span>
+								</div>
+
+								{myCouponsExpanded ? (
+									<ChevronUp className="w-5 h-5 text-accent" />
+								) : (
+									<ChevronDown className="w-5 h-5 text-accent" />
+								)}
+							</button>
+
+							{/* マイクーポンコンテンツ（折りたたみ可能） */}
+							<AnimatePresence>
+								{myCouponsExpanded && (
+									<motion.div
+										initial={{ height: 0, opacity: 0 }}
+										animate={{ height: 'auto', opacity: 1 }}
+										exit={{ height: 0, opacity: 0 }}
+										transition={{ duration: 0.2 }}
+										className="overflow-hidden"
+									>
+										<div className="p-4">
+											{/* タブナビゲーション */}
+											<div className="flex border-b border-border/20 mb-4">
+												<button
+													onClick={() => setActiveTab('available')}
+													className={`py-2 px-4 font-medium text-sm transition-colors ${activeTab === 'available'
+														? 'text-accent border-b-2 border-accent'
+														: 'text-foreground/60 hover:text-foreground'
+														}`}
+												>
+													利用可能
+													<span className="ml-2 px-1.5 py-0.5 bg-accent/10 text-accent rounded-full text-xs">
+														{coupons.available.length}
+													</span>
+												</button>
+												<button
+													onClick={() => setActiveTab('used')}
+													className={`py-2 px-4 font-medium text-sm transition-colors ${activeTab === 'used'
+														? 'text-accent border-b-2 border-accent'
+														: 'text-foreground/60 hover:text-foreground'
+														}`}
+												>
+													使用済み
+													<span className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full text-xs">
+														{coupons.used.length}
+													</span>
+												</button>
+											</div>
+											<div className="flex items-start">
+												<div className="text-sm">
+													<p className="mb-1 text-foreground/50">
+														クーポンは<span className="font-medium">翌月の請求書発行時に自動的に適用</span>されます。<span className="text-accent">割引額が大きいもの</span>が優先適用されます。
+													</p>
+												</div>
+											</div>
+
+
+											{/* タブコンテンツ */}
+											<div className="mt-2">
+												{activeTab === 'available' && renderCouponsByTimeGroup(coupons.available)}
+												{activeTab === 'used' && renderCouponsByTimeGroup(coupons.used)}
+											</div>
+										</div>
+									</motion.div>
+								)}
+							</AnimatePresence>
+						</div>
+					)}
+				</div>
+			)}
+		</div>
+	);
+}-e 
 ### FILE: ./src/components/icons/verification-icons.tsx
 
 import React from 'react';
@@ -9455,12 +10418,8 @@ export default function AccessSection() {
 								<span className="text-xl font-bold text-foreground/70">¥600<span className="text-sm font-normal">/時間</span></span>
 							</div>
 							<div className="flex justify-between items-center border-b border-border pb-3">
-								<span className="text-foreground/70">初回利用で</span>
-								<span className="text-xl font-bold text-accent">900円分のクーポン</span>
-							</div>
-							<div className="flex justify-between items-center border-b border-border pb-3">
-								<span className="text-foreground/70">20日以内の再来店で</span>
-								<span className="text-2xl font-bold text-accent">¥400<span className="text-sm font-normal">/時間</span></span>
+								<span className="text-foreground/70">会員登録で</span>
+								<span className="text-xl font-bold text-accent">1000円分のクーポン</span>
 							</div>
 							<div className="flex justify-between items-center pb-3">
 								<span className="text-foreground/70">ドリンク・お菓子</span>
@@ -9706,8 +10665,8 @@ const usageScenes = [
 	},
 	{
 		id: 'scene-3',
-		title:'久々の自由時間',
-		description:'ゲームは好きだけどたまにしかやる時間が取れない！厳選された数多くのタイトルをご用意してます。',
+		title:'一日の楽しみ',
+		description:'仕事帰りにサクッと！厳選された数多くのタイトルをご用意してます。',
 		image: `${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/scene-solo.webp`,
 		alt: 'ソロゲーマー'
 	}
@@ -10539,8 +11498,8 @@ import { motion } from 'framer-motion';
 
 export default function HeroSection() {
 	// タイトルを2つのパートに分ける
-	const titlePart1 = "疲れたから";
-	const titlePart2 = "ゆるゲー気分";
+	const titlePart1 = "ふらっと寄れる";
+	const titlePart2 = "ゲームカフェ";
 	const [titleChars1, setTitleChars1] = useState<string[]>([]);
 	const [titleChars2, setTitleChars2] = useState<string[]>([]);
 
@@ -10626,7 +11585,7 @@ export default function HeroSection() {
 						animate={{ opacity: 1, scale: 1 }}
 						transition={{ duration: 0.7, delay: 0.5 }}
 					>
-						ふらっと寄れるゲームカフェ
+						今日はゆるゲー気分
 					</motion.p>
 
 					{/* CTAボタン */}

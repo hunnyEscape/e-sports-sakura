@@ -175,7 +175,7 @@ export default function ActiveSessionDisplay() {
 	return (
 		<div className="space-y-3">
 			{activeSessions.map((session) => (
-				<div key={session.sessionId} className="bg-border/5 rounded-2xl shadow-soft p-6">
+				<div key={session.sessionId} className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
 					<div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
 						<div className="flex flex-col md:flex-row justify-between md:items-start">
 							<div>

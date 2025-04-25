@@ -402,9 +402,7 @@ export default function CouponsTab() {
 	};
 
 	return (
-		<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-3">
-
-
+		<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6 mb-3">
 			{!hasCoupons ? (
 				// クーポンが存在しない場合のUI
 				<div className="text-center py-12 bg-border/5 rounded-lg">

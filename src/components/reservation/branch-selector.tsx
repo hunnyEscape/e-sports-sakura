@@ -65,7 +65,7 @@ export default function BranchSelector({ onBranchSelect }: BranchSelectorProps) 
 	};
 
 	return (
-		<div className="w-full space-y-6">
+		<div className="w-full space-y-6 pb-5">
 			<div className="text-center max-w-3xl mx-auto mb-8">
 				<p className="text-foreground/70">
 					ご利用になる支店を選択してください。各支店ごとに設備や座席数が異なります。
