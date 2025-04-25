@@ -15,7 +15,7 @@ import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider } from '@/lib/firebase';
 import { UserDocument } from '@/types/firebase';
 
-// コンテキストの型定義
+// コンテキストの型定
 interface AuthContextType {
 	user: User | null;
 	userData: UserDocument | null;
