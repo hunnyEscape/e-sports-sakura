@@ -13,7 +13,7 @@ export default function AccessSection() {
 			className="py-20 bg-background/90"
 			ref={ref}
 		>
-			<div className="container mx-auto px-4">
+			<div className="container px-4">
 				{/* セクションタイトル */}
 				<motion.div
 					className="text-center mb-16"

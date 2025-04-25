@@ -148,7 +148,7 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		<motion.div
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
-			className="w-full max-w-3xl mx-auto"
+			className="w-full max-w-3xl mx-auto pb-5"
 		>
 			<h2 className="text-xl font-medium text-foreground mb-4">予約内容の確認</h2>
 
