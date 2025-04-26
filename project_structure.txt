@@ -37,6 +37,8 @@
 │   │   │   │   │   └── route.ts
 │   │   │   │   └── webhook
 │   │   │   │       └── route.ts
+│   │   │   ├── unlockDoor
+│   │   │   │   └── route.ts
 │   │   │   └── veriff
 │   │   │       ├── callback
 │   │   │       │   └── route.ts
@@ -148,4 +150,4 @@
 ├── tailwind.config.js
 └── tsconfig.json
 
-45 directories, 103 files
+46 directories, 104 files

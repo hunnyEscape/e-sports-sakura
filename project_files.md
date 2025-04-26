@@ -43,6 +43,9 @@ export interface UserDocument {
 	registrationCompleted: boolean;
 	registrationCompletedAt?: string;
 	registrationStep?: number;
+	currentMemberId?: string;      // 現在の会員ID
+	previousMemberId?: string;     // 前の会員ID
+	memberIdUpdatedAt?: TimestampOrString; // 最終更新日時
 	stripe?: {
 		customerId?: string;
 		paymentMethodId?: string;
@@ -1591,10 +1594,6 @@ export default function DashboardPage() {
 				<div className="min-h-screen bg-background text-foreground">
 					<main className="container mx-auto px-4 py-3 md:py-8">
 						{userData && userData.registrationCompleted && (<>
-							<div className="bg-border/5 rounded-2xl shadow-soft p-6">
-								<h2 className="text-lg font-semibold mb-4">会員QRコード</h2>
-								<QrCodeDisplay />
-							</div>
 							<div className="flex items-center justify-between h-16 border-b border-border">
 								<Link href="/lp" className="flex items-center">
 									<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
@@ -1618,6 +1617,11 @@ export default function DashboardPage() {
 									</button>
 								</div>
 							</div>
+							<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-6">
+								<h2 className="text-lg font-semibold mb-4">会員ページ</h2>
+								<QrCodeDisplay />
+							</div>
+
 						</>)}
 
 						{userData && !userData.registrationCompleted && (
@@ -1638,7 +1642,7 @@ export default function DashboardPage() {
 						{userData && userData.registrationCompleted && (
 							<>
 								{/* タブナビゲーション */}
-								<div className="flex border-b border-border mb-6">
+								<div className="flex justify-center md:justify-start border-b border-border mb-6">
 									<button
 										onClick={() => setActiveTab('usage')}
 										className={`py-2 px-4 font-medium ${activeTab === 'usage'
@@ -1672,7 +1676,7 @@ export default function DashboardPage() {
 								<div className="grid md:grid-cols-1 gap-8">
 
 									{activeTab === 'usage' && (
-										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
+										<div className="bg-border/5 rounded-2xl shadow-soft p-0 md:p-6">
 											<MonthlyUsageHistory />
 										</div>
 									)}
@@ -2412,6 +2416,50 @@ export default function HomePage() {
 			</footer>
 		</div>
 	);
+}-e 
+### FILE: ./src/app/api/unlockDoor/route.ts
+
+// app/api/unlockDoor/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
+
+export async function POST(request: NextRequest) {
+	try {
+		// リクエストボディからmemberIDを取得
+		const { memberID } = await request.json();
+
+		if (!memberID) {
+			return NextResponse.json(
+				{ success: false, message: '会員IDが必要です' },
+				{ status: 400 }
+			);
+		}
+
+		// Cloud Functionにリクエスト
+		const response = await axios.post(
+			process.env.UNLOCK_DOOR_FUNCTION_URL as string,
+			{ memberID },
+			{
+				headers: {
+					'Content-Type': 'application/json',
+					'x-api-key': process.env.GCF_API_KEY as string
+				}
+			}
+		);
+
+		// 成功レスポンスを返す
+		return NextResponse.json(response.data);
+	} catch (error: any) {
+		console.error('Door unlock error:', error);
+
+		const status = error.response?.status || 500;
+		const message = error.response?.data?.message || 'サーバーエラーが発生しました';
+
+		return NextResponse.json(
+			{ success: false, message },
+			{ status }
+		);
+	}
 }-e 
 ### FILE: ./src/app/api/reservations/route.ts
 
@@ -6565,38 +6613,125 @@ import QRCode from 'qrcode';
 import { useAuth } from '@/context/auth-context';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
+import axios from 'axios';
 
 export default function QrCodeDisplay() {
-	const { user } = useAuth();
+	const { userData } = useAuth();
 	const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [unlockMessage, setUnlockMessage] = useState<string | null>(null);
+	const [isUnlocking, setIsUnlocking] = useState(false);
 
+	// 解錠制限のための状態
+	const [cooldownActive, setCooldownActive] = useState(false);
+	const [remainingTime, setRemainingTime] = useState(0);
+	const cooldownPeriod = 3 * 60; // 3分 = 180秒
+
+	// 前回の解錠時間をローカルストレージから取得
 	useEffect(() => {
-		const generateQrCode = async () => {
-			if (!user) return;
-
-			try {
-				// ユーザーのUIDをそのままQRコードとして使用
-				const dataUrl = await QRCode.toDataURL(user.uid, {
-					width: 250,
-					margin: 2,
-					color: {
-						dark: "#000",
-						light: "#fff"
-					}
-				});
-
-				setQrCodeDataUrl(dataUrl);
-			} catch (err) {
-				setError('QRコードの生成に失敗しました');
-			} finally {
-				setLoading(false);
+		const lastUnlockTime = localStorage.getItem('lastUnlockTime');
+		if (lastUnlockTime) {
+			const elapsedSeconds = Math.floor((Date.now() - parseInt(lastUnlockTime)) / 1000);
+			if (elapsedSeconds < cooldownPeriod) {
+				setCooldownActive(true);
+				setRemainingTime(cooldownPeriod - elapsedSeconds);
 			}
-		};
+		}
+	}, []);
 
-		generateQrCode();
-	}, [user]);
+	// クールダウンタイマー
+	useEffect(() => {
+		let timer: NodeJS.Timeout | null = null;
+
+		if (cooldownActive && remainingTime > 0) {
+			timer = setInterval(() => {
+				setRemainingTime(prev => {
+					if (prev <= 1) {
+						setCooldownActive(false);
+						if (timer) clearInterval(timer);
+						return 0;
+					}
+					return prev - 1;
+				});
+			}, 1000);
+		}
+
+		return () => {
+			if (timer) clearInterval(timer);
+		};
+	}, [cooldownActive, remainingTime]);
+
+	// QRコードの生成関数
+	const generateQrCode = async (memberId: string) => {
+		try {
+			const dataUrl = await QRCode.toDataURL(memberId, {
+				width: 250,
+				margin: 2,
+				color: {
+					dark: "#000",
+					light: "#fff"
+				}
+			});
+
+			setQrCodeDataUrl(dataUrl);
+		} catch (err) {
+			setError('QRコードの生成に失敗しました');
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	// ドア解錠関数
+	const unlockDoor = async () => {
+		if (!userData?.currentMemberId || cooldownActive) return;
+
+		setIsUnlocking(true);
+		setUnlockMessage(null);
+
+		try {
+			const response = await axios.post('/api/unlockDoor', {
+				memberID: userData.currentMemberId
+			});
+
+			// 解錠成功時に制限を設定
+			if (response.data.success) {
+				localStorage.setItem('lastUnlockTime', Date.now().toString());
+				setCooldownActive(true);
+				setRemainingTime(cooldownPeriod);
+			}
+
+			setUnlockMessage(response.data.message || 'ドアの解錠に成功しました');
+		} catch (err: any) {
+			setUnlockMessage(err.response?.data?.message || 'エラーが発生しました');
+		} finally {
+			setIsUnlocking(false);
+		}
+	};
+
+	// 残り時間の表示用フォーマット
+	const formatRemainingTime = () => {
+		const minutes = Math.floor(remainingTime / 60);
+		const seconds = remainingTime % 60;
+		return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+	};
+
+	// 初期ロード & 3分おきに更新
+	useEffect(() => {
+		if (!userData?.currentMemberId) return;
+
+		// 初回生成
+		generateQrCode(userData.currentMemberId);
+
+		// 3分おきに更新
+		const interval = setInterval(() => {
+			if (userData?.currentMemberId) {
+				generateQrCode(userData.currentMemberId);
+			}
+		}, 3 * 60 * 1000); // 3分 = 180,000ミリ秒
+
+		return () => clearInterval(interval);
+	}, [userData?.currentMemberId]);
 
 	if (loading) {
 		return (
@@ -6621,6 +6756,25 @@ export default function QrCodeDisplay() {
 		<div className="text-center">
 			{qrCodeDataUrl ? (
 				<>
+					<Button
+						onClick={unlockDoor}
+						disabled={isUnlocking || !userData?.currentMemberId || cooldownActive}
+						className="mb-4"
+					>
+						{isUnlocking
+							? '解錠中...'
+							: cooldownActive
+								? `次の解錠まで ${formatRemainingTime()}`
+								: '立川店のドアを解錠する'
+						}
+					</Button>
+
+					{unlockMessage && cooldownActive && (
+						<div className={`p-3 rounded-md mb-4 ${unlockMessage.includes('成功') ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+							{unlockMessage}
+						</div>
+					)}
+
 					<div className="bg-white p-4 rounded-lg w-40 h-40 mx-auto mb-4 flex items-center justify-center border-2 border-accent">
 						<img
 							src={qrCodeDataUrl}
@@ -6628,15 +6782,10 @@ export default function QrCodeDisplay() {
 							className="w-full max-w-[150px] h-full object-contain"
 						/>
 					</div>
+
 					<p className="text-sm text-foreground/70 mb-4">
-						店舗の入口や席のQRリーダーにかざしてください<br/>
+						席にあるQRリーダーへかざして、PCを起動させてください<br/>
 					</p>
-					<Button
-						variant="outline"
-						className="text-sm opacity-50 pointer-events-auto cursor-pointer"
-					>
-						会員QRの更新手続き : 紛失したり他人に漏洩した場合は更新手続きをお願いします。（未実装）
-					</Button>
 				</>
 			) : (
 				<div className="bg-orange-500/10 text-orange-500 p-4 rounded-lg mb-4">
@@ -7357,12 +7506,12 @@ export default function MonthGroupsDisplay() {
 	}
 
 	return (
-		<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-3">
+		<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6 mb-3">
 			<div className="ml-1">
 				<h2 className="text-lg font-semibold my-4">利用履歴</h2>
 			</div>
 			{monthGroups.map((group) => (
-				<div key={group.monthKey} className="border border-border/50 rounded-lg overflow-hidden">
+				<div key={group.monthKey} className="border border-border/50 rounded-lg overflow-hidden mb-4">
 					{/* 月のヘッダー */}
 					<div
 						className="flex items-center justify-between p-4 bg-accent/5 cursor-pointer"
@@ -7375,7 +7524,6 @@ export default function MonthGroupsDisplay() {
 							</h3>
 						</div>
 						<div className="flex items-center">
-
 							{expandedMonths.has(group.monthKey) ? (
 								<ChevronUp className="w-5 h-5" />
 							) : (
@@ -7387,41 +7535,109 @@ export default function MonthGroupsDisplay() {
 					{/* 詳細セクション */}
 					{expandedMonths.has(group.monthKey) && (
 						<div className="p-4">
-
+							{/* MonthInvoice コンポーネントはそのまま使用 */}
 							<MonthInvoice
 								monthKey={group.monthKey}
 								displayMonth={group.displayMonth}
 							/>
-							{/* セッション一覧テーブル */}
-							<div className="overflow-x-auto">
-								<table className="w-full">
-									<thead>
-										<tr className="text-left text-foreground/70 border-b border-border">
-											<th className="pb-2">日時</th>
-											<th className="pb-2">座席</th>
-											<th className="pb-2">利用時間</th>
-											<th className="pb-2">料金</th>
-											<th className="pb-2">ステータス</th>
-											<th className="pb-2"></th>
-										</tr>
-									</thead>
-									<tbody>
-										{group.sessions.map((session) => (
-											<tr key={session.sessionId} className="border-b border-border/20">
-												<td className="py-3">
-													<div>{session.formattedStartTime.split(' ')[0]}</div>
+
+							{/* レスポンシブセッション表示 - デスクトップではテーブル、モバイルではカード */}
+							<div>
+								{/* デスクトップ用テーブル - md以上の画面サイズで表示 */}
+								<div className="hidden md:block overflow-x-auto">
+									<table className="w-full">
+										<thead>
+											<tr className="text-left text-foreground/70 border-b border-border">
+												<th className="pb-2">日時</th>
+												<th className="pb-2">座席</th>
+												<th className="pb-2">利用時間</th>
+												<th className="pb-2">料金</th>
+												<th className="pb-2">ステータス</th>
+												<th className="pb-2"></th>
+											</tr>
+										</thead>
+										<tbody>
+											{group.sessions.map((session) => (
+												<tr key={session.sessionId} className="border-b border-border/20">
+													<td className="py-3">
+														<div>{session.formattedStartTime.split(' ')[0]}</div>
+														<div className="text-xs text-foreground/70">
+															{session.formattedStartTime.split(' ')[1]} -
+															{session.active ? "利用中" : session.formattedEndTime.split(' ')[1]}
+														</div>
+													</td>
+													<td className="py-3">
+														<div>{session.seatName}</div>
+														{session.branchName && (
+															<div className="text-xs text-foreground/70">{session.branchName}</div>
+														)}
+													</td>
+													<td className="py-3">
+														<div className="flex items-center">
+															<Clock className="w-4 h-4 mr-1 text-foreground/70" />
+															<span>{session.durationText}</span>
+														</div>
+														<div className="text-xs text-foreground/70">
+															{session.hourBlocks}時間ブロック
+														</div>
+													</td>
+													<td className="py-3">{formatCurrency(session.amount)}</td>
+													<td className="py-3">
+														<span className={`inline-block text-xs px-2 py-0.5 rounded ${session.blockchainStatusClass}`}>
+															{session.blockchainStatusText}
+														</span>
+													</td>
+													<td className="py-3 text-right">
+														{session.blockchainStatus === 'confirmed' && session.blockchainTxId && (
+															<a
+																href={`https://snowtrace.io/tx/${session.blockchainTxId}`}
+																target="_blank"
+																rel="noopener noreferrer"
+																className="inline-flex items-center text-primary hover:text-primary/80"
+															>
+																<span className="text-xs mr-1">ブロックチェーン証明</span>
+																<ExternalLink className="w-3 h-3" />
+															</a>
+														)}
+													</td>
+												</tr>
+											))}
+										</tbody>
+									</table>
+								</div>
+
+								{/* モバイル用カードビュー - md未満の画面サイズで表示 */}
+								<div className="md:hidden space-y-4">
+									{group.sessions.map((session) => (
+										<div key={session.sessionId} className="bg-background border border-border/30 rounded-lg p-3">
+											{/* 日時と場所のヘッダー */}
+											<div className="flex justify-between items-start mb-3">
+												<div>
+													<div className="font-medium">{session.formattedStartTime.split(' ')[0]}</div>
 													<div className="text-xs text-foreground/70">
 														{session.formattedStartTime.split(' ')[1]} -
 														{session.active ? "利用中" : session.formattedEndTime.split(' ')[1]}
 													</div>
-												</td>
-												<td className="py-3">
-													<div>{session.seatName}</div>
-													{session.branchName && (
-														<div className="text-xs text-foreground/70">{session.branchName}</div>
-													)}
-												</td>
-												<td className="py-3">
+												</div>
+												<span className={`inline-block text-xs px-2 py-0.5 rounded ${session.blockchainStatusClass}`}>
+													{session.blockchainStatusText}
+												</span>
+											</div>
+
+											{/* カード内容 - グリッドレイアウト */}
+											<div className="grid grid-cols-2 gap-2 text-sm">
+												<div>
+													<div className="text-foreground/70">座席:</div>
+													<div>
+														{session.seatName}
+														{session.branchName && (
+															<div className="text-xs text-foreground/70">{session.branchName}</div>
+														)}
+													</div>
+												</div>
+
+												<div>
+													<div className="text-foreground/70">利用時間:</div>
 													<div className="flex items-center">
 														<Clock className="w-4 h-4 mr-1 text-foreground/70" />
 														<span>{session.durationText}</span>
@@ -7429,32 +7645,34 @@ export default function MonthGroupsDisplay() {
 													<div className="text-xs text-foreground/70">
 														{session.hourBlocks}時間ブロック
 													</div>
-												</td>
-												<td className="py-3">{formatCurrency(session.amount)}</td>
-												<td className="py-3">
-													<span className={`inline-block text-xs px-2 py-0.5 rounded ${session.blockchainStatusClass}`}>
-														{session.blockchainStatusText}
-													</span>
-												</td>
-												<td className="py-3 text-right">
-													{session.blockchainStatus === 'confirmed' && session.blockchainTxId && (
-														<a
-															href={`https://snowtrace.io/tx/${session.blockchainTxId}`}
-															target="_blank"
-															rel="noopener noreferrer"
-															className="inline-flex items-center text-primary hover:text-primary/80"
-														>
-															<span className="text-xs mr-1">ブロックチェーン証明</span>
-															<ExternalLink className="w-3 h-3" />
-														</a>
-													)}
-												</td>
-											</tr>
-										))}
-									</tbody>
-								</table>
+												</div>
+
+												<div className="col-span-2">
+													<div className="text-foreground/70">料金:</div>
+													<div className="font-medium">{formatCurrency(session.amount)}</div>
+												</div>
+											</div>
+
+											{/* ブロックチェーンリンク */}
+											{session.blockchainStatus === 'confirmed' && session.blockchainTxId && (
+												<div className="mt-3 text-right">
+													<a
+														href={`https://snowtrace.io/tx/${session.blockchainTxId}`}
+														target="_blank"
+														rel="noopener noreferrer"
+														className="inline-flex items-center text-primary hover:text-primary/80"
+													>
+														<span className="text-xs mr-1">ブロックチェーン証明</span>
+														<ExternalLink className="w-3 h-3" />
+													</a>
+												</div>
+											)}
+										</div>
+									))}
+								</div>
 							</div>
-							<div className="p-2 text-sm text-foreground/70">
+
+							<div className="p-2 mt-4 text-sm text-foreground/70">
 								<p>
 									ご利用料金は1時間区切りで計算されます。1時間ブロックあたり600円、超過すると次の1時間分が加算されます。
 									翌月上旬に前月分の利用料金が請求されます。
@@ -7463,7 +7681,6 @@ export default function MonthGroupsDisplay() {
 						</div>
 					)}
 				</div>
-
 			))}
 		</div>
 	);
@@ -7647,7 +7864,7 @@ export default function ActiveSessionDisplay() {
 	return (
 		<div className="space-y-3">
 			{activeSessions.map((session) => (
-				<div key={session.sessionId} className="bg-border/5 rounded-2xl shadow-soft p-6">
+				<div key={session.sessionId} className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
 					<div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
 						<div className="flex flex-col md:flex-row justify-between md:items-start">
 							<div>
@@ -8302,9 +8519,7 @@ export default function CouponsTab() {
 	};
 
 	return (
-		<div className="bg-border/5 rounded-2xl shadow-soft p-6 mb-3">
-
-
+		<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6 mb-3">
 			{!hasCoupons ? (
 				// クーポンが存在しない場合のUI
 				<div className="text-center py-12 bg-border/5 rounded-lg">
@@ -8682,7 +8897,7 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ onSuccess, onCancel }
 		<motion.div
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
-			className="w-full max-w-3xl mx-auto"
+			className="w-full max-w-3xl mx-auto pb-5"
 		>
 			<h2 className="text-xl font-medium text-foreground mb-4">予約内容の確認</h2>
 
@@ -8920,7 +9135,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 	today.setHours(0, 0, 0, 0);
 
 	return (
-		<div className="w-full">
+		<div className="w-full pb-5">
 			{/* Calendar Legend */}
 			<div className="flex items-center justify-center mb-6 gap-6 text-sm">
 				<div className="flex items-center">
@@ -9045,7 +9260,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 			<div className="mt-6 flex items-start text-sm text-foreground/70">
 				<Info size={16} className="mr-2 flex-shrink-0 mt-0.5" />
 				<p>
-					カレンダーの日付をクリックすると、その日の予約状況と空き枠を確認できます。実際に予約するには会員登録が必要です。
+					カレンダーの日付をクリックすると、その日の予約状況と空き枠を確認できます。
 				</p>
 			</div>
 		</div>
@@ -9344,7 +9559,7 @@ export default function BranchSelector({ onBranchSelect }: BranchSelectorProps) 
 	};
 
 	return (
-		<div className="w-full space-y-6">
+		<div className="w-full space-y-6 pb-5">
 			<div className="text-center max-w-3xl mx-auto mb-8">
 				<p className="text-foreground/70">
 					ご利用になる支店を選択してください。各支店ごとに設備や座席数が異なります。
@@ -9999,7 +10214,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 	};
 
 	return (
-		<div className="space-y-6 relative">
+		<div className="space-y-6 relative pb-5">
 			{/* Loading overlay */}
 			{(isLoading || !isDataLoaded) && (
 				<div className="absolute inset-0 bg-background/70 flex items-center justify-center z-10 rounded-lg">
@@ -10376,7 +10591,7 @@ export default function AccessSection() {
 			className="py-20 bg-background/90"
 			ref={ref}
 		>
-			<div className="container mx-auto px-4">
+			<div className="container px-4">
 				{/* セクションタイトル */}
 				<motion.div
 					className="text-center mb-16"
@@ -11385,9 +11600,9 @@ import { motion, useInView } from 'framer-motion';
 const usageSteps = [
 	{
 		number: 1,
-		title: "QRコードで入室",
-		description: "会員QRコードを扉の読み取り機にかざして入室できます。",
-		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/qrEnter.webp`} alt="QRコードで入室" className="h-100 w-100" />
+		title: "スマートロックの解除",
+		description: "会員ページからワンクリックで可能です！",
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/enter.webp`} alt="QRコードで入室" className="h-100 w-100" />
 	},
 	{
 		number: 2,
@@ -13953,7 +14168,7 @@ import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider } from '@/lib/firebase';
 import { UserDocument } from '@/types/firebase';
 
-// コンテキストの型定義
+// コンテキストの型定
 interface AuthContextType {
 	user: User | null;
 	userData: UserDocument | null;

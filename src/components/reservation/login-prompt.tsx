@@ -1,4 +1,3 @@
-// src/components/reservation/login-prompt.tsx
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Lock, UserPlus } from 'lucide-react';
@@ -11,20 +10,33 @@ interface LoginPromptProps {
 }
 
 const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }) => {
+	// Nextの最新バージョンのルーターを使用
 	const router = useRouter();
 
-	// Handle login button
+	// Handle login button - 直接window.locationを使用
 	const handleLogin = () => {
-		// Store reservation details in sessionStorage to retrieve after login
-		sessionStorage.setItem('pendingReservation', JSON.stringify(reservationDetails));
-		router.push('/login');
+		console.log("ログインボタンがクリックされました");
+		try {
+			// Store reservation details in sessionStorage to retrieve after login
+			sessionStorage.setItem('pendingReservation', JSON.stringify(reservationDetails));
+			// Next.jsルーターの代わりに直接リダイレクト
+			window.location.href = '/login';
+		} catch (error) {
+			console.error('Navigation error:', error);
+		}
 	};
 
-	// Handle register button
+	// Handle register button - 直接window.locationを使用
 	const handleRegister = () => {
-		// Store reservation details in sessionStorage to retrieve after registration
-		sessionStorage.setItem('pendingReservation', JSON.stringify(reservationDetails));
-		router.push('/register');
+		console.log("新規登録ボタンがクリックされました");
+		try {
+			// Store reservation details in sessionStorage to retrieve after registration
+			sessionStorage.setItem('pendingReservation', JSON.stringify(reservationDetails));
+			// Next.jsルーターの代わりに直接リダイレクト
+			window.location.href = '/register';
+		} catch (error) {
+			console.error('Navigation error:', error);
+		}
 	};
 
 	// Calculate total seats
@@ -35,13 +47,13 @@ const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
-			className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+			className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
 		>
 			<motion.div
 				initial={{ scale: 0.9, opacity: 0 }}
 				animate={{ scale: 1, opacity: 1 }}
 				exit={{ scale: 0.9, opacity: 0 }}
-				className="bg-background border border-border/20 rounded-lg shadow-lg p-6 max-w-md w-full"
+				className="bg-background border border-border/20 rounded-lg shadow-lg p-6 max-w-md w-full relative"
 			>
 				<h2 className="text-xl font-bold text-foreground mb-4">アカウントが必要です</h2>
 				<p className="text-foreground/70 mb-6">
@@ -75,6 +87,7 @@ const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }
 
 				<div className="flex flex-col space-y-3">
 					<button
+						type="button"
 						onClick={handleLogin}
 						className="flex items-center justify-center px-4 py-2 bg-accent text-white rounded-md hover:bg-accent/90 transition-colors"
 					>
@@ -82,6 +95,7 @@ const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }
 						ログイン
 					</button>
 					<button
+						type="button"
 						onClick={handleRegister}
 						className="flex items-center justify-center px-4 py-2 border border-accent text-accent bg-accent/5 rounded-md hover:bg-accent/10 transition-colors"
 					>
@@ -89,6 +103,7 @@ const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }
 						新規登録
 					</button>
 					<button
+						type="button"
 						onClick={onClose}
 						className="px-4 py-2 text-foreground/70 hover:text-foreground hover:bg-border/10 rounded-md transition-colors"
 					>
