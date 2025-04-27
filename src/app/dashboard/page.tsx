@@ -13,6 +13,8 @@ import QrCodeDisplay from '@/components/dashboard/qr-code';
 import MonthlyUsageHistory from '@/components/dashboard/monthly-usage-history';
 import ReservationHistory from '@/components/dashboard/reservation-history';
 import CouponsTab from '@/components/dashboard/coupons';
+import { PaymentProvider } from '@/context/payment-context';
+import PaymentMethodManager from '@/components/payment/payment-method-manager';
 import { Calendar, Clock, CreditCard } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -130,82 +132,15 @@ export default function DashboardPage() {
 											<ReservationHistory />
 										</div>
 									)}
+
 									{activeTab === 'payment' && (
 										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
-											<h2 className="text-lg font-semibold mb-4">決済情報管理</h2>
-											{userData?.stripe?.paymentMethodId ? (
-												<div className="space-y-6">
-													<div className="p-4 border border-border/30 rounded-lg">
-														<div className="flex items-center justify-between mb-2">
-															<div className="flex items-center">
-																<CreditCard className="w-5 h-5 text-accent mr-2" />
-																<span className="font-medium">登録済みのカード</span>
-															</div>
-															<span className="text-xs bg-highlight/10 text-highlight px-2 py-1 rounded-full">
-																有効
-															</span>
-														</div>
-														<div className="text-sm text-foreground/70">
-															<p>••••••••••••{userData.stripe.paymentMethodId.slice(-4)}</p>
-															{/*<p className="mt-1">更新日: {new Date(userData.stripe.updatedAt).toLocaleDateString('ja-JP')}</p>*/}
-														</div>
-													</div>
-
-													<div className="flex justify-between items-center">
-														{/*<Button
-															href="/payment"
-															variant="outline"
-															disabled={true}
-														>
-															カード情報を更新
-														</Button>*/}
-
-														<Button
-															variant="outline"
-															className="opacity-50 pointer-events-auto cursor-pointer"
-														>
-															カード情報を更新（未実装）
-														</Button>
-
-
-														<button
-															className="text-sm text-foreground/60 hover:text-accent"
-														>
-															カード情報について
-														</button>
-													</div>
-
-													<div className="mt-6 border-t border-border/20 pt-6">
-														<h3 className="text-md font-medium mb-3">請求について</h3>
-														<p className="text-sm text-foreground/70 mb-4">
-															利用料金は月末にまとめて請求されます。従量課金制のため、実際に利用した分のみの請求となります。
-														</p>
-														<div className="bg-border/10 p-3 rounded-md text-sm">
-															<p className="font-medium">次回請求予定</p>
-															<p className="text-foreground/70 mt-1">2025年4月30日</p>
-														</div>
-													</div>
-												</div>
-											) : (
-												<div className="text-center py-8">
-													<CreditCard className="w-12 h-12 text-accent/40 mx-auto mb-4" />
-													<h3 className="text-lg font-medium mb-2">支払い方法が未登録です</h3>
-													<p className="text-foreground/60 mb-6 max-w-md mx-auto">
-														サービスをご利用いただくには、クレジットカードまたはデビットカードの登録が必要です。
-													</p>
-													<Button
-														href="/payment"
-														variant="primary"
-													>
-														支払い方法を登録する
-													</Button>
-												</div>
-											)}
+											<PaymentProvider>
+												<PaymentMethodManager />
+											</PaymentProvider>
 										</div>
 									)}
 								</div>
-
-								{/* クイックアクション */}
 							</>
 						)}
 					</main>

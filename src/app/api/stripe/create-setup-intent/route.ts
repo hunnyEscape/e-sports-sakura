@@ -57,11 +57,36 @@ export async function POST(request: NextRequest) {
 			clientSecret: setupIntent.client_secret
 		});
 
-	} catch (error) {
+	} catch (error: any) {
 		console.error('Error creating Setup Intent:', error);
+
+		// エラーメッセージをより詳細に
+		let errorMessage = 'SetupIntentの作成に失敗しました';
+		let statusCode = 500;
+
+		if (error.type) {
+			// Stripeエラーの場合
+			switch (error.type) {
+				case 'StripeCardError':
+					errorMessage = 'カード情報に問題があります';
+					statusCode = 400;
+					break;
+				case 'StripeInvalidRequestError':
+					errorMessage = 'リクエストが無効です';
+					statusCode = 400;
+					break;
+				case 'StripeAuthenticationError':
+					errorMessage = 'Stripe認証エラー';
+					statusCode = 401;
+					break;
+				default:
+					errorMessage = `Stripeエラー: ${error.message}`;
+			}
+		}
+
 		return NextResponse.json(
-			{ error: 'Internal server error' },
-			{ status: 500 }
+			{ error: errorMessage, details: process.env.NODE_ENV === 'development' ? error.message : undefined },
+			{ status: statusCode }
 		);
 	}
 }
