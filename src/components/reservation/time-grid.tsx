@@ -370,7 +370,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 
 		// コンテキストを更新
 		setSelectedTimeSlots(newSelectedTimeSlots);
-	}, [seatRanges, selectedSeatIds, setSelectedTimeSlots, filteredSeats]);
+	}, [seatRanges, selectedSeatIds]);
 
 	// Handle continue to confirmation
 	const handleContinue = () => {
@@ -553,6 +553,40 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		return '予約可能';
 	};
 
+	useEffect(() => {
+		if (selectedBranch) {
+			console.log("Selected Branch (Effect):", selectedBranch.branchName);
+			console.log("Seat Image Path:", selectedBranch.seatImagePath || 'なし');
+		}
+	}, [selectedBranch]);
+
+	const renderSeatLayout = () => {
+		if (selectedBranch?.seatImagePath) {
+			return (
+				<div className="mb-6 rounded-lg overflow-hidden border border-border/20">
+					<div className="flex items-center justify-between p-3 bg-border/5 border-b border-border/20">
+						<div className="flex items-center gap-2">
+							<Users className="w-4 h-4 text-accent" />
+							<h3 className="font-medium text-foreground">{selectedBranch.branchName}の座席レイアウト</h3>
+						</div>
+						<span className="text-xs text-foreground/60">参考図</span>
+					</div>
+					<div className="relative w-full bg-black">
+						<img
+							src={selectedBranch.seatImagePath}
+							alt={`${selectedBranch.branchName}の座席レイアウト`}
+							className="w-full h-auto object-contain mx-auto"
+							style={{ aspectRatio: '16/9' }}
+						/>
+					</div>
+				</div>
+			);
+		}
+
+		return null;
+	};
+
+
 	return (
 		<div className="space-y-6 relative pb-5">
 			{/* Loading overlay */}
@@ -571,14 +605,14 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 					<p>{error}</p>
 				</div>
 			)}
-
+			{renderSeatLayout()}
 			<div
-				className="w-full overflow-x-auto border border-border/20 rounded-lg bg-background/30"
+				className="w-full overflow-x-auto border border-border/20 rounded-lg"
 			>
 				<div className="min-w-max">
 					{/* Time slots header */}
-					<div className="flex border-b border-border/30 bg-border/5">
-						<div className="w-32 flex-shrink-0 p-2 font-medium text-foreground sticky left-0 bg-border/5">座席</div>
+					<div className="flex border-b border-border/30">
+						<div className="w-20 flex-shrink-0 p-2 font-medium text-foreground sticky left-0 bg-background/80 z-20">座席</div>
 						{timeSlots.map((slot) => (
 							<div
 								key={slot.time}
@@ -596,7 +630,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 							className="flex border-b border-border/20 hover:bg-background/5"
 						>
 							{/* Seat name */}
-							<div className="w-32 flex-shrink-0 p-2 border-r border-border/20 flex flex-col sticky left-0 bg-background">
+							<div className="w-20 flex-shrink-0 p-2 flex flex-col sticky left-0 bg-background/80 z-10">
 								<div className="flex items-center justify-between">
 									<span className="font-medium text-foreground">{seat.name}</span>
 									{selectedSeatIds.includes(seat.seatId) && (
@@ -623,7 +657,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 									<motion.div
 										key={`${seat.seatId}-${slot.time}`}
 										className={`
-        w-16 h-16 flex-shrink-0 border-l border-border/20
+        w-16 h-16 flex-shrink-0 border-l border-border/20 z-0
         ${getSlotStyle(seat.seatId, slot.time)}
         flex items-center justify-center relative
       `}

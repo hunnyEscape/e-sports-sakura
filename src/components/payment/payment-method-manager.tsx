@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState,useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStripe, useElements, CardElement } from '@stripe/react-stripe-js';
 import { usePayment } from '@/context/payment-context';
 import { useAuth } from '@/context/auth-context';
@@ -150,6 +150,34 @@ const PaymentMethodManager: React.FC = () => {
 		}
 	};
 
+	// paymentMethodの処理部分に追加
+	const isCardExpired = paymentMethod && paymentMethod.expiryMonth && paymentMethod.expiryYear ?
+		isExpired(Number(paymentMethod.expiryMonth), Number('20' + paymentMethod.expiryYear)) :
+		false;
+
+	const isCardExpiringSoon = paymentMethod && paymentMethod.expiryMonth && paymentMethod.expiryYear ?
+		isExpiringSoon(Number(paymentMethod.expiryMonth), Number('20' + paymentMethod.expiryYear)) :
+		false;
+
+	// 期限切れ判定関数
+	function isExpired(month: number, year: number) {
+		const now = new Date();
+		const currentMonth = now.getMonth() + 1; // JavaScriptの月は0始まり
+		const currentYear = now.getFullYear();
+
+		return (year < currentYear) || (year === currentYear && month < currentMonth);
+	}
+
+	// 間もなく期限切れ判定関数（3ヶ月以内）
+	function isExpiringSoon(month: number, year: number) {
+		const now = new Date();
+		const threeMonthsLater = new Date();
+		threeMonthsLater.setMonth(now.getMonth() + 3);
+
+		const expiryDate = new Date(year, month - 1, 1);
+		return !isExpired(month, year) && expiryDate <= threeMonthsLater;
+	}
+
 	// ローディング表示
 	if (isLoading) {
 		return (
@@ -221,16 +249,21 @@ const PaymentMethodManager: React.FC = () => {
 					>
 						{paymentMethod ? 'カード情報を更新' : 'カードを登録する'}
 					</Button>
+				</div>
+			)}
+			{/* 期限切れ警告 */}
+			{isCardExpired && (
+				<div className="bg-red-500/10 text-red-400 px-4 py-3 rounded-lg mt-3 flex items-start">
+					<AlertCircle className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
+					<p>このカードは有効期限が切れています。新しいカード情報を登録してください。</p>
+				</div>
+			)}
 
-					{paymentMethod && (
-						<button
-							onClick={handleDeleteCard}
-							className="text-sm text-red-400 hover:text-red-300"
-							disabled={isDeletingCard}
-						>
-							{isDeletingCard ? <LoadingSpinner size="small" /> : 'カード情報を削除'}
-						</button>
-					)}
+			{/* 期限切れ間近警告 */}
+			{isCardExpiringSoon && !isCardExpired && (
+				<div className="bg-amber-500/10 text-amber-400 px-4 py-3 rounded-lg mt-3 flex items-start">
+					<AlertCircle className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
+					<p>このカードの有効期限が近づいています。更新をご検討ください。</p>
 				</div>
 			)}
 
@@ -253,6 +286,7 @@ const PaymentMethodManager: React.FC = () => {
 							<X className="w-5 h-5" />
 						</button>
 					</div>
+
 
 					{/* 成功メッセージ */}
 					{confirmResult?.success && (

@@ -20,6 +20,7 @@ export interface BranchDocument {
 	description?: string;
 	amenities?: string[];
 	layoutImagePath?: string;
+	seatImagePath?: string;
 	mapImagePath?: string;
 	location?: {
 		latitude: number;

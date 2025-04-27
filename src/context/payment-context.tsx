@@ -187,15 +187,22 @@ export const PaymentProvider: React.FC<PaymentProviderProps> = ({ children }) =>
 			setIsUpdating(true);
 			setError(null);
 
+			// トークン取得を追加
+			const token = await user.getIdToken(true);
+
 			const response = await fetch('/api/stripe/payment-methods', {
 				method: 'DELETE',
 				headers: {
 					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${token}`, // 認証トークンを追加
 				},
 			});
 
+			// レスポンスのログ出力（デバッグ用）
+			console.log('Delete response status:', response.status);
+
 			if (!response.ok) {
-				const errorData = await response.json();
+				const errorData = await response.json().catch(() => ({ message: '応答の解析に失敗しました' }));
 				throw new Error(errorData.message || 'カード情報の削除に失敗しました');
 			}
 
