@@ -13,7 +13,7 @@ export default function AccessSection() {
 			className="py-20 bg-background/90"
 			ref={ref}
 		>
-			<div className="container px-4">
+			<div className="container mx-auto md:px-4">
 				{/* セクションタイトル */}
 				<motion.div
 					className="text-center mb-16"
@@ -21,10 +21,10 @@ export default function AccessSection() {
 					animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
 					transition={{ duration: 0.5 }}
 				>
-					<h2 className="text-3xl md:text-4xl font-bold mb-4">
+					<h2 className="text-3xl md:text-4xl font-bold mb-3">
 						アクセス<span className="text-accent">・料金</span>
 					</h2>
-					<p className="text-foreground/70 max-w-2xl mx-auto">
+					<p className="text-foreground/70 max-w-2xl mx-auto p-5">
 						便利な立地と分かりやすい料金体系。
 						いつでも気軽に立ち寄れます。
 					</p>

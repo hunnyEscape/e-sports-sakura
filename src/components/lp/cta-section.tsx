@@ -18,8 +18,8 @@ export default function CtaSection() {
 					animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
 					transition={{ duration: 0.6 }}
 				>
-					<h2 className="text-5xl md:text-5xl font-bold mb-6">
-						ふらっと立ち寄って<span className="text-accent">みませんか？</span>
+					<h2 className="text-4xl md:text-5xl font-bold mb-6">
+						ふらっと立ち寄って<br/><span className="text-accent">みませんか？</span>
 					</h2>
 
 					<p className="text-xl text-foreground/80 mb-10">

@@ -9,7 +9,7 @@ const usageSteps = [
 		number: 1,
 		title: "スマートロックの解除",
 		description: "会員ページからワンクリックで可能です！",
-		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/enter.webp`} alt="QRコードで入室" className="h-100 w-100" />
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/enter2.webp`} alt="QRコードで入室" className="h-100 w-100" />
 	},
 	{
 		number: 2,
@@ -21,10 +21,9 @@ const usageSteps = [
 		number: 3,
 		title: "そのまま帰るだけ",
 		description: "PCをシャットダウンして、そのまま帰るだけ。料金は自動計算され、登録されたカードにまとめて月末に請求されます。",
-		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/exit.webp`} alt="そのまま帰るだけ" className="h-100 w-100" />
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/exit2.webp`} alt="そのまま帰るだけ" className="h-100 w-100" />
 	}
 ];
-
 
 export default function StepsSection() {
 	const ref = useRef(null);
@@ -33,7 +32,7 @@ export default function StepsSection() {
 	return (
 		<section
 			id="steps"
-			className="pb-20 bg-background/90"
+			className="pb-20 bg-background/90 h-auto min-h-real-screen-80"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
@@ -44,7 +43,7 @@ export default function StepsSection() {
 					transition={{ duration: 0.5 }}
 				>
 					<h2 className="text-3xl md:text-4xl font-bold mb-4">
-						利用は<span className="text-accent">めちゃ簡単</span><br/>3ステップで
+						利用は<span className="text-accent">めちゃ簡単</span><br />3ステップで
 					</h2>
 					<p className="text-foreground/70 max-w-3xl mx-auto">
 						面倒な手続きも、スタッフ対応も必要ありません。

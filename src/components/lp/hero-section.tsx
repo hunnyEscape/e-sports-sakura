@@ -35,7 +35,7 @@ export default function HeroSection() {
 			<div className="container mx-auto px-4 relative z-10">
 				<div className="max-w-4xl">
 					{/* タイトル文字ごとのアニメーション */}
-					<h1 className="text-5xl md:text-6xl font-bold text-foreground mb-2">
+					<h1 className="text-4xl md:text-6xl font-bold text-foreground mb-1">
 						<div className="flex flex-wrap">
 							{/* 「疲れたから」の部分 */}
 							<span className="md:inline block w-full">
@@ -88,7 +88,7 @@ export default function HeroSection() {
 					</h1>
 
 					<motion.p
-						className="text-2xl md:text-3xl text-foreground/90 mb-8"
+						className="text-xl md:text-3xl text-foreground/90 mb-10"
 						initial={{ opacity: 0, scale: 0.9 }}
 						animate={{ opacity: 1, scale: 1 }}
 						transition={{ duration: 0.7, delay: 0.5 }}

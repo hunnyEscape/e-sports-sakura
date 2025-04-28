@@ -47,10 +47,10 @@ export default function FaqSection() {
 	return (
 		<section
 			id="faq"
-			className="py-20 bg-gradient-to-b from-background/70 to-background/90"
+			className="py-20 bg-gradient-to-b from-background/70 to-background/90 h-auto min-h-real-screen-80"
 			ref={ref}
 		>
-			<div className="container mx-auto px-4">
+			<div className="container mx-auto md:px-4">
 				{/* セクションタイトル */}
 				<motion.div
 					className="text-center mb-16"

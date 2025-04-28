@@ -7,7 +7,7 @@ const AvailabilitySection: React.FC = () => {
 	return (
 		// h-auto を追加し、min-h-real-screen-80 を使用して安定した高さを確保
 		<section className="py-20 bg-background/70 h-auto min-h-real-screen-80">
-			<div className="container mx-auto px-4">
+			<div className="container mx-auto md:px-4">
 				{/* Section header */}
 				<div className="text-center mb-12">
 					<motion.h2
@@ -20,7 +20,7 @@ const AvailabilitySection: React.FC = () => {
 						空き状況をチェック
 					</motion.h2>
 					<motion.p
-						className="text-foreground/70 max-w-2xl mx-auto"
+						className="text-foreground/70 max-w-2xl mx-auto p-2"
 						initial={{ opacity: 0, y: 20 }}
 						whileInView={{ opacity: 1, y: 0 }}
 						viewport={{ once: true }}
@@ -45,7 +45,7 @@ const AvailabilitySection: React.FC = () => {
 
 					{/* Info column */}
 					<motion.div
-						className="w-full lg:w-1/3 space-y-8"
+						className="w-full lg:w-1/3 space-y-8 px-2"
 						initial={{ opacity: 0, x: 20 }}
 						whileInView={{ opacity: 1, x: 0 }}
 						viewport={{ once: true }}

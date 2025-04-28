@@ -553,13 +553,6 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		return '予約可能';
 	};
 
-	useEffect(() => {
-		if (selectedBranch) {
-			console.log("Selected Branch (Effect):", selectedBranch.branchName);
-			console.log("Seat Image Path:", selectedBranch.seatImagePath || 'なし');
-		}
-	}, [selectedBranch]);
-
 	const renderSeatLayout = () => {
 		if (selectedBranch?.seatImagePath) {
 			return (

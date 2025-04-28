@@ -171,7 +171,7 @@ export default function GameCategoryLayout({
 					{index === 0 && (
 						<div className="h-[50vh] flex items-center justify-center w-full">
 							<div className="text-center pb-20">
-								<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">マルチプレイで笑い飛ばすｗｗ</h2>
+								<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">マルチプレイで盛り上がる！</h2>
 								<p className="text-lg text-muted-foreground mx-auto w-full">
 									Youtube実況で大人気のワイワイ系タイトル
 								</p>
