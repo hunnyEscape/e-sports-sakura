@@ -3,22 +3,36 @@
 import { useState, useEffect } from 'react';
 import Button from '@/components/ui/button';
 import axios from 'axios';
+import { useAuth } from '@/context/auth-context';
 
 type Props = {
-	memberId: string;
-	cooldownPeriod?: number;  // 秒単位（デフォルト: 180
-	isOnline: boolean;
+
 };
 
 export default function UnlockDoorButton({
-	memberId,
-	cooldownPeriod = 3 * 60,
-	isOnline,
+
 }: Props) {
+	const { userData } = useAuth();
 	const [isUnlocking, setIsUnlocking] = useState(false);
 	const [unlockMessage, setUnlockMessage] = useState<string | null>(null);
 	const [cooldownActive, setCooldownActive] = useState(false);
 	const [remainingTime, setRemainingTime] = useState(0);
+	const cooldownPeriod = 3 * 60;
+
+	const [isOnline, setIsOnline] = useState(true);
+
+	// オンライン状態
+	useEffect(() => {
+		setIsOnline(navigator.onLine);
+		const on = () => setIsOnline(true);
+		const off = () => setIsOnline(false);
+		window.addEventListener('online', on);
+		window.addEventListener('offline', off);
+		return () => {
+			window.removeEventListener('online', on);
+			window.removeEventListener('offline', off);
+		};
+	}, []);
 
 	// 前回解錠時間の読込
 	useEffect(() => {
@@ -44,8 +58,8 @@ export default function UnlockDoorButton({
 				}
 				return prev - 1;
 			});
-			//}, 1000);
-		}, 10);
+		}, 1000);
+		//}, 10);
 		return () => clearInterval(timer);
 	}, [cooldownActive]);
 
@@ -57,12 +71,12 @@ export default function UnlockDoorButton({
 
 	// UnlockDoorButton.tsx の handleClick 関数の修正部分
 	const handleClick = async () => {
-		if (!memberId || cooldownActive || !isOnline) return;
+		if (!userData || !userData.currentMemberId || cooldownActive || !isOnline) return;
 		setIsUnlocking(true);
 		setUnlockMessage(null);
 		try {
 			// ここを修正: unlockDoorTACH から unlockDoor へエンドポイント変更
-			const { data } = await axios.post('/api/unlockDoor', { memberID: memberId });
+			const { data } = await axios.post('/api/unlockDoor', { memberID: userData.currentMemberId });
 			if (data.success) {
 				localStorage.setItem('lastUnlockTime', Date.now().toString());
 				setCooldownActive(true);
@@ -77,26 +91,27 @@ export default function UnlockDoorButton({
 	};
 
 	return (
-		<div className="mb-4">
-			<Button
-				onClick={handleClick}
-				disabled={isUnlocking || !memberId || cooldownActive || !isOnline}
-				className="mb-2 w-full"
-			>
-				{isUnlocking
-					? '解錠中...'
-					: cooldownActive
-						? `次の解錠まで ${formatTime()}`
-						: 'ドアを解錠する'}
-			</Button>
-			{unlockMessage && (
-				<p
-					className={`p-2 rounded ${unlockMessage.includes('成功') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-						}`}
+		<div className="mb-4 flex justify-center">
+			{/* ここで最大幅を決める */}
+			<div className="w-full max-w-sm">
+				<Button
+					onClick={handleClick}
+					disabled={isUnlocking || !userData?.currentMemberId || cooldownActive || !isOnline}
+					className="mb-2 w-full"  // ここはコンテナ幅いっぱい＝max-w-sm に合わせて伸びる
 				>
-					{unlockMessage}
-				</p>
-			)}
+					{isUnlocking
+						? '解錠中...'
+						: cooldownActive
+							? `次の解錠まで ${formatTime()}`
+							: 'ドアを解錠する'}
+				</Button>
+				{unlockMessage && (
+					<p className={`p-2 rounded ${unlockMessage.includes('成功') ? '' : 'bg-red-100 text-red-700'}`}>
+						{unlockMessage}
+					</p>
+				)}
+			</div>
 		</div>
 	);
+
 }

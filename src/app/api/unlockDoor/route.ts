@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
 			{ status: 200 }
 		);
 
-	} catch (error) {
+	} catch (error: any) {
 		console.error('unlockDoor error:', error);
 		return NextResponse.json(
 			{ success: false, message: error.message },

@@ -78,10 +78,7 @@ export default function QrCodeDisplay() {
 		<div className="text-center">
 			{qrDataUrl ? (
 				<>
-					<UnlockDoorButton
-						memberId={userData.currentMemberId}
-						isOnline={isOnline}
-					/>
+					<UnlockDoorButton/>
 					<div className="bg-white p-4 rounded-lg w-40 h-40 mx-auto mb-4 flex items-center justify-center border-2 border-accent">
 						<img src={qrDataUrl} alt="QRコード" className="object-contain max-w-full max-h-full" />
 					</div>
