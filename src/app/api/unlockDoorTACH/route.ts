@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
 
 		// Cloud Functionにリクエスト
 		const response = await axios.post(
-			process.env.UNLOCK_DOOR_FUNCTION_URL as string,
+			process.env.UNLOCK_DOOR_TACH_URL as string,
 			{ memberID },
 			{
 				headers: {

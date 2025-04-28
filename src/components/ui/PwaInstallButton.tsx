@@ -16,7 +16,7 @@ export default function PwaInstallButton() {
 	}
 
 	const handleInstallClick = async () => {
-		if (isIOS) {
+		if (!isIOS) {
 			setShowIosInstructions(!showIosInstructions);
 		} else {
 			setIsInstalling(true);
@@ -38,7 +38,7 @@ export default function PwaInstallButton() {
 						'ホーム画面にアプリを追加する。QRコードを表示するときにスムーズです！'}
 			</Button>
 
-			{isIOS && showIosInstructions && (
+			{!isIOS && showIosInstructions && (
 				<div className="mt-4 bg-accent/5 border border-accent/20 rounded-xl p-6 shadow-sm">
 					<h3 className="font-semibold text-lg mb-4 text-center text-accent">iPhoneでホーム画面に追加する手順</h3>
 

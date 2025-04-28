@@ -4,218 +4,94 @@ import { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { useAuth } from '@/context/auth-context';
 import LoadingSpinner from '@/components/ui/loading-spinner';
-import Button from '@/components/ui/button';
-import axios from 'axios';
+import UnlockDoorButton from '@/components//dashboard/UnlockDoorButton';
 
 export default function QrCodeDisplay() {
 	const { userData } = useAuth();
-	const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
+	const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [unlockMessage, setUnlockMessage] = useState<string | null>(null);
-	const [isUnlocking, setIsUnlocking] = useState(false);
 	const [isOnline, setIsOnline] = useState(true);
 
-	// 解錠制限のための状態
-	const [cooldownActive, setCooldownActive] = useState(false);
-	const [remainingTime, setRemainingTime] = useState(0);
-	const cooldownPeriod = 3 * 60; // 3分 = 180秒
-
-	// オンライン状態の監視
+	// オンライン状態
 	useEffect(() => {
-		// 初期状態設定
 		setIsOnline(navigator.onLine);
-
-		// イベントリスナー
-		const handleOnline = () => setIsOnline(true);
-		const handleOffline = () => setIsOnline(false);
-
-		window.addEventListener('online', handleOnline);
-		window.addEventListener('offline', handleOffline);
-
+		const on = () => setIsOnline(true);
+		const off = () => setIsOnline(false);
+		window.addEventListener('online', on);
+		window.addEventListener('offline', off);
 		return () => {
-			window.removeEventListener('online', handleOnline);
-			window.removeEventListener('offline', handleOffline);
+			window.removeEventListener('online', on);
+			window.removeEventListener('offline', off);
 		};
 	}, []);
 
-	// 前回の解錠時間をローカルストレージから取得
-	useEffect(() => {
-		const lastUnlockTime = localStorage.getItem('lastUnlockTime');
-		if (lastUnlockTime) {
-			const elapsedSeconds = Math.floor((Date.now() - parseInt(lastUnlockTime)) / 1000);
-			if (elapsedSeconds < cooldownPeriod) {
-				setCooldownActive(true);
-				setRemainingTime(cooldownPeriod - elapsedSeconds);
-			}
-		}
-	}, []);
-
-	// クールダウンタイマー
-	useEffect(() => {
-		let timer: NodeJS.Timeout | null = null;
-
-		if (cooldownActive && remainingTime > 0) {
-			timer = setInterval(() => {
-				setRemainingTime(prev => {
-					if (prev <= 1) {
-						setCooldownActive(false);
-						if (timer) clearInterval(timer);
-						return 0;
-					}
-					return prev - 1;
-				});
-			}, 1000);
-		}
-
-		return () => {
-			if (timer) clearInterval(timer);
-		};
-	}, [cooldownActive, remainingTime]);
-
-	// QRコードの生成関数
-	const generateQrCode = async (memberId: string) => {
-		if (!isOnline) {
+	// QR生成
+	const generate = async (id: string) => {
+		if (!navigator.onLine) {
 			setLoading(false);
 			return;
 		}
-
 		try {
-			const dataUrl = await QRCode.toDataURL(memberId, {
-				width: 250,
-				margin: 2,
-				color: {
-					dark: "#000",
-					light: "#fff"
-				}
-			});
-
-			setQrCodeDataUrl(dataUrl);
-		} catch (err) {
+			const url = await QRCode.toDataURL(id, { width: 250, margin: 2 });
+			setQrDataUrl(url);
+		} catch {
 			setError('QRコードの生成に失敗しました');
 		} finally {
 			setLoading(false);
 		}
 	};
 
-	// ドア解錠関数
-	const unlockDoor = async () => {
-		if (!userData?.currentMemberId || cooldownActive || !isOnline) return;
-
-		setIsUnlocking(true);
-		setUnlockMessage(null);
-
-		try {
-			const response = await axios.post('/api/unlockDoor', {
-				memberID: userData.currentMemberId
-			});
-
-			// 解錠成功時に制限を設定
-			if (response.data.success) {
-				localStorage.setItem('lastUnlockTime', Date.now().toString());
-				setCooldownActive(true);
-				setRemainingTime(cooldownPeriod);
-			}
-
-			setUnlockMessage(response.data.message || 'ドアの解錠に成功しました');
-		} catch (err: any) {
-			setUnlockMessage(err.response?.data?.message || 'エラーが発生しました');
-		} finally {
-			setIsUnlocking(false);
-		}
-	};
-
-	// 残り時間の表示用フォーマット
-	const formatRemainingTime = () => {
-		const minutes = Math.floor(remainingTime / 60);
-		const seconds = remainingTime % 60;
-		return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-	};
-
-	// 初期ロード & 3分おきに更新
+	// 初回 & 3分ごと更新
 	useEffect(() => {
 		if (!userData?.currentMemberId) return;
-
-		// 初回生成
-		generateQrCode(userData.currentMemberId);
-
-		// 3分おきに更新
-		const interval = setInterval(() => {
-			if (userData?.currentMemberId && isOnline) {
-				generateQrCode(userData.currentMemberId);
+		generate(userData.currentMemberId);
+		const iv = setInterval(() => {
+			if (userData.currentMemberId && isOnline) {
+				generate(userData.currentMemberId);
 			}
-		}, 3 * 60 * 1000); // 3分 = 180,000ミリ秒
-
-		return () => clearInterval(interval);
+		}, 3 * 60 * 1000);
+		return () => clearInterval(iv);
 	}, [userData?.currentMemberId, isOnline]);
 
 	if (loading) {
-		return (
-			<div className="py-12 flex justify-center">
-				<LoadingSpinner size="large" />
-			</div>
-		);
+		return <div className="py-12 flex justify-center"><LoadingSpinner size="large" /></div>;
 	}
-
 	if (!isOnline) {
 		return (
 			<div className="bg-accent/10 border border-accent/20 rounded-xl p-6 text-center">
-				<p className="mb-2 font-medium">オフラインモードではQRコードと解錠機能を利用できません</p>
-				<p className="text-sm text-foreground/70">インターネット接続を確認してください</p>
+				<p className="font-medium mb-2">オフラインモードでは利用できません</p>
+				<p className="text-sm text-foreground/70">接続を確認してください</p>
 			</div>
 		);
 	}
-
 	if (error) {
 		return (
-			<div className="bg-red-500/10 text-red-500 p-4 rounded-lg">
+			<div className="bg-red-100 text-red-700 p-4 rounded-lg">
 				<p className="mb-4">{error}</p>
-				<Button onClick={() => window.location.reload()} size="sm" variant="outline">
-					再読み込み
-				</Button>
+				<button onClick={() => window.location.reload()} className="btn-outline btn-sm">再読み込み</button>
 			</div>
 		);
 	}
 
 	return (
 		<div className="text-center">
-			{qrCodeDataUrl ? (
+			{qrDataUrl ? (
 				<>
-					<Button
-						onClick={unlockDoor}
-						disabled={isUnlocking || !userData?.currentMemberId || cooldownActive || !isOnline}
-						className="mb-4"
-					>
-						{isUnlocking
-							? '解錠中...'
-							: cooldownActive
-								? `次の解錠まで ${formatRemainingTime()}`
-								: '立川店のドアを解錠する'
-						}
-					</Button>
-
-					{unlockMessage && cooldownActive && (
-						<div className={`p-3 rounded-md mb-4 ${unlockMessage.includes('成功') ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-							{unlockMessage}
-						</div>
-					)}
-
+					<UnlockDoorButton
+						memberId={userData.currentMemberId}
+						isOnline={isOnline}
+					/>
 					<div className="bg-white p-4 rounded-lg w-40 h-40 mx-auto mb-4 flex items-center justify-center border-2 border-accent">
-						<img
-							src={qrCodeDataUrl}
-							alt="QRコード"
-							className="w-full max-w-[150px] h-full object-contain"
-						/>
+						<img src={qrDataUrl} alt="QRコード" className="object-contain max-w-full max-h-full" />
 					</div>
-
-					<p className="text-sm text-foreground/70 mb-4">
-						席にあるQRリーダーへかざして、PCを起動させてください<br />
+					<p className="text-sm text-foreground/70">
+						席のQRリーダーへかざしてPCを起動してください。<br />
+						スクショは無効です。
 					</p>
 				</>
 			) : (
-				<div className="bg-orange-500/10 text-orange-500 p-4 rounded-lg mb-4">
-					<p className="mb-2">QRコードが見つかりません。</p>
-				</div>
+				<div className="bg-orange-100 text-orange-700 p-4 rounded-lg">QRコードがありません。</div>
 			)}
 		</div>
 	);

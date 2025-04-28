@@ -28,7 +28,10 @@ export interface BranchDocument {
 	};
 	createdAt: TimestampOrString;
 	updatedAt: TimestampOrString;
+	sesameDeviceUuid?: string;
+    sesameDeviceSecret?: string;
 }
+
 
 // Firestore User ドキュメントのインターフェース
 export interface UserDocument {
