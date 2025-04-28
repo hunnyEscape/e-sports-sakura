@@ -2,6 +2,7 @@
 import { AuthProvider } from '@/context/auth-context';
 import { AudioProvider } from '@/context/AudioContext';
 import { ReservationProvider } from '@/context/reservation-context';
+import ViewportInitializer from '@/components/ui/ViewportInitializer';
 import './globals.css';
 import type { Metadata } from 'next';
 
@@ -21,6 +22,7 @@ export default function SecLayout({
 				<AudioProvider>
 					<AuthProvider>
 						<ReservationProvider>
+							<ViewportInitializer />
 							{children}
 						</ReservationProvider>
 					</AuthProvider>

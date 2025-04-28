@@ -5,7 +5,8 @@ import AvailabilityCalendar from './availability-calendar';
 
 const AvailabilitySection: React.FC = () => {
 	return (
-		<section className="py-20 bg-background/70">
+		// h-auto を追加し、min-h-real-screen-80 を使用して安定した高さを確保
+		<section className="py-20 bg-background/70 h-auto min-h-real-screen-80">
 			<div className="container mx-auto px-4">
 				{/* Section header */}
 				<div className="text-center mb-12">
@@ -58,7 +59,7 @@ const AvailabilitySection: React.FC = () => {
 							<div>
 								<h3 className="text-xl font-medium mb-2 text-foreground">事前予約</h3>
 								<p className="text-foreground/70">
-									最大14日先まで予約可能。お気に入りの座席を確保して、安心してご利用いただけます。
+									お気に入りの座席を確保して、安心してご利用いただけます。
 								</p>
 							</div>
 						</div>
@@ -71,7 +72,7 @@ const AvailabilitySection: React.FC = () => {
 							<div>
 								<h3 className="text-xl font-medium mb-2 text-foreground">柔軟な利用時間</h3>
 								<p className="text-foreground/70">
-									30分単位で予約可能。急な予定変更にも対応できます。キャンセルは予約時間の2時間前まで無料です。
+									30分単位で予約可能。急な予定変更にも対応できます。キャンセルは無料です。
 								</p>
 							</div>
 						</div>

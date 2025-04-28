@@ -46,7 +46,7 @@ export default function SpecsSection() {
 	return (
 		<section
 			id="specs"
-			className="py-20 bg-gradient-to-b from-background/90 to-background/70"
+			className="py-20 bg-gradient-to-b from-background/90 to-background/70 h-auto min-h-real-screen-90"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
