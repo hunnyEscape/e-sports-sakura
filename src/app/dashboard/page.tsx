@@ -17,7 +17,7 @@ import OnlineStatusDetector from '@/components/ui/online-status-detector';
 import { PaymentProvider } from '@/context/payment-context';
 import PaymentMethodManager from '@/components/payment/payment-method-manager';
 import { Calendar, Clock, CreditCard } from 'lucide-react';
-import ManualInstallButton from '@/components/ui/manual-install-button';
+import PwaInstallButton from '@/components/ui/PwaInstallButton';
 
 export default function DashboardPage() {
 	const { user, userData, signOut } = useAuth();
@@ -72,7 +72,7 @@ export default function DashboardPage() {
 							</div>
 
 						</>)}
-
+						<PwaInstallButton />
 						{userData && !userData.registrationCompleted && (
 							<div className="bg-accent/10 border border-accent/20 rounded-xl p-6 mb-8">
 								<h2 className="text-lg font-semibold mb-2">支払いの登録を完了させましょう</h2>
@@ -87,7 +87,7 @@ export default function DashboardPage() {
 								</Button>
 							</div>
 						)}
-						<ManualInstallButton />
+
 						{userData && userData.registrationCompleted && (
 							<>
 								{/* タブナビゲーション */}
