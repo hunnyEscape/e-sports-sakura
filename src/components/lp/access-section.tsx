@@ -10,10 +10,10 @@ export default function AccessSection() {
 	return (
 		<section
 			id="access"
-			className="py-20 bg-background/90"
+			className="py-20 bg-background/90 h-auto min-h-real-screen-80"
 			ref={ref}
 		>
-			<div className="container mx-auto md:px-4">
+			<div className="container mx-auto px-4">
 				{/* セクションタイトル */}
 				<motion.div
 					className="text-center mb-16"
@@ -21,10 +21,10 @@ export default function AccessSection() {
 					animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
 					transition={{ duration: 0.5 }}
 				>
-					<h2 className="text-3xl md:text-4xl font-bold mb-3">
+					<h2 className="text-3xl md:text-4xl font-bold mb-4">
 						アクセス<span className="text-accent">・料金</span>
 					</h2>
-					<p className="text-foreground/70 max-w-2xl mx-auto p-5">
+					<p className="text-foreground/70 max-w-2xl mx-auto">
 						便利な立地と分かりやすい料金体系。
 						いつでも気軽に立ち寄れます。
 					</p>
@@ -63,7 +63,7 @@ export default function AccessSection() {
 								<span className="text-highlight">無料</span>
 							</div>
 							<p className="text-sm text-foreground/60 mt-4">
-								※料金は1分単位で自動計算され、月末にまとめて登録支払い方法から引き落とされます。<br/>
+								※料金は1分単位で自動計算され、月末にまとめて登録支払い方法から引き落とされます。<br />
 							</p>
 						</div>
 					</motion.div>

@@ -18,7 +18,8 @@ export default function HeroSection() {
 	}, []);
 
 	return (
-		<section className="relative min-h-screen flex items-center overflow-hidden">
+		// min-h-screen を min-h-real-screen に変更して安定した高さを確保
+		<section className="relative min-h-real-screen flex items-center overflow-hidden">
 			<div className="fixed inset-0 z-[-1]">
 				<Image
 					src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/hero-bg.webp`}
