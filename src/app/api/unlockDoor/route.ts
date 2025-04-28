@@ -9,8 +9,7 @@ export async function POST(req: NextRequest) {
 	// リファラーチェック
 	const referer = req.headers.get('referer');
 	const allowedReferers = [
-		'https://your-app.vercel.app',
-		'https://your-app-staging.vercel.app'
+		'https://e-sports-sakura.vercel.app',
 	];
 
 	// 開発環境では localhost からのアクセスも許可
