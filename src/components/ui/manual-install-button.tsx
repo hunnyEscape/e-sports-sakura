@@ -20,56 +20,67 @@ export default function ManualInstallButton() {
 			return;
 		}
 
-		// インストールイベントをキャプチャ (iOS以外)
-		if (!isIOSDevice) {
-			const handleBeforeInstallPrompt = (e: Event) => {
-				// デフォルトのプロンプトを無効化
-				e.preventDefault();
-				// イベントを保存
-				setInstallPrompt(e);
-			};
+		// インストールイベントをキャプチャして保存
+		const handleBeforeInstallPrompt = (e: any) => {
+			// デフォルトのプロンプト表示を防止
+			e.preventDefault();
+			// イベントを保存
+			setInstallPrompt(e);
+			console.log('Install prompt event captured and saved');
+		};
 
-			window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+		window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-			// インストール完了を検知
-			window.addEventListener('appinstalled', () => {
-				setIsInstalled(true);
-				setInstallPrompt(null);
-			});
+		// インストール完了の検知
+		window.addEventListener('appinstalled', () => {
+			setIsInstalled(true);
+			setInstallPrompt(null);
+			console.log('App was installed successfully');
+		});
 
-			return () => {
-				window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-				window.removeEventListener('appinstalled', () => { });
-			};
-		}
+		return () => {
+			window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+			window.removeEventListener('appinstalled', () => { });
+		};
 	}, []);
 
 	const handleInstallClick = async () => {
+		// iOSの場合は手順を表示
 		if (isIOS) {
-			// iOSデバイスの場合、インストール手順を表示
 			alert('このページをホーム画面に追加するには:\n\n1. 共有ボタンをタップ（下部の四角から矢印が出ているアイコン）\n2.「ホーム画面に追加」をタップ\n3.「追加」を選択');
 			return;
 		}
 
-		if (!installPrompt) return;
+		// Windowsの場合、保存されたプロンプトを使用
+		if (installPrompt) {
+			setIsInstalling(true);
 
-		setIsInstalling(true);
+			try {
+				// 保存したプロンプトを表示（Windowsでは直接インストールダイアログが開く）
+				installPrompt.prompt();
 
-		// インストールプロンプトを表示
-		installPrompt.prompt();
+				// ユーザーの選択を待機
+				const { outcome } = await installPrompt.userChoice;
+				console.log(`Installation result: ${outcome}`);
 
-		// ユーザーの選択を待機
-		const choiceResult = await installPrompt.userChoice;
-
-		if (choiceResult.outcome === 'accepted') {
-			setIsInstalled(true);
+				if (outcome === 'accepted') {
+					setIsInstalled(true);
+				}
+			} catch (error) {
+				console.error('Installation error:', error);
+			} finally {
+				setIsInstalling(false);
+				// 一度使用したプロンプトは再利用できないので削除
+				setInstallPrompt(null);
+			}
+		} else {
+			// プロンプトがない場合（すでに表示済みか、インストール条件を満たしていない）
+			console.log('No install prompt available');
+			alert('このサイトは現在インストールできません。\nブラウザのメニューから「インストール」オプションを探すか、しばらく使用した後に再度お試しください。');
 		}
-
-		setIsInstalling(false);
-		setInstallPrompt(null);
 	};
 
-	// インストール済みの場合は何も表示しない
+	// アプリがすでにインストールされている場合は何も表示しない
 	if (isInstalled) {
 		return null;
 	}
@@ -77,7 +88,7 @@ export default function ManualInstallButton() {
 	return (
 		<Button
 			onClick={handleInstallClick}
-			disabled={isInstalling && !isIOS}
+			disabled={isInstalling}
 			variant="primary"
 			className="w-full mb-4"
 		>
