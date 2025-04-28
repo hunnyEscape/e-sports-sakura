@@ -17,6 +17,7 @@ import OnlineStatusDetector from '@/components/ui/online-status-detector';
 import { PaymentProvider } from '@/context/payment-context';
 import PaymentMethodManager from '@/components/payment/payment-method-manager';
 import { Calendar, Clock, CreditCard } from 'lucide-react';
+import ManualInstallButton from '@/components/ui/manual-install-button';
 
 export default function DashboardPage() {
 	const { user, userData, signOut } = useAuth();
@@ -86,7 +87,7 @@ export default function DashboardPage() {
 								</Button>
 							</div>
 						)}
-
+						<ManualInstallButton />
 						{userData && userData.registrationCompleted && (
 							<>
 								{/* タブナビゲーション */}

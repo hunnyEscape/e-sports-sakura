@@ -302,6 +302,21 @@ export interface VeriffCallbackRequest {
 	id: string;
 	code: string;
 }-e 
+### FILE: ./src/types/window.d.ts
+
+interface Workbox {
+	addEventListener: (event: string, callback: () => void) => void;
+	removeEventListener: (event: string, callback: () => void) => void;
+	messageSkipWaiting: () => void;
+}
+
+declare global {
+	interface Window {
+		workbox?: Workbox;
+	}
+}
+
+export { };-e 
 ### FILE: ./src/types/auth-context.tsx
 
 'use client';
@@ -1570,6 +1585,7 @@ import QrCodeDisplay from '@/components/dashboard/qr-code';
 import MonthlyUsageHistory from '@/components/dashboard/monthly-usage-history';
 import ReservationHistory from '@/components/dashboard/reservation-history';
 import CouponsTab from '@/components/dashboard/coupons';
+import OnlineStatusDetector from '@/components/ui/online-status-detector';
 import { PaymentProvider } from '@/context/payment-context';
 import PaymentMethodManager from '@/components/payment/payment-method-manager';
 import { Calendar, Clock, CreditCard } from 'lucide-react';
@@ -1595,6 +1611,7 @@ export default function DashboardPage() {
 		<ProtectedRoute>
 			<ReservationProvider>
 				<div className="min-h-screen bg-background text-foreground">
+					<OnlineStatusDetector />
 					<main className="container mx-auto px-4 py-3 md:py-8">
 						{userData && userData.registrationCompleted && (<>
 							<div className="flex items-center justify-between h-16 border-b border-border">
@@ -2226,17 +2243,25 @@ export default function PaymentPage() {
 }-e 
 ### FILE: ./src/app/layout.tsx
 
-// sec/app/layout.tsx
 import { AuthProvider } from '@/context/auth-context';
 import { AudioProvider } from '@/context/AudioContext';
 import { ReservationProvider } from '@/context/reservation-context';
 import ViewportInitializer from '@/components/ui/ViewportInitializer';
+import PwaUpdateNotifier from '@/components/ui/pwa-update-notifier';
 import './globals.css';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
 	title: 'E-Sports Sakura - コワーキングスペース会員ポータル',
 	description: '24時間無人運営、QRコード1つで簡単入室。高性能PCとフリードリンクを完備したゲーミングスペース。',
+	manifest: '/manifest.json',
+	themeColor: '#fb923c',
+	viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',
+	appleWebApp: {
+		capable: true,
+		statusBarStyle: 'black-translucent',
+		title: 'E-Sports Sakura'
+	},
 };
 
 export default function SecLayout({
@@ -2246,11 +2271,15 @@ export default function SecLayout({
 }) {
 	return (
 		<html lang="ja">
+			<head>
+				<link rel="apple-touch-icon" href="/icons/apple-icon.png" />
+			</head>
 			<body>
 				<AudioProvider>
 					<AuthProvider>
 						<ReservationProvider>
 							<ViewportInitializer />
+							<PwaUpdateNotifier />
 							{children}
 						</ReservationProvider>
 					</AuthProvider>
@@ -2258,8 +2287,7 @@ export default function SecLayout({
 			</body>
 		</html>
 	);
-}
--e 
+}-e 
 ### FILE: ./src/app/page.tsx
 
 'use client';
@@ -6408,6 +6436,162 @@ export function CategoryPageContainer({
 		</div>
 	);
 }-e 
+### FILE: ./src/components/ui/manual-install-button.tsx
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import Button from '@/components/ui/button';
+
+export default function ManualInstallButton() {
+	const [installPrompt, setInstallPrompt] = useState<any>(null);
+	const [isInstalled, setIsInstalled] = useState(false);
+	const [isInstalling, setIsInstalling] = useState(false);
+
+	useEffect(() => {
+		// PWAがすでにインストールされているか確認
+		if (window.matchMedia('(display-mode: standalone)').matches) {
+			setIsInstalled(true);
+			return;
+		}
+
+		// インストールイベントをキャプチャ
+		const handleBeforeInstallPrompt = (e: Event) => {
+			// デフォルトのプロンプトを無効化
+			e.preventDefault();
+			// イベントを保存
+			setInstallPrompt(e);
+		};
+
+		window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+		// インストール完了を検知
+		window.addEventListener('appinstalled', () => {
+			setIsInstalled(true);
+			setInstallPrompt(null);
+		});
+
+		return () => {
+			window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+			window.removeEventListener('appinstalled', () => { });
+		};
+	}, []);
+
+	const handleInstallClick = async () => {
+		if (!installPrompt) return;
+
+		setIsInstalling(true);
+
+		// インストールプロンプトを表示
+		installPrompt.prompt();
+
+		// ユーザーの選択を待機
+		const choiceResult = await installPrompt.userChoice;
+
+		if (choiceResult.outcome === 'accepted') {
+			setIsInstalled(true);
+		}
+
+		setIsInstalling(false);
+		setInstallPrompt(null);
+	};
+
+	// インストール済みまたはインストール不可能な場合は何も表示しない
+	if (isInstalled || !installPrompt) {
+		return null;
+	}
+
+	return (
+		<Button
+			onClick={handleInstallClick}
+			disabled={isInstalling}
+			variant="primary"
+			className="w-full mb-4"
+		>
+			{isInstalling ? 'インストール中...' : 'ホーム画面にアプリを追加'}
+		</Button>
+	);
+}-e 
+### FILE: ./src/components/ui/install-pwa-prompt.tsx
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import Button from '@/components/ui/button';
+
+export default function InstallPWAPrompt() {
+	const [showPrompt, setShowPrompt] = useState(false);
+	const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+	useEffect(() => {
+		// PWAインストールイベントのリスナー
+		const handleBeforeInstallPrompt = (e: Event) => {
+			// デフォルトのプロンプト表示をキャンセル
+			e.preventDefault();
+			// イベントを保存
+			setDeferredPrompt(e);
+			// カスタムプロンプト表示
+			setShowPrompt(true);
+		};
+
+		window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
+
+		// 既にインストール済みかどうかの確認
+		if (window.matchMedia('(display-mode: standalone)').matches) {
+			setShowPrompt(false);
+		}
+
+		return () => {
+			window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
+		};
+	}, []);
+
+	// インストールボタンがクリックされた時の処理
+	const handleInstallClick = () => {
+		if (!deferredPrompt) return;
+
+		// インストールプロンプト表示
+		deferredPrompt.prompt();
+
+		// ユーザー応答の待機
+		deferredPrompt.userChoice.then((choiceResult: { outcome: string }) => {
+			if (choiceResult.outcome === 'accepted') {
+				console.log('ユーザーがインストールを承認しました');
+			} else {
+				console.log('ユーザーがインストールをキャンセルしました');
+			}
+			// プロンプトは一度しか使用できない
+			setDeferredPrompt(null);
+			// プロンプトを非表示
+			setShowPrompt(false);
+		});
+	};
+
+	if (!showPrompt) return null;
+
+	return (
+		<div className="fixed bottom-4 left-0 right-0 mx-auto w-5/6 max-w-md bg-accent/10 border border-accent/20 rounded-xl p-4 z-40">
+			<h3 className="font-medium text-lg mb-2">アプリをインストール</h3>
+			<p className="mb-4">
+				ホーム画面に追加してアプリとして使用できます
+			</p>
+			<div className="flex flex-wrap gap-2">
+				<Button
+					onClick={handleInstallClick}
+					variant="primary"
+				>
+					インストール
+				</Button>
+				<button
+					onClick={() => setShowPrompt(false)}
+					className="text-foreground/70 hover:text-foreground"
+				>
+					あとで
+				</button>
+			</div>
+		</div>
+	);
+}-e 
 ### FILE: ./src/components/ui/ViewportInitializer.tsx
 
 'use client';
@@ -6443,6 +6627,61 @@ export default function ViewportInitializer() {
   // このコンポーネントは何もレンダリングしない
   return null;
 }-e 
+### FILE: ./src/components/ui/pwa-update-notifier.tsx
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import Button from '@/components/ui/button';
+
+export default function PwaUpdateNotifier() {
+	const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
+
+	useEffect(() => {
+		// Service Workerが更新可能かどうかをチェック
+		if ('serviceWorker' in navigator && 'workbox' in window) {
+			const wb = window.workbox;
+
+			// 新しいService Workerが利用可能になった時
+			const handleUpdate = () => {
+				setShowUpdatePrompt(true);
+			};
+
+			// workboxのイベントリスナーを設定
+			wb?.addEventListener('waiting', handleUpdate);
+
+			return () => {
+				wb?.removeEventListener('waiting', handleUpdate);
+			};
+		}
+	}, []);
+
+	// アプリを更新する関数
+	const updateApp = () => {
+		if ('serviceWorker' in navigator && 'workbox' in window) {
+			// 新しいService Workerに切り替え
+			window.workbox?.messageSkipWaiting();
+
+			// ページをリロード
+			window.location.reload();
+		}
+	};
+
+	if (!showUpdatePrompt) return null;
+
+	return (
+		<div className="fixed top-0 left-0 w-full bg-accent text-white py-3 px-4 text-center z-50">
+			<p className="mb-2">新しいバージョンが利用可能です</p>
+			<Button
+				onClick={updateApp}
+				variant="primary"
+				className="bg-white text-accent hover:bg-white/90"
+			>
+				更新する
+			</Button>
+		</div>
+	);
+}-e 
 ### FILE: ./src/components/ui/loading-spinner.tsx
 
 export default function LoadingSpinner({ size = 'default' }: { size?: 'small' | 'default' | 'large' }) {
@@ -6458,6 +6697,44 @@ export default function LoadingSpinner({ size = 'default' }: { size?: 'small' | 
 			<span className="sr-only">読み込み中...</span>
 		</div>
 	);
+}-e 
+### FILE: ./src/components/ui/online-status-detector.tsx
+
+'use client';
+
+import { useState, useEffect } from 'react';
+
+export default function OnlineStatusDetector() {
+	const [isOnline, setIsOnline] = useState(true);
+
+	useEffect(() => {
+		// 初期ステータス設定
+		setIsOnline(navigator.onLine);
+
+		// オンライン/オフライン検出イベントリスナー
+		const handleOnline = () => setIsOnline(true);
+		const handleOffline = () => setIsOnline(false);
+
+		window.addEventListener('online', handleOnline);
+		window.addEventListener('offline', handleOffline);
+
+		return () => {
+			window.removeEventListener('online', handleOnline);
+			window.removeEventListener('offline', handleOffline);
+		};
+	}, []);
+
+	// オフライン時のみ警告表示
+	if (!isOnline) {
+		return (
+			<div className="fixed top-0 left-0 w-full bg-accent text-white py-2 text-center z-50">
+				オフラインモードです。一部機能が制限されます。
+			</div>
+		);
+	}
+
+	// オンライン時は何も表示しない
+	return null;
 }-e 
 ### FILE: ./src/components/dashboard/monthly-usage-history.tsx
 
@@ -6865,6 +7142,7 @@ import { useAuth } from '@/context/auth-context';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
 import axios from 'axios';
+import ManualInstallButton from '@/components/ui/manual-install-button';
 
 export default function QrCodeDisplay() {
 	const { userData } = useAuth();
@@ -6873,11 +7151,30 @@ export default function QrCodeDisplay() {
 	const [error, setError] = useState<string | null>(null);
 	const [unlockMessage, setUnlockMessage] = useState<string | null>(null);
 	const [isUnlocking, setIsUnlocking] = useState(false);
+	const [isOnline, setIsOnline] = useState(true);
 
 	// 解錠制限のための状態
 	const [cooldownActive, setCooldownActive] = useState(false);
 	const [remainingTime, setRemainingTime] = useState(0);
 	const cooldownPeriod = 3 * 60; // 3分 = 180秒
+
+	// オンライン状態の監視
+	useEffect(() => {
+		// 初期状態設定
+		setIsOnline(navigator.onLine);
+
+		// イベントリスナー
+		const handleOnline = () => setIsOnline(true);
+		const handleOffline = () => setIsOnline(false);
+
+		window.addEventListener('online', handleOnline);
+		window.addEventListener('offline', handleOffline);
+
+		return () => {
+			window.removeEventListener('online', handleOnline);
+			window.removeEventListener('offline', handleOffline);
+		};
+	}, []);
 
 	// 前回の解錠時間をローカルストレージから取得
 	useEffect(() => {
@@ -6915,6 +7212,11 @@ export default function QrCodeDisplay() {
 
 	// QRコードの生成関数
 	const generateQrCode = async (memberId: string) => {
+		if (!isOnline) {
+			setLoading(false);
+			return;
+		}
+
 		try {
 			const dataUrl = await QRCode.toDataURL(memberId, {
 				width: 250,
@@ -6935,7 +7237,7 @@ export default function QrCodeDisplay() {
 
 	// ドア解錠関数
 	const unlockDoor = async () => {
-		if (!userData?.currentMemberId || cooldownActive) return;
+		if (!userData?.currentMemberId || cooldownActive || !isOnline) return;
 
 		setIsUnlocking(true);
 		setUnlockMessage(null);
@@ -6976,18 +7278,27 @@ export default function QrCodeDisplay() {
 
 		// 3分おきに更新
 		const interval = setInterval(() => {
-			if (userData?.currentMemberId) {
+			if (userData?.currentMemberId && isOnline) {
 				generateQrCode(userData.currentMemberId);
 			}
 		}, 3 * 60 * 1000); // 3分 = 180,000ミリ秒
 
 		return () => clearInterval(interval);
-	}, [userData?.currentMemberId]);
+	}, [userData?.currentMemberId, isOnline]);
 
 	if (loading) {
 		return (
 			<div className="py-12 flex justify-center">
 				<LoadingSpinner size="large" />
+			</div>
+		);
+	}
+
+	if (!isOnline) {
+		return (
+			<div className="bg-accent/10 border border-accent/20 rounded-xl p-6 text-center">
+				<p className="mb-2 font-medium">オフラインモードではQRコードと解錠機能を利用できません</p>
+				<p className="text-sm text-foreground/70">インターネット接続を確認してください</p>
 			</div>
 		);
 	}
@@ -7005,11 +7316,12 @@ export default function QrCodeDisplay() {
 
 	return (
 		<div className="text-center">
+			 <ManualInstallButton />
 			{qrCodeDataUrl ? (
 				<>
 					<Button
 						onClick={unlockDoor}
-						disabled={isUnlocking || !userData?.currentMemberId || cooldownActive}
+						disabled={isUnlocking || !userData?.currentMemberId || cooldownActive || !isOnline}
 						className="mb-4"
 					>
 						{isUnlocking
@@ -7035,7 +7347,7 @@ export default function QrCodeDisplay() {
 					</div>
 
 					<p className="text-sm text-foreground/70 mb-4">
-						席にあるQRリーダーへかざして、PCを起動させてください<br/>
+						席にあるQRリーダーへかざして、PCを起動させてください<br />
 					</p>
 				</>
 			) : (
@@ -12018,7 +12330,7 @@ export default function HeroSection() {
 	}, []);
 
 	return (
-		// min-h-screen を min-h-real-screen に変更して安定した高さを確保
+		// min-h-screen を min-h-real-screen に変更して安定した高さを確
 		<section className="relative min-h-real-screen flex items-center overflow-hidden">
 			<div className="fixed inset-0 z-[-1]">
 				<Image
@@ -15463,21 +15775,225 @@ module.exports = {
   },
 }
 -e 
+### FILE: ./public/worker-configuration.js
+
+// PWAのキャッシュ戦略をカスタマイズするための設定
+
+module.exports = {
+	// キャッシュ名のプレフィックス
+	cacheName: 'e-sports-sakura-v1',
+
+	// レスポンスをキャッシュする前に変更するためのコールバック
+	transformResponse: async (response) => {
+		return response;
+	},
+
+	// キャッシュするURLパターン
+	urlPattern: ({ url, sameOrigin, request }) => {
+		// 常にオンラインでの最新情報を必要とするAPIエンドポイント
+		const alwaysOnlineEndpoints = [
+			'/api/unlockDoor',
+			'/api/reservations',
+			'/api/stripe',
+			'/api/veriff'
+		];
+
+		// オンラインが必要なAPIは常にオンラインで取得
+		if (alwaysOnlineEndpoints.some(endpoint => url.pathname.startsWith(endpoint))) {
+			return false;
+		}
+
+		// 同一オリジンのリクエストはキャッシュ
+		return sameOrigin;
+	},
+
+	// キャッシュ戦略
+	handler: 'NetworkFirst',
+
+	// その他のオプション
+	options: {
+		cacheName: 'api-cache',
+		expiration: {
+			// キャッシュの最大期間（1日）
+			maxAgeSeconds: 24 * 60 * 60,
+		},
+	},
+};-e 
+### FILE: ./public/sw.js
+
+if(!self.define){let e,s={};const a=(a,n)=>(a=new URL(a+".js",n).href,s[a]||new Promise((s=>{if("document"in self){const e=document.createElement("script");e.src=a,e.onload=s,document.head.appendChild(e)}else e=a,importScripts(a),s()})).then((()=>{let e=s[a];if(!e)throw new Error(`Module ${a} didn’t register its module`);return e})));self.define=(n,t)=>{const i=e||("document"in self?document.currentScript.src:"")||location.href;if(s[i])return;let r={};const c=e=>a(e,i),o={module:{uri:i},exports:r,require:c};s[i]=Promise.all(n.map((e=>o[e]||c(e)))).then((e=>(t(...e),r)))}}define(["./workbox-00a24876"],(function(e){"use strict";importScripts("fallback-Slak3wb9hnQoHIBLst_J0.js"),self.skipWaiting(),e.clientsClaim(),e.precacheAndRoute([{url:"/_next/app-build-manifest.json",revision:"1a363f2457ed13ef5a8bbad526c82f75"},{url:"/_next/static/Slak3wb9hnQoHIBLst_J0/_buildManifest.js",revision:"3e8f808956618c698946e160e88e820f"},{url:"/_next/static/Slak3wb9hnQoHIBLst_J0/_ssgManifest.js",revision:"b6652df95db52feb4daf4eca35380933"},{url:"/_next/static/chunks/233-01a3a68ac56caf54.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/396-ff0ca3ec62874618.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/413-6f9bfd6ee0c59dc3.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/472-0aa790a872bd04e4.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/691-28a3279a4d0fe2eb.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/755-b2179acaf943e4ff.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/801-2b6d4514b93c1917.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/817e5eb8-532f10fd7f5ecd7c.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/987-81805d841a95398a.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/994-19ddd2438a09ac94.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/_not-found-498c52e3a857af8c.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/dashboard/page-6baab6148413d26f.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/layout-4f9df6deeebfb0ea.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/login/page-66c8d893a0c26c8e.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/lp/page-3b616b9ac48808a3.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/page-1d88030c05dcd202.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/payment/page-57ed8fce54fe8d0b.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/register/complete/page-02f5f78013968600.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/register/layout-2efc2f66f25f22e7.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/register/page-733331b7652ab8a1.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/register/payment/page-6f191d1f8dafdaf0.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/register/personal-info/page-a955d5dda38ba5f1.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/register/verification/page-ad058756a0676994.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/app/reservation/page-64ea1ea16f1c867b.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/bc9e92e6-5effab8fba241f29.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/fd9d1056-87a0e1fa42932f68.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/framework-8883d1e9be70c3da.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/main-4b0314de1eba4616.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/main-app-a56886a277079de4.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/pages/_app-1534f180665c857f.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/pages/_error-a6e4a9a733fdfb2c.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/chunks/polyfills-c67a75d1b6f99dc8.js",revision:"837c0df77fd5009c9e46d446188ecfd0"},{url:"/_next/static/chunks/webpack-4bb5762bb2be86a9.js",revision:"Slak3wb9hnQoHIBLst_J0"},{url:"/_next/static/css/2a94da8ab1502ce2.css",revision:"2a94da8ab1502ce2"},{url:"/icons/apple-icon.png",revision:"e838b032e10bd08f236149b4420b72c4"},{url:"/icons/icon-192x192.png",revision:"f005f941facfbe62f0d32abbc51866fe"},{url:"/icons/icon-512x512.png",revision:"337f057d1ceb9f2af8ebe4cc877d210a"},{url:"/icons/maskable-icon.png",revision:"337f057d1ceb9f2af8ebe4cc877d210a"},{url:"/manifest.json",revision:"68b6640100435be71b5443a581a260f9"},{url:"/next.svg",revision:"8e061864f388b47f33a1c3780831193e"},{url:"/offline.html",revision:"1be1474e31338ca7aa454b463dce503a"},{url:"/vercel.svg",revision:"61c6b19abff40ea7acd577be818f3976"}],{ignoreURLParametersMatching:[]}),e.cleanupOutdatedCaches(),e.registerRoute("/",new e.NetworkFirst({cacheName:"start-url",plugins:[{cacheWillUpdate:async({request:e,response:s,event:a,state:n})=>s&&"opaqueredirect"===s.type?new Response(s.body,{status:200,statusText:"OK",headers:s.headers}):s},{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET"),e.registerRoute(/^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,new e.CacheFirst({cacheName:"google-fonts",plugins:[new e.ExpirationPlugin({maxEntries:30,maxAgeSeconds:2592e3}),{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET"),e.registerRoute(/\.(?:eot|otf|ttc|ttf|woff|woff2|font.css)$/i,new e.CacheFirst({cacheName:"static-font-assets",plugins:[new e.ExpirationPlugin({maxEntries:30,maxAgeSeconds:2592e3}),{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET"),e.registerRoute(/\.(?:jpg|jpeg|gif|png|svg|ico)$/i,new e.CacheFirst({cacheName:"static-image-assets",plugins:[new e.ExpirationPlugin({maxEntries:30,maxAgeSeconds:604800}),{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET"),e.registerRoute(/\/_next\/image\?url=.+$/i,new e.CacheFirst({cacheName:"next-image",plugins:[new e.ExpirationPlugin({maxEntries:30,maxAgeSeconds:604800}),{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET"),e.registerRoute(/\.(?:mp3|wav|ogg)$/i,new e.CacheFirst({cacheName:"static-audio-assets",plugins:[new e.ExpirationPlugin({maxEntries:30,maxAgeSeconds:604800}),{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET"),e.registerRoute(/\.(?:js)$/i,new e.StaleWhileRevalidate({cacheName:"static-js-assets",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400}),{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET"),e.registerRoute(/\.(?:css|less)$/i,new e.StaleWhileRevalidate({cacheName:"static-style-assets",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400}),{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET"),e.registerRoute((({url:e})=>"/dashboard"===e.pathname),new e.NetworkFirst({cacheName:"dashboard-page",plugins:[new e.ExpirationPlugin({maxEntries:4,maxAgeSeconds:3600}),{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET"),e.registerRoute((({url:e})=>e.pathname.startsWith("/api/")),new e.NetworkFirst({cacheName:"apis",networkTimeoutSeconds:10,plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:300}),{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET"),e.registerRoute((({url:e})=>self.origin===e.origin&&!e.pathname.startsWith("/api/")),new e.NetworkFirst({cacheName:"others",networkTimeoutSeconds:10,plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:3600}),{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET"),e.registerRoute((({url:e})=>!self.origin.startsWith(e.origin)),new e.NetworkFirst({cacheName:"cross-origin",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:3600}),{handlerDidError:async({request:e})=>self.fallback(e)}]}),"GET")}));
+-e 
+### FILE: ./public/fallback-Slak3wb9hnQoHIBLst_J0.js
+
+(()=>{"use strict";self.fallback=async e=>"document"===e.destination?caches.match("/offline.html",{ignoreSearch:!0}):Response.error()})();-e 
+### FILE: ./public/workbox-00a24876.js
+
+define(["exports"],(function(t){"use strict";try{self["workbox:core:6.5.4"]&&_()}catch(t){}const e=(t,...e)=>{let s=t;return e.length>0&&(s+=` :: ${JSON.stringify(e)}`),s};class s extends Error{constructor(t,s){super(e(t,s)),this.name=t,this.details=s}}try{self["workbox:routing:6.5.4"]&&_()}catch(t){}const n=t=>t&&"object"==typeof t?t:{handle:t};class i{constructor(t,e,s="GET"){this.handler=n(e),this.match=t,this.method=s}setCatchHandler(t){this.catchHandler=n(t)}}class r extends i{constructor(t,e,s){super((({url:e})=>{const s=t.exec(e.href);if(s&&(e.origin===location.origin||0===s.index))return s.slice(1)}),e,s)}}class a{constructor(){this.t=new Map,this.i=new Map}get routes(){return this.t}addFetchListener(){self.addEventListener("fetch",(t=>{const{request:e}=t,s=this.handleRequest({request:e,event:t});s&&t.respondWith(s)}))}addCacheListener(){self.addEventListener("message",(t=>{if(t.data&&"CACHE_URLS"===t.data.type){const{payload:e}=t.data,s=Promise.all(e.urlsToCache.map((e=>{"string"==typeof e&&(e=[e]);const s=new Request(...e);return this.handleRequest({request:s,event:t})})));t.waitUntil(s),t.ports&&t.ports[0]&&s.then((()=>t.ports[0].postMessage(!0)))}}))}handleRequest({request:t,event:e}){const s=new URL(t.url,location.href);if(!s.protocol.startsWith("http"))return;const n=s.origin===location.origin,{params:i,route:r}=this.findMatchingRoute({event:e,request:t,sameOrigin:n,url:s});let a=r&&r.handler;const o=t.method;if(!a&&this.i.has(o)&&(a=this.i.get(o)),!a)return;let c;try{c=a.handle({url:s,request:t,event:e,params:i})}catch(t){c=Promise.reject(t)}const h=r&&r.catchHandler;return c instanceof Promise&&(this.o||h)&&(c=c.catch((async n=>{if(h)try{return await h.handle({url:s,request:t,event:e,params:i})}catch(t){t instanceof Error&&(n=t)}if(this.o)return this.o.handle({url:s,request:t,event:e});throw n}))),c}findMatchingRoute({url:t,sameOrigin:e,request:s,event:n}){const i=this.t.get(s.method)||[];for(const r of i){let i;const a=r.match({url:t,sameOrigin:e,request:s,event:n});if(a)return i=a,(Array.isArray(i)&&0===i.length||a.constructor===Object&&0===Object.keys(a).length||"boolean"==typeof a)&&(i=void 0),{route:r,params:i}}return{}}setDefaultHandler(t,e="GET"){this.i.set(e,n(t))}setCatchHandler(t){this.o=n(t)}registerRoute(t){this.t.has(t.method)||this.t.set(t.method,[]),this.t.get(t.method).push(t)}unregisterRoute(t){if(!this.t.has(t.method))throw new s("unregister-route-but-not-found-with-method",{method:t.method});const e=this.t.get(t.method).indexOf(t);if(!(e>-1))throw new s("unregister-route-route-not-registered");this.t.get(t.method).splice(e,1)}}let o;const c=()=>(o||(o=new a,o.addFetchListener(),o.addCacheListener()),o);function h(t,e,n){let a;if("string"==typeof t){const s=new URL(t,location.href);a=new i((({url:t})=>t.href===s.href),e,n)}else if(t instanceof RegExp)a=new r(t,e,n);else if("function"==typeof t)a=new i(t,e,n);else{if(!(t instanceof i))throw new s("unsupported-route-type",{moduleName:"workbox-routing",funcName:"registerRoute",paramName:"capture"});a=t}return c().registerRoute(a),a}try{self["workbox:strategies:6.5.4"]&&_()}catch(t){}const u={cacheWillUpdate:async({response:t})=>200===t.status||0===t.status?t:null},l={googleAnalytics:"googleAnalytics",precache:"precache-v2",prefix:"workbox",runtime:"runtime",suffix:"undefined"!=typeof registration?registration.scope:""},f=t=>[l.prefix,t,l.suffix].filter((t=>t&&t.length>0)).join("-"),w=t=>t||f(l.precache),d=t=>t||f(l.runtime);function p(t,e){const s=new URL(t);for(const t of e)s.searchParams.delete(t);return s.href}class y{constructor(){this.promise=new Promise(((t,e)=>{this.resolve=t,this.reject=e}))}}const m=new Set;function g(t){return"string"==typeof t?new Request(t):t}class R{constructor(t,e){this.h={},Object.assign(this,e),this.event=e.event,this.u=t,this.l=new y,this.p=[],this.m=[...t.plugins],this.R=new Map;for(const t of this.m)this.R.set(t,{});this.event.waitUntil(this.l.promise)}async fetch(t){const{event:e}=this;let n=g(t);if("navigate"===n.mode&&e instanceof FetchEvent&&e.preloadResponse){const t=await e.preloadResponse;if(t)return t}const i=this.hasCallback("fetchDidFail")?n.clone():null;try{for(const t of this.iterateCallbacks("requestWillFetch"))n=await t({request:n.clone(),event:e})}catch(t){if(t instanceof Error)throw new s("plugin-error-request-will-fetch",{thrownErrorMessage:t.message})}const r=n.clone();try{let t;t=await fetch(n,"navigate"===n.mode?void 0:this.u.fetchOptions);for(const s of this.iterateCallbacks("fetchDidSucceed"))t=await s({event:e,request:r,response:t});return t}catch(t){throw i&&await this.runCallbacks("fetchDidFail",{error:t,event:e,originalRequest:i.clone(),request:r.clone()}),t}}async fetchAndCachePut(t){const e=await this.fetch(t),s=e.clone();return this.waitUntil(this.cachePut(t,s)),e}async cacheMatch(t){const e=g(t);let s;const{cacheName:n,matchOptions:i}=this.u,r=await this.getCacheKey(e,"read"),a=Object.assign(Object.assign({},i),{cacheName:n});s=await caches.match(r,a);for(const t of this.iterateCallbacks("cachedResponseWillBeUsed"))s=await t({cacheName:n,matchOptions:i,cachedResponse:s,request:r,event:this.event})||void 0;return s}async cachePut(t,e){const n=g(t);var i;await(i=0,new Promise((t=>setTimeout(t,i))));const r=await this.getCacheKey(n,"write");if(!e)throw new s("cache-put-with-no-response",{url:(a=r.url,new URL(String(a),location.href).href.replace(new RegExp(`^${location.origin}`),""))});var a;const o=await this.v(e);if(!o)return!1;const{cacheName:c,matchOptions:h}=this.u,u=await self.caches.open(c),l=this.hasCallback("cacheDidUpdate"),f=l?await async function(t,e,s,n){const i=p(e.url,s);if(e.url===i)return t.match(e,n);const r=Object.assign(Object.assign({},n),{ignoreSearch:!0}),a=await t.keys(e,r);for(const e of a)if(i===p(e.url,s))return t.match(e,n)}(u,r.clone(),["__WB_REVISION__"],h):null;try{await u.put(r,l?o.clone():o)}catch(t){if(t instanceof Error)throw"QuotaExceededError"===t.name&&await async function(){for(const t of m)await t()}(),t}for(const t of this.iterateCallbacks("cacheDidUpdate"))await t({cacheName:c,oldResponse:f,newResponse:o.clone(),request:r,event:this.event});return!0}async getCacheKey(t,e){const s=`${t.url} | ${e}`;if(!this.h[s]){let n=t;for(const t of this.iterateCallbacks("cacheKeyWillBeUsed"))n=g(await t({mode:e,request:n,event:this.event,params:this.params}));this.h[s]=n}return this.h[s]}hasCallback(t){for(const e of this.u.plugins)if(t in e)return!0;return!1}async runCallbacks(t,e){for(const s of this.iterateCallbacks(t))await s(e)}*iterateCallbacks(t){for(const e of this.u.plugins)if("function"==typeof e[t]){const s=this.R.get(e),n=n=>{const i=Object.assign(Object.assign({},n),{state:s});return e[t](i)};yield n}}waitUntil(t){return this.p.push(t),t}async doneWaiting(){let t;for(;t=this.p.shift();)await t}destroy(){this.l.resolve(null)}async v(t){let e=t,s=!1;for(const t of this.iterateCallbacks("cacheWillUpdate"))if(e=await t({request:this.request,response:e,event:this.event})||void 0,s=!0,!e)break;return s||e&&200!==e.status&&(e=void 0),e}}class v{constructor(t={}){this.cacheName=d(t.cacheName),this.plugins=t.plugins||[],this.fetchOptions=t.fetchOptions,this.matchOptions=t.matchOptions}handle(t){const[e]=this.handleAll(t);return e}handleAll(t){t instanceof FetchEvent&&(t={event:t,request:t.request});const e=t.event,s="string"==typeof t.request?new Request(t.request):t.request,n="params"in t?t.params:void 0,i=new R(this,{event:e,request:s,params:n}),r=this.q(i,s,e);return[r,this.D(r,i,s,e)]}async q(t,e,n){let i;await t.runCallbacks("handlerWillStart",{event:n,request:e});try{if(i=await this.U(e,t),!i||"error"===i.type)throw new s("no-response",{url:e.url})}catch(s){if(s instanceof Error)for(const r of t.iterateCallbacks("handlerDidError"))if(i=await r({error:s,event:n,request:e}),i)break;if(!i)throw s}for(const s of t.iterateCallbacks("handlerWillRespond"))i=await s({event:n,request:e,response:i});return i}async D(t,e,s,n){let i,r;try{i=await t}catch(r){}try{await e.runCallbacks("handlerDidRespond",{event:n,request:s,response:i}),await e.doneWaiting()}catch(t){t instanceof Error&&(r=t)}if(await e.runCallbacks("handlerDidComplete",{event:n,request:s,response:i,error:r}),e.destroy(),r)throw r}}function b(t){t.then((()=>{}))}function q(){return q=Object.assign?Object.assign.bind():function(t){for(var e=1;e<arguments.length;e++){var s=arguments[e];for(var n in s)({}).hasOwnProperty.call(s,n)&&(t[n]=s[n])}return t},q.apply(null,arguments)}let D,U;const x=new WeakMap,I=new WeakMap,L=new WeakMap,E=new WeakMap,C=new WeakMap;let N={get(t,e,s){if(t instanceof IDBTransaction){if("done"===e)return I.get(t);if("objectStoreNames"===e)return t.objectStoreNames||L.get(t);if("store"===e)return s.objectStoreNames[1]?void 0:s.objectStore(s.objectStoreNames[0])}return B(t[e])},set:(t,e,s)=>(t[e]=s,!0),has:(t,e)=>t instanceof IDBTransaction&&("done"===e||"store"===e)||e in t};function O(t){return t!==IDBDatabase.prototype.transaction||"objectStoreNames"in IDBTransaction.prototype?(U||(U=[IDBCursor.prototype.advance,IDBCursor.prototype.continue,IDBCursor.prototype.continuePrimaryKey])).includes(t)?function(...e){return t.apply(T(this),e),B(x.get(this))}:function(...e){return B(t.apply(T(this),e))}:function(e,...s){const n=t.call(T(this),e,...s);return L.set(n,e.sort?e.sort():[e]),B(n)}}function k(t){return"function"==typeof t?O(t):(t instanceof IDBTransaction&&function(t){if(I.has(t))return;const e=new Promise(((e,s)=>{const n=()=>{t.removeEventListener("complete",i),t.removeEventListener("error",r),t.removeEventListener("abort",r)},i=()=>{e(),n()},r=()=>{s(t.error||new DOMException("AbortError","AbortError")),n()};t.addEventListener("complete",i),t.addEventListener("error",r),t.addEventListener("abort",r)}));I.set(t,e)}(t),e=t,(D||(D=[IDBDatabase,IDBObjectStore,IDBIndex,IDBCursor,IDBTransaction])).some((t=>e instanceof t))?new Proxy(t,N):t);var e}function B(t){if(t instanceof IDBRequest)return function(t){const e=new Promise(((e,s)=>{const n=()=>{t.removeEventListener("success",i),t.removeEventListener("error",r)},i=()=>{e(B(t.result)),n()},r=()=>{s(t.error),n()};t.addEventListener("success",i),t.addEventListener("error",r)}));return e.then((e=>{e instanceof IDBCursor&&x.set(e,t)})).catch((()=>{})),C.set(e,t),e}(t);if(E.has(t))return E.get(t);const e=k(t);return e!==t&&(E.set(t,e),C.set(e,t)),e}const T=t=>C.get(t);const M=["get","getKey","getAll","getAllKeys","count"],P=["put","add","delete","clear"],W=new Map;function j(t,e){if(!(t instanceof IDBDatabase)||e in t||"string"!=typeof e)return;if(W.get(e))return W.get(e);const s=e.replace(/FromIndex$/,""),n=e!==s,i=P.includes(s);if(!(s in(n?IDBIndex:IDBObjectStore).prototype)||!i&&!M.includes(s))return;const r=async function(t,...e){const r=this.transaction(t,i?"readwrite":"readonly");let a=r.store;return n&&(a=a.index(e.shift())),(await Promise.all([a[s](...e),i&&r.done]))[0]};return W.set(e,r),r}N=(t=>q({},t,{get:(e,s,n)=>j(e,s)||t.get(e,s,n),has:(e,s)=>!!j(e,s)||t.has(e,s)}))(N);try{self["workbox:expiration:6.5.4"]&&_()}catch(t){}const S="cache-entries",K=t=>{const e=new URL(t,location.href);return e.hash="",e.href};class A{constructor(t){this._=null,this.I=t}L(t){const e=t.createObjectStore(S,{keyPath:"id"});e.createIndex("cacheName","cacheName",{unique:!1}),e.createIndex("timestamp","timestamp",{unique:!1})}C(t){this.L(t),this.I&&function(t,{blocked:e}={}){const s=indexedDB.deleteDatabase(t);e&&s.addEventListener("blocked",(t=>e(t.oldVersion,t))),B(s).then((()=>{}))}(this.I)}async setTimestamp(t,e){const s={url:t=K(t),timestamp:e,cacheName:this.I,id:this.N(t)},n=(await this.getDb()).transaction(S,"readwrite",{durability:"relaxed"});await n.store.put(s),await n.done}async getTimestamp(t){const e=await this.getDb(),s=await e.get(S,this.N(t));return null==s?void 0:s.timestamp}async expireEntries(t,e){const s=await this.getDb();let n=await s.transaction(S).store.index("timestamp").openCursor(null,"prev");const i=[];let r=0;for(;n;){const s=n.value;s.cacheName===this.I&&(t&&s.timestamp<t||e&&r>=e?i.push(n.value):r++),n=await n.continue()}const a=[];for(const t of i)await s.delete(S,t.id),a.push(t.url);return a}N(t){return this.I+"|"+K(t)}async getDb(){return this._||(this._=await function(t,e,{blocked:s,upgrade:n,blocking:i,terminated:r}={}){const a=indexedDB.open(t,e),o=B(a);return n&&a.addEventListener("upgradeneeded",(t=>{n(B(a.result),t.oldVersion,t.newVersion,B(a.transaction),t)})),s&&a.addEventListener("blocked",(t=>s(t.oldVersion,t.newVersion,t))),o.then((t=>{r&&t.addEventListener("close",(()=>r())),i&&t.addEventListener("versionchange",(t=>i(t.oldVersion,t.newVersion,t)))})).catch((()=>{})),o}("workbox-expiration",1,{upgrade:this.C.bind(this)})),this._}}class F{constructor(t,e={}){this.O=!1,this.k=!1,this.B=e.maxEntries,this.T=e.maxAgeSeconds,this.M=e.matchOptions,this.I=t,this.P=new A(t)}async expireEntries(){if(this.O)return void(this.k=!0);this.O=!0;const t=this.T?Date.now()-1e3*this.T:0,e=await this.P.expireEntries(t,this.B),s=await self.caches.open(this.I);for(const t of e)await s.delete(t,this.M);this.O=!1,this.k&&(this.k=!1,b(this.expireEntries()))}async updateTimestamp(t){await this.P.setTimestamp(t,Date.now())}async isURLExpired(t){if(this.T){const e=await this.P.getTimestamp(t),s=Date.now()-1e3*this.T;return void 0===e||e<s}return!1}async delete(){this.k=!1,await this.P.expireEntries(1/0)}}function H(t,e){const s=e();return t.waitUntil(s),s}try{self["workbox:precaching:6.5.4"]&&_()}catch(t){}function $(t){if(!t)throw new s("add-to-cache-list-unexpected-type",{entry:t});if("string"==typeof t){const e=new URL(t,location.href);return{cacheKey:e.href,url:e.href}}const{revision:e,url:n}=t;if(!n)throw new s("add-to-cache-list-unexpected-type",{entry:t});if(!e){const t=new URL(n,location.href);return{cacheKey:t.href,url:t.href}}const i=new URL(n,location.href),r=new URL(n,location.href);return i.searchParams.set("__WB_REVISION__",e),{cacheKey:i.href,url:r.href}}class G{constructor(){this.updatedURLs=[],this.notUpdatedURLs=[],this.handlerWillStart=async({request:t,state:e})=>{e&&(e.originalRequest=t)},this.cachedResponseWillBeUsed=async({event:t,state:e,cachedResponse:s})=>{if("install"===t.type&&e&&e.originalRequest&&e.originalRequest instanceof Request){const t=e.originalRequest.url;s?this.notUpdatedURLs.push(t):this.updatedURLs.push(t)}return s}}}class V{constructor({precacheController:t}){this.cacheKeyWillBeUsed=async({request:t,params:e})=>{const s=(null==e?void 0:e.cacheKey)||this.W.getCacheKeyForURL(t.url);return s?new Request(s,{headers:t.headers}):t},this.W=t}}let J,Q;async function z(t,e){let n=null;if(t.url){n=new URL(t.url).origin}if(n!==self.location.origin)throw new s("cross-origin-copy-response",{origin:n});const i=t.clone(),r={headers:new Headers(i.headers),status:i.status,statusText:i.statusText},a=e?e(r):r,o=function(){if(void 0===J){const t=new Response("");if("body"in t)try{new Response(t.body),J=!0}catch(t){J=!1}J=!1}return J}()?i.body:await i.blob();return new Response(o,a)}class X extends v{constructor(t={}){t.cacheName=w(t.cacheName),super(t),this.j=!1!==t.fallbackToNetwork,this.plugins.push(X.copyRedirectedCacheableResponsesPlugin)}async U(t,e){const s=await e.cacheMatch(t);return s||(e.event&&"install"===e.event.type?await this.S(t,e):await this.K(t,e))}async K(t,e){let n;const i=e.params||{};if(!this.j)throw new s("missing-precache-entry",{cacheName:this.cacheName,url:t.url});{const s=i.integrity,r=t.integrity,a=!r||r===s;n=await e.fetch(new Request(t,{integrity:"no-cors"!==t.mode?r||s:void 0})),s&&a&&"no-cors"!==t.mode&&(this.A(),await e.cachePut(t,n.clone()))}return n}async S(t,e){this.A();const n=await e.fetch(t);if(!await e.cachePut(t,n.clone()))throw new s("bad-precaching-response",{url:t.url,status:n.status});return n}A(){let t=null,e=0;for(const[s,n]of this.plugins.entries())n!==X.copyRedirectedCacheableResponsesPlugin&&(n===X.defaultPrecacheCacheabilityPlugin&&(t=s),n.cacheWillUpdate&&e++);0===e?this.plugins.push(X.defaultPrecacheCacheabilityPlugin):e>1&&null!==t&&this.plugins.splice(t,1)}}X.defaultPrecacheCacheabilityPlugin={cacheWillUpdate:async({response:t})=>!t||t.status>=400?null:t},X.copyRedirectedCacheableResponsesPlugin={cacheWillUpdate:async({response:t})=>t.redirected?await z(t):t};class Y{constructor({cacheName:t,plugins:e=[],fallbackToNetwork:s=!0}={}){this.F=new Map,this.H=new Map,this.$=new Map,this.u=new X({cacheName:w(t),plugins:[...e,new V({precacheController:this})],fallbackToNetwork:s}),this.install=this.install.bind(this),this.activate=this.activate.bind(this)}get strategy(){return this.u}precache(t){this.addToCacheList(t),this.G||(self.addEventListener("install",this.install),self.addEventListener("activate",this.activate),this.G=!0)}addToCacheList(t){const e=[];for(const n of t){"string"==typeof n?e.push(n):n&&void 0===n.revision&&e.push(n.url);const{cacheKey:t,url:i}=$(n),r="string"!=typeof n&&n.revision?"reload":"default";if(this.F.has(i)&&this.F.get(i)!==t)throw new s("add-to-cache-list-conflicting-entries",{firstEntry:this.F.get(i),secondEntry:t});if("string"!=typeof n&&n.integrity){if(this.$.has(t)&&this.$.get(t)!==n.integrity)throw new s("add-to-cache-list-conflicting-integrities",{url:i});this.$.set(t,n.integrity)}if(this.F.set(i,t),this.H.set(i,r),e.length>0){const t=`Workbox is precaching URLs without revision info: ${e.join(", ")}\nThis is generally NOT safe. Learn more at https://bit.ly/wb-precache`;console.warn(t)}}}install(t){return H(t,(async()=>{const e=new G;this.strategy.plugins.push(e);for(const[e,s]of this.F){const n=this.$.get(s),i=this.H.get(e),r=new Request(e,{integrity:n,cache:i,credentials:"same-origin"});await Promise.all(this.strategy.handleAll({params:{cacheKey:s},request:r,event:t}))}const{updatedURLs:s,notUpdatedURLs:n}=e;return{updatedURLs:s,notUpdatedURLs:n}}))}activate(t){return H(t,(async()=>{const t=await self.caches.open(this.strategy.cacheName),e=await t.keys(),s=new Set(this.F.values()),n=[];for(const i of e)s.has(i.url)||(await t.delete(i),n.push(i.url));return{deletedURLs:n}}))}getURLsToCacheKeys(){return this.F}getCachedURLs(){return[...this.F.keys()]}getCacheKeyForURL(t){const e=new URL(t,location.href);return this.F.get(e.href)}getIntegrityForCacheKey(t){return this.$.get(t)}async matchPrecache(t){const e=t instanceof Request?t.url:t,s=this.getCacheKeyForURL(e);if(s){return(await self.caches.open(this.strategy.cacheName)).match(s)}}createHandlerBoundToURL(t){const e=this.getCacheKeyForURL(t);if(!e)throw new s("non-precached-url",{url:t});return s=>(s.request=new Request(t),s.params=Object.assign({cacheKey:e},s.params),this.strategy.handle(s))}}const Z=()=>(Q||(Q=new Y),Q);class tt extends i{constructor(t,e){super((({request:s})=>{const n=t.getURLsToCacheKeys();for(const i of function*(t,{ignoreURLParametersMatching:e=[/^utm_/,/^fbclid$/],directoryIndex:s="index.html",cleanURLs:n=!0,urlManipulation:i}={}){const r=new URL(t,location.href);r.hash="",yield r.href;const a=function(t,e=[]){for(const s of[...t.searchParams.keys()])e.some((t=>t.test(s)))&&t.searchParams.delete(s);return t}(r,e);if(yield a.href,s&&a.pathname.endsWith("/")){const t=new URL(a.href);t.pathname+=s,yield t.href}if(n){const t=new URL(a.href);t.pathname+=".html",yield t.href}if(i){const t=i({url:r});for(const e of t)yield e.href}}(s.url,e)){const e=n.get(i);if(e){return{cacheKey:e,integrity:t.getIntegrityForCacheKey(e)}}}}),t.strategy)}}t.CacheFirst=class extends v{async U(t,e){let n,i=await e.cacheMatch(t);if(!i)try{i=await e.fetchAndCachePut(t)}catch(t){t instanceof Error&&(n=t)}if(!i)throw new s("no-response",{url:t.url,error:n});return i}},t.ExpirationPlugin=class{constructor(t={}){this.cachedResponseWillBeUsed=async({event:t,request:e,cacheName:s,cachedResponse:n})=>{if(!n)return null;const i=this.V(n),r=this.J(s);b(r.expireEntries());const a=r.updateTimestamp(e.url);if(t)try{t.waitUntil(a)}catch(t){}return i?n:null},this.cacheDidUpdate=async({cacheName:t,request:e})=>{const s=this.J(t);await s.updateTimestamp(e.url),await s.expireEntries()},this.X=t,this.T=t.maxAgeSeconds,this.Y=new Map,t.purgeOnQuotaError&&function(t){m.add(t)}((()=>this.deleteCacheAndMetadata()))}J(t){if(t===d())throw new s("expire-custom-caches-only");let e=this.Y.get(t);return e||(e=new F(t,this.X),this.Y.set(t,e)),e}V(t){if(!this.T)return!0;const e=this.Z(t);if(null===e)return!0;return e>=Date.now()-1e3*this.T}Z(t){if(!t.headers.has("date"))return null;const e=t.headers.get("date"),s=new Date(e).getTime();return isNaN(s)?null:s}async deleteCacheAndMetadata(){for(const[t,e]of this.Y)await self.caches.delete(t),await e.delete();this.Y=new Map}},t.NetworkFirst=class extends v{constructor(t={}){super(t),this.plugins.some((t=>"cacheWillUpdate"in t))||this.plugins.unshift(u),this.tt=t.networkTimeoutSeconds||0}async U(t,e){const n=[],i=[];let r;if(this.tt){const{id:s,promise:a}=this.et({request:t,logs:n,handler:e});r=s,i.push(a)}const a=this.st({timeoutId:r,request:t,logs:n,handler:e});i.push(a);const o=await e.waitUntil((async()=>await e.waitUntil(Promise.race(i))||await a)());if(!o)throw new s("no-response",{url:t.url});return o}et({request:t,logs:e,handler:s}){let n;return{promise:new Promise((e=>{n=setTimeout((async()=>{e(await s.cacheMatch(t))}),1e3*this.tt)})),id:n}}async st({timeoutId:t,request:e,logs:s,handler:n}){let i,r;try{r=await n.fetchAndCachePut(e)}catch(t){t instanceof Error&&(i=t)}return t&&clearTimeout(t),!i&&r||(r=await n.cacheMatch(e)),r}},t.StaleWhileRevalidate=class extends v{constructor(t={}){super(t),this.plugins.some((t=>"cacheWillUpdate"in t))||this.plugins.unshift(u)}async U(t,e){const n=e.fetchAndCachePut(t).catch((()=>{}));e.waitUntil(n);let i,r=await e.cacheMatch(t);if(r);else try{r=await n}catch(t){t instanceof Error&&(i=t)}if(!r)throw new s("no-response",{url:t.url,error:i});return r}},t.cleanupOutdatedCaches=function(){self.addEventListener("activate",(t=>{const e=w();t.waitUntil((async(t,e="-precache-")=>{const s=(await self.caches.keys()).filter((s=>s.includes(e)&&s.includes(self.registration.scope)&&s!==t));return await Promise.all(s.map((t=>self.caches.delete(t)))),s})(e).then((t=>{})))}))},t.clientsClaim=function(){self.addEventListener("activate",(()=>self.clients.claim()))},t.precacheAndRoute=function(t,e){!function(t){Z().precache(t)}(t),function(t){const e=Z();h(new tt(e,t))}(e)},t.registerRoute=h}));
+-e 
 ### FILE: ./next.config.js
+
+const withPWA = require('next-pwa')({
+	dest: 'public',
+	disable: process.env.NODE_ENV === 'development',
+	register: true,
+	skipWaiting: true,
+
+	// オフラインフォールバックページ
+	fallbacks: {
+		document: '/offline.html',
+	},
+
+	// カスタムワーカー設定
+	runtimeCaching: [
+		{
+			urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
+			handler: 'CacheFirst',
+			options: {
+				cacheName: 'google-fonts',
+				expiration: {
+					maxEntries: 30,
+					maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+				},
+			},
+		},
+		{
+			urlPattern: /\.(?:eot|otf|ttc|ttf|woff|woff2|font.css)$/i,
+			handler: 'CacheFirst',
+			options: {
+				cacheName: 'static-font-assets',
+				expiration: {
+					maxEntries: 30,
+					maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+				},
+			},
+		},
+		{
+			urlPattern: /\.(?:jpg|jpeg|gif|png|svg|ico)$/i,
+			handler: 'CacheFirst',
+			options: {
+				cacheName: 'static-image-assets',
+				expiration: {
+					maxEntries: 30,
+					maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+				},
+			},
+		},
+		{
+			urlPattern: /\/_next\/image\?url=.+$/i,
+			handler: 'CacheFirst',
+			options: {
+				cacheName: 'next-image',
+				expiration: {
+					maxEntries: 30,
+					maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+				},
+			},
+		},
+		{
+			urlPattern: /\.(?:mp3|wav|ogg)$/i,
+			handler: 'CacheFirst',
+			options: {
+				cacheName: 'static-audio-assets',
+				expiration: {
+					maxEntries: 30,
+					maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+				},
+			},
+		},
+		{
+			urlPattern: /\.(?:js)$/i,
+			handler: 'StaleWhileRevalidate',
+			options: {
+				cacheName: 'static-js-assets',
+				expiration: {
+					maxEntries: 32,
+					maxAgeSeconds: 24 * 60 * 60, // 24 hours
+				},
+			},
+		},
+		{
+			urlPattern: /\.(?:css|less)$/i,
+			handler: 'StaleWhileRevalidate',
+			options: {
+				cacheName: 'static-style-assets',
+				expiration: {
+					maxEntries: 32,
+					maxAgeSeconds: 24 * 60 * 60, // 24 hours
+				},
+			},
+		},
+		{
+			// ダッシュボードページを常に優先的にキャッシュ
+			urlPattern: ({ url }) => {
+				return url.pathname === '/dashboard';
+			},
+			handler: 'NetworkFirst',
+			options: {
+				cacheName: 'dashboard-page',
+				expiration: {
+					maxEntries: 4,
+					maxAgeSeconds: 60 * 60, // 1 hour
+				},
+			},
+		},
+		{
+			urlPattern: ({ url }) => {
+				return url.pathname.startsWith('/api/');
+			},
+			handler: 'NetworkFirst',
+			options: {
+				cacheName: 'apis',
+				expiration: {
+					maxEntries: 32,
+					maxAgeSeconds: 60 * 5, // 5 minutes
+				},
+				networkTimeoutSeconds: 10, // フォールバックまでのタイムアウト
+			},
+		},
+		{
+			urlPattern: ({ url }) => {
+				const isSameOrigin = self.origin === url.origin;
+				return isSameOrigin && !url.pathname.startsWith('/api/');
+			},
+			handler: 'NetworkFirst',
+			options: {
+				cacheName: 'others',
+				expiration: {
+					maxEntries: 32,
+					maxAgeSeconds: 60 * 60, // 1 hour
+				},
+				networkTimeoutSeconds: 10,
+			},
+		},
+		{
+			urlPattern: ({ url }) => {
+				return !self.origin.startsWith(url.origin);
+			},
+			handler: 'NetworkFirst',
+			options: {
+				cacheName: 'cross-origin',
+				expiration: {
+					maxEntries: 32,
+					maxAgeSeconds: 60 * 60, // 1 hour
+				},
+			},
+		},
+	],
+});
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
 	reactStrictMode: true,
 	images: {
 		domains: [
-			'lh3.googleusercontent.com', // Google プロフィール画像用
-			'firebasestorage.googleapis.com', // Firebase Storage 用（後で必要になる場合）
+			'lh3.googleusercontent.com',
+			'firebasestorage.googleapis.com',
 			'd1abhb48aypmuo.cloudfront.net'
 		],
 	},
-}
+};
 
-module.exports = nextConfig-e 
+module.exports = withPWA(nextConfig);-e 
 ### FILE: ./next-env.d.ts
 
 /// <reference types="next" />

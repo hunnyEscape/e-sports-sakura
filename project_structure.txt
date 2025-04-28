@@ -9,8 +9,19 @@
 ├── project_files.md
 ├── project_structure.txt
 ├── public
+│   ├── fallback-Slak3wb9hnQoHIBLst_J0.js
+│   ├── icons
+│   │   ├── apple-icon.png
+│   │   ├── icon-192x192.png
+│   │   ├── icon-512x512.png
+│   │   └── maskable-icon.png
+│   ├── manifest.json
 │   ├── next.svg
-│   └── vercel.svg
+│   ├── offline.html
+│   ├── sw.js
+│   ├── vercel.svg
+│   ├── workbox-00a24876.js
+│   └── worker-configuration.js
 ├── reservation_calendar_related.md
 ├── src
 │   ├── app
@@ -129,7 +140,11 @@
 │   │       ├── PageTransition.tsx
 │   │       ├── ViewportInitializer.tsx
 │   │       ├── button.tsx
-│   │       └── loading-spinner.tsx
+│   │       ├── install-pwa-prompt.tsx
+│   │       ├── loading-spinner.tsx
+│   │       ├── manual-install-button.tsx
+│   │       ├── online-status-detector.tsx
+│   │       └── pwa-update-notifier.tsx
 │   ├── context
 │   │   ├── AudioContext.tsx
 │   │   ├── auth-context.tsx
@@ -152,8 +167,9 @@
 │       ├── api.ts
 │       ├── auth-context.tsx
 │       ├── firebase.ts
-│       └── index.ts
+│       ├── index.ts
+│       └── window.d.ts
 ├── tailwind.config.js
 └── tsconfig.json
 
-47 directories, 109 files
+48 directories, 124 files

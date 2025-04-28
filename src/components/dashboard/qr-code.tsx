@@ -6,7 +6,6 @@ import { useAuth } from '@/context/auth-context';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
 import axios from 'axios';
-import ManualInstallButton from '@/components/ui/manual-install-button';
 
 export default function QrCodeDisplay() {
 	const { userData } = useAuth();
@@ -180,7 +179,6 @@ export default function QrCodeDisplay() {
 
 	return (
 		<div className="text-center">
-			 <ManualInstallButton />
 			{qrCodeDataUrl ? (
 				<>
 					<Button
