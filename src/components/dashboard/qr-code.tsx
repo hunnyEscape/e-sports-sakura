@@ -6,6 +6,7 @@ import { useAuth } from '@/context/auth-context';
 import LoadingSpinner from '@/components/ui/loading-spinner';
 import Button from '@/components/ui/button';
 import axios from 'axios';
+import ManualInstallButton from '@/components/ui/manual-install-button';
 
 export default function QrCodeDisplay() {
 	const { userData } = useAuth();
@@ -14,11 +15,30 @@ export default function QrCodeDisplay() {
 	const [error, setError] = useState<string | null>(null);
 	const [unlockMessage, setUnlockMessage] = useState<string | null>(null);
 	const [isUnlocking, setIsUnlocking] = useState(false);
+	const [isOnline, setIsOnline] = useState(true);
 
 	// 解錠制限のための状態
 	const [cooldownActive, setCooldownActive] = useState(false);
 	const [remainingTime, setRemainingTime] = useState(0);
 	const cooldownPeriod = 3 * 60; // 3分 = 180秒
+
+	// オンライン状態の監視
+	useEffect(() => {
+		// 初期状態設定
+		setIsOnline(navigator.onLine);
+
+		// イベントリスナー
+		const handleOnline = () => setIsOnline(true);
+		const handleOffline = () => setIsOnline(false);
+
+		window.addEventListener('online', handleOnline);
+		window.addEventListener('offline', handleOffline);
+
+		return () => {
+			window.removeEventListener('online', handleOnline);
+			window.removeEventListener('offline', handleOffline);
+		};
+	}, []);
 
 	// 前回の解錠時間をローカルストレージから取得
 	useEffect(() => {
@@ -56,6 +76,11 @@ export default function QrCodeDisplay() {
 
 	// QRコードの生成関数
 	const generateQrCode = async (memberId: string) => {
+		if (!isOnline) {
+			setLoading(false);
+			return;
+		}
+
 		try {
 			const dataUrl = await QRCode.toDataURL(memberId, {
 				width: 250,
@@ -76,7 +101,7 @@ export default function QrCodeDisplay() {
 
 	// ドア解錠関数
 	const unlockDoor = async () => {
-		if (!userData?.currentMemberId || cooldownActive) return;
+		if (!userData?.currentMemberId || cooldownActive || !isOnline) return;
 
 		setIsUnlocking(true);
 		setUnlockMessage(null);
@@ -117,18 +142,27 @@ export default function QrCodeDisplay() {
 
 		// 3分おきに更新
 		const interval = setInterval(() => {
-			if (userData?.currentMemberId) {
+			if (userData?.currentMemberId && isOnline) {
 				generateQrCode(userData.currentMemberId);
 			}
 		}, 3 * 60 * 1000); // 3分 = 180,000ミリ秒
 
 		return () => clearInterval(interval);
-	}, [userData?.currentMemberId]);
+	}, [userData?.currentMemberId, isOnline]);
 
 	if (loading) {
 		return (
 			<div className="py-12 flex justify-center">
 				<LoadingSpinner size="large" />
+			</div>
+		);
+	}
+
+	if (!isOnline) {
+		return (
+			<div className="bg-accent/10 border border-accent/20 rounded-xl p-6 text-center">
+				<p className="mb-2 font-medium">オフラインモードではQRコードと解錠機能を利用できません</p>
+				<p className="text-sm text-foreground/70">インターネット接続を確認してください</p>
 			</div>
 		);
 	}
@@ -146,11 +180,12 @@ export default function QrCodeDisplay() {
 
 	return (
 		<div className="text-center">
+			 <ManualInstallButton />
 			{qrCodeDataUrl ? (
 				<>
 					<Button
 						onClick={unlockDoor}
-						disabled={isUnlocking || !userData?.currentMemberId || cooldownActive}
+						disabled={isUnlocking || !userData?.currentMemberId || cooldownActive || !isOnline}
 						className="mb-4"
 					>
 						{isUnlocking
@@ -176,7 +211,7 @@ export default function QrCodeDisplay() {
 					</div>
 
 					<p className="text-sm text-foreground/70 mb-4">
-						席にあるQRリーダーへかざして、PCを起動させてください<br/>
+						席にあるQRリーダーへかざして、PCを起動させてください<br />
 					</p>
 				</>
 			) : (

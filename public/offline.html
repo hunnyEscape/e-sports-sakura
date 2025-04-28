@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>オフライン - E-Sports Sakura</title>
+	<style>
+		body {
+			font-family: 'Noto Sans JP', sans-serif;
+			background-color: #1f1c1a;
+			color: #fefefe;
+			margin: 0;
+			padding: 0;
+			display: flex;
+			flex-direction: column;
+			min-height: 100vh;
+			justify-content: center;
+			align-items: center;
+			text-align: center;
+		}
+
+		.container {
+			max-width: 90%;
+			width: 400px;
+			padding: 2rem;
+		}
+
+		.logo {
+			font-size: 1.5rem;
+			font-weight: bold;
+			color: #fb923c;
+			margin-bottom: 2rem;
+		}
+
+		.message {
+			background-color: rgba(251, 146, 60, 0.1);
+			border: 1px solid rgba(251, 146, 60, 0.2);
+			border-radius: 0.75rem;
+			padding: 1.5rem;
+			margin-bottom: 2rem;
+		}
+
+		.title {
+			font-size: 1.25rem;
+			font-weight: 600;
+			margin-bottom: 1rem;
+		}
+
+		.button {
+			background-color: #fb923c;
+			color: white;
+			border: none;
+			border-radius: 0.5rem;
+			padding: 0.75rem 1.5rem;
+			font-weight: 500;
+			cursor: pointer;
+		}
+	</style>
+</head>
+
+<body>
+	<div class="container">
+		<div class="logo">E-Sports Sakura</div>
+		<div class="message">
+			<h1 class="title">インターネット接続がありません</h1>
+			<p>
+				現在オフラインモードです。会員ページやQRコードの表示には
+				インターネット接続が必要です。
+			</p>
+		</div>
+		<button class="button" onclick="window.location.reload()">
+			再読み込み
+		</button>
+	</div>
+</body>
+
+</html>

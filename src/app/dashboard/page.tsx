@@ -13,6 +13,7 @@ import QrCodeDisplay from '@/components/dashboard/qr-code';
 import MonthlyUsageHistory from '@/components/dashboard/monthly-usage-history';
 import ReservationHistory from '@/components/dashboard/reservation-history';
 import CouponsTab from '@/components/dashboard/coupons';
+import OnlineStatusDetector from '@/components/ui/online-status-detector';
 import { PaymentProvider } from '@/context/payment-context';
 import PaymentMethodManager from '@/components/payment/payment-method-manager';
 import { Calendar, Clock, CreditCard } from 'lucide-react';
@@ -38,6 +39,7 @@ export default function DashboardPage() {
 		<ProtectedRoute>
 			<ReservationProvider>
 				<div className="min-h-screen bg-background text-foreground">
+					<OnlineStatusDetector />
 					<main className="container mx-auto px-4 py-3 md:py-8">
 						{userData && userData.registrationCompleted && (<>
 							<div className="flex items-center justify-between h-16 border-b border-border">
