@@ -12,7 +12,7 @@ module.exports = {
 				// LP用カラーパレット
 				background: '#1f1c1a',      // 深めブラウン
 				foreground: '#fefefe',      // 優しい白
-				accent: '#fb923c',          // orange-400（椅子とマッチ）
+				accent: '#fb923c',          // orange-400（椅子とマッチ
 				highlight: '#16a34a',       // emerald-600（安心感）
 				border: '#3f3f46',          // neutral-700（境界）
 			},
