@@ -23,6 +23,7 @@ export interface BranchDocument {
 	description?: string;
 	amenities?: string[];
 	layoutImagePath?: string;
+	seatImagePath?: string;
 	mapImagePath?: string;
 	location?: {
 		latitude: number;
@@ -1569,6 +1570,8 @@ import QrCodeDisplay from '@/components/dashboard/qr-code';
 import MonthlyUsageHistory from '@/components/dashboard/monthly-usage-history';
 import ReservationHistory from '@/components/dashboard/reservation-history';
 import CouponsTab from '@/components/dashboard/coupons';
+import { PaymentProvider } from '@/context/payment-context';
+import PaymentMethodManager from '@/components/payment/payment-method-manager';
 import { Calendar, Clock, CreditCard } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -1686,82 +1689,15 @@ export default function DashboardPage() {
 											<ReservationHistory />
 										</div>
 									)}
+
 									{activeTab === 'payment' && (
 										<div className="bg-border/5 rounded-2xl shadow-soft p-2 md:p-6">
-											<h2 className="text-lg font-semibold mb-4">決済情報管理</h2>
-											{userData?.stripe?.paymentMethodId ? (
-												<div className="space-y-6">
-													<div className="p-4 border border-border/30 rounded-lg">
-														<div className="flex items-center justify-between mb-2">
-															<div className="flex items-center">
-																<CreditCard className="w-5 h-5 text-accent mr-2" />
-																<span className="font-medium">登録済みのカード</span>
-															</div>
-															<span className="text-xs bg-highlight/10 text-highlight px-2 py-1 rounded-full">
-																有効
-															</span>
-														</div>
-														<div className="text-sm text-foreground/70">
-															<p>••••••••••••{userData.stripe.paymentMethodId.slice(-4)}</p>
-															{/*<p className="mt-1">更新日: {new Date(userData.stripe.updatedAt).toLocaleDateString('ja-JP')}</p>*/}
-														</div>
-													</div>
-
-													<div className="flex justify-between items-center">
-														{/*<Button
-															href="/payment"
-															variant="outline"
-															disabled={true}
-														>
-															カード情報を更新
-														</Button>*/}
-
-														<Button
-															variant="outline"
-															className="opacity-50 pointer-events-auto cursor-pointer"
-														>
-															カード情報を更新（未実装）
-														</Button>
-
-
-														<button
-															className="text-sm text-foreground/60 hover:text-accent"
-														>
-															カード情報について
-														</button>
-													</div>
-
-													<div className="mt-6 border-t border-border/20 pt-6">
-														<h3 className="text-md font-medium mb-3">請求について</h3>
-														<p className="text-sm text-foreground/70 mb-4">
-															利用料金は月末にまとめて請求されます。従量課金制のため、実際に利用した分のみの請求となります。
-														</p>
-														<div className="bg-border/10 p-3 rounded-md text-sm">
-															<p className="font-medium">次回請求予定</p>
-															<p className="text-foreground/70 mt-1">2025年4月30日</p>
-														</div>
-													</div>
-												</div>
-											) : (
-												<div className="text-center py-8">
-													<CreditCard className="w-12 h-12 text-accent/40 mx-auto mb-4" />
-													<h3 className="text-lg font-medium mb-2">支払い方法が未登録です</h3>
-													<p className="text-foreground/60 mb-6 max-w-md mx-auto">
-														サービスをご利用いただくには、クレジットカードまたはデビットカードの登録が必要です。
-													</p>
-													<Button
-														href="/payment"
-														variant="primary"
-													>
-														支払い方法を登録する
-													</Button>
-												</div>
-											)}
+											<PaymentProvider>
+												<PaymentMethodManager />
+											</PaymentProvider>
 										</div>
 									)}
 								</div>
-
-								{/* クイックアクション */}
 							</>
 						)}
 					</main>
@@ -1943,35 +1879,10 @@ const ReservationPageContent: React.FC = () => {
 		}
 	};
 
+
 	return (
-		<div className="min-h-screen bg-background px-4">
-			<header className="relative bg-background/80 backdrop-blur-sm border-b border-border sticky top-0 z-10 mb-10">
-				<div className="container mx-auto px-4">
-					<div className="flex items-center justify-between h-16">
-						<Link href="/lp" className="flex items-center">
-							<span className="font-bold text-xl text-accent">E-Sports Sakura</span>
-						</Link>
-						<div className="flex items-center space-x-4">
-							{user?.photoURL && (
-								<Image
-									src={user.photoURL}
-									alt={user.displayName || 'ユーザー'}
-									width={32}
-									height={32}
-									className="rounded-full"
-								/>
-							)}
-							<button
-								onClick={handleSignOut}
-								disabled={isLoggingOut}
-								className="text-foreground/70 hover:text-accent"
-							>
-								{isLoggingOut ? <LoadingSpinner size="small" /> : 'ログアウト'}
-							</button>
-						</div>
-					</div>
-				</div>
-			</header>
+		<div className="min-h-screen bg-background px-4 py-10">
+
 			<motion.div
 				initial={{ opacity: 0, y: 20 }}
 				animate={{ opacity: 1, y: 0 }}
@@ -1979,9 +1890,15 @@ const ReservationPageContent: React.FC = () => {
 			>
 				{/* Header with back button */}
 				<div className="max-w-3xl mx-auto mb-6 flex items-center">
-					{currentStep > ReservationStep.SELECT_BRANCH && (
+					{currentStep >= ReservationStep.SELECT_BRANCH && (
 						<button
-							onClick={handleBack}
+							onClick={() => {
+								if (currentStep === ReservationStep.SELECT_BRANCH) {
+									router.push('/dashboard');
+								} else {
+									handleBack();
+								}
+							}}
 							className="mr-3 p-2 rounded-full bg-border/50 border border-border/20 hover:bg-border/20 transition-colors"
 							aria-label="戻る"
 						>
@@ -2313,6 +2230,7 @@ export default function PaymentPage() {
 import { AuthProvider } from '@/context/auth-context';
 import { AudioProvider } from '@/context/AudioContext';
 import { ReservationProvider } from '@/context/reservation-context';
+import ViewportInitializer from '@/components/ui/ViewportInitializer';
 import './globals.css';
 import type { Metadata } from 'next';
 
@@ -2332,6 +2250,7 @@ export default function SecLayout({
 				<AudioProvider>
 					<AuthProvider>
 						<ReservationProvider>
+							<ViewportInitializer />
 							{children}
 						</ReservationProvider>
 					</AuthProvider>
@@ -3442,10 +3361,275 @@ export async function POST(request: NextRequest) {
 			clientSecret: setupIntent.client_secret
 		});
 
-	} catch (error) {
+	} catch (error: any) {
 		console.error('Error creating Setup Intent:', error);
+
+		// エラーメッセージをより詳細に
+		let errorMessage = 'SetupIntentの作成に失敗しました';
+		let statusCode = 500;
+
+		if (error.type) {
+			// Stripeエラーの場合
+			switch (error.type) {
+				case 'StripeCardError':
+					errorMessage = 'カード情報に問題があります';
+					statusCode = 400;
+					break;
+				case 'StripeInvalidRequestError':
+					errorMessage = 'リクエストが無効です';
+					statusCode = 400;
+					break;
+				case 'StripeAuthenticationError':
+					errorMessage = 'Stripe認証エラー';
+					statusCode = 401;
+					break;
+				default:
+					errorMessage = `Stripeエラー: ${error.message}`;
+			}
+		}
+
 		return NextResponse.json(
-			{ error: 'Internal server error' },
+			{ error: errorMessage, details: process.env.NODE_ENV === 'development' ? error.message : undefined },
+			{ status: statusCode }
+		);
+	}
+}-e 
+### FILE: ./src/app/api/stripe/payment-methods/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
+import Stripe from 'stripe';
+import { auth } from 'firebase-admin';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { initAdminApp } from '@/lib/firebase-admin';
+
+// Firebaseの初期化
+initAdminApp();
+const db = getFirestore();
+
+// Stripeの初期化
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+	apiVersion: '2025-03-31.basil',
+});
+
+// 認証チェック関数
+async function authenticateUser(req: NextRequest) {
+	try {
+		const authHeader = req.headers.get('Authorization');
+		if (!authHeader || !authHeader.startsWith('Bearer ')) {
+			return { authenticated: false, error: 'Unauthorized' };
+		}
+
+		const token = authHeader.split('Bearer ')[1];
+		const decodedToken = await auth().verifyIdToken(token);
+		return { authenticated: true, uid: decodedToken.uid };
+	} catch (error) {
+		console.error('Authentication error:', error);
+		return { authenticated: false, error: 'Invalid token' };
+	}
+}
+
+// GET: 支払い方法の取得
+export async function GET(req: NextRequest) {
+	try {
+		// ユーザー認証
+		const authResult = await authenticateUser(req);
+		if (!authResult.authenticated) {
+			return NextResponse.json({ error: authResult.error }, { status: 401 });
+		}
+
+		const uid = authResult.uid!;
+		// Firestoreからユーザーデータ取得
+		const userDoc = await db.collection('users').doc(uid).get();
+		if (!userDoc.exists) {
+			return NextResponse.json({ error: 'User not found' }, { status: 404 });
+		}
+
+		const userData = userDoc.data();
+		const stripeCustomerId = userData?.stripe?.customerId;
+
+		if (!stripeCustomerId) {
+			return NextResponse.json({ error: 'No Stripe customer found' }, { status: 404 });
+		}
+
+		// Stripeから支払い方法の取得
+		const paymentMethods = await stripe.paymentMethods.list({
+			customer: stripeCustomerId,
+			type: 'card',
+		});
+
+		if (paymentMethods.data.length === 0) {
+			return NextResponse.json({ paymentMethod: null }, { status: 200 });
+		}
+
+		// Stripeから顧客情報を取得してデフォルトの支払い方法を確認
+		const customer = await stripe.customers.retrieve(stripeCustomerId);
+
+		let defaultPaymentMethodId: string | null = null;
+		if (typeof customer !== 'string' && !('deleted' in customer)) {
+			defaultPaymentMethodId = customer.invoice_settings?.default_payment_method as string | null;
+		}
+
+
+		// 支払い方法のフォーマット
+		const formattedPaymentMethods = paymentMethods.data.map(pm => ({
+			id: pm.id,
+			last4: pm.card?.last4 || '****',
+			brand: pm.card?.brand || 'unknown',
+			expiryMonth: pm.card?.exp_month?.toString().padStart(2, '0') || undefined,
+			expiryYear: pm.card?.exp_year?.toString().slice(-2) || undefined,
+			isDefault: pm.id === defaultPaymentMethodId,
+		}));
+
+		// 通常は最初の（またはデフォルトの）支払い方法を返す
+		const defaultMethod = formattedPaymentMethods.find(pm => pm.isDefault) || formattedPaymentMethods[0];
+
+		return NextResponse.json({ paymentMethod: defaultMethod }, { status: 200 });
+	} catch (error: any) {
+		console.error('Error fetching payment method:', error);
+		return NextResponse.json(
+			{ error: error.message || 'Internal server error' },
+			{ status: 500 }
+		);
+	}
+}
+
+// POST: 支払い方法の更新
+export async function POST(req: NextRequest) {
+	try {
+		// ユーザー認証
+		const authResult = await authenticateUser(req);
+		if (!authResult.authenticated) {
+			return NextResponse.json({ error: authResult.error }, { status: 401 });
+		}
+
+		const uid = authResult.uid!;
+		// リクエストボディの取得
+		const body = await req.json();
+		const { setupIntentId, paymentMethodId } = body;
+
+		if (!setupIntentId || !paymentMethodId) {
+			return NextResponse.json(
+				{ error: 'Setup intent ID and payment method ID are required' },
+				{ status: 400 }
+			);
+		}
+
+		// Firestoreからユーザーデータ取得
+		const userDoc = await db.collection('users').doc(uid).get();
+		if (!userDoc.exists) {
+			return NextResponse.json({ error: 'User not found' }, { status: 404 });
+		}
+
+		const userData = userDoc.data();
+		const stripeCustomerId = userData?.stripe?.customerId;
+
+		if (!stripeCustomerId) {
+			return NextResponse.json({ error: 'No Stripe customer found' }, { status: 404 });
+		}
+
+		// SetupIntentの確認
+		const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+		if (setupIntent.status !== 'succeeded') {
+			return NextResponse.json(
+				{ error: 'Setup intent has not been confirmed' },
+				{ status: 400 }
+			);
+		}
+
+		// 古い支払い方法を取得
+		const oldPaymentMethodId = userData?.stripe?.paymentMethodId;
+
+		// 新しい支払い方法をカスタマーに紐付け
+		await stripe.paymentMethods.attach(paymentMethodId, {
+			customer: stripeCustomerId,
+		});
+
+		// デフォルトの支払い方法として設定
+		await stripe.customers.update(stripeCustomerId, {
+			invoice_settings: {
+				default_payment_method: paymentMethodId,
+			},
+		});
+
+		// カード情報の詳細を取得
+		const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+		// Firestoreのユーザー情報を更新
+		await db.collection('users').doc(uid).update({
+			'stripe.paymentMethodId': paymentMethodId,
+			'stripe.last4': paymentMethod.card?.last4 || '****',
+			'stripe.brand': paymentMethod.card?.brand || 'unknown',
+			'stripe.paymentSetupCompleted': true,
+			updatedAt: FieldValue.serverTimestamp(),
+		});
+
+		// 古い支払い方法をデタッチ（オプション）
+		if (oldPaymentMethodId && oldPaymentMethodId !== paymentMethodId) {
+			try {
+				await stripe.paymentMethods.detach(oldPaymentMethodId);
+			} catch (detachError) {
+				console.error('Error detaching old payment method:', detachError);
+				// 失敗しても処理を続行
+			}
+		}
+
+		return NextResponse.json(
+			{ success: true, message: '支払い方法が正常に更新されました' },
+			{ status: 200 }
+		);
+	} catch (error: any) {
+		console.error('Error updating payment method:', error);
+		return NextResponse.json(
+			{ error: error.message || 'Internal server error' },
+			{ status: 500 }
+		);
+	}
+}
+
+// DELETE: 支払い方法の削除
+export async function DELETE(req: NextRequest) {
+	try {
+		// ユーザー認証
+		const authResult = await authenticateUser(req);
+		if (!authResult.authenticated) {
+			return NextResponse.json({ error: authResult.error }, { status: 401 });
+		}
+
+		const uid = authResult.uid!;
+		// Firestoreからユーザーデータ取得
+		const userDoc = await db.collection('users').doc(uid).get();
+		if (!userDoc.exists) {
+			return NextResponse.json({ error: 'User not found' }, { status: 404 });
+		}
+
+		const userData = userDoc.data();
+		const stripeCustomerId = userData?.stripe?.customerId;
+		const paymentMethodId = userData?.stripe?.paymentMethodId;
+
+		if (!stripeCustomerId || !paymentMethodId) {
+			return NextResponse.json({ error: 'No payment method found' }, { status: 404 });
+		}
+
+		// Stripeから支払い方法をデタッチ
+		await stripe.paymentMethods.detach(paymentMethodId);
+
+		// Firestoreのユーザー情報を更新
+		await db.collection('users').doc(uid).update({
+			'stripe.paymentMethodId': FieldValue.delete(),
+			'stripe.last4': FieldValue.delete(),
+			'stripe.brand': FieldValue.delete(),
+			'stripe.paymentSetupCompleted': false,
+			updatedAt: FieldValue.serverTimestamp(),
+		});
+
+		return NextResponse.json(
+			{ success: true, message: '支払い方法が正常に削除されました' },
+			{ status: 200 }
+		);
+	} catch (error: any) {
+		console.error('Error deleting payment method:', error);
+		return NextResponse.json(
+			{ error: error.message || 'Internal server error' },
 			{ status: 500 }
 		);
 	}
@@ -4370,6 +4554,38 @@ export default function RegisterIndexPage() {
 			<LoadingSpinner size="large" />
 		</div>
 	);
+}-e 
+### FILE: ./src/hooks/useRealViewportHeight.ts
+
+'use client';
+
+import { useEffect } from 'react';
+
+/**
+ * スマートフォンでのスクロール時にビューポート高さが変化する問題を解決するフック
+ * 初期のビューポート高さを取得し、CSS変数として設定
+ */
+export function useRealViewportHeight() {
+  useEffect(() => {
+    // 実際のビューポート高さを取得し、CSS変数として設定
+    const setRealViewportHeight = () => {
+      // 1vhの値をピクセル単位で計算
+      const vh = window.innerHeight * 0.01;
+      // CSS変数として設定
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    };
+
+    // 初期化時に実行
+    setRealViewportHeight();
+
+    // デバイスの向きが変わった時にも実行（オプション）
+    window.addEventListener('orientationchange', setRealViewportHeight);
+
+    // クリーンアップ関数
+    return () => {
+      window.removeEventListener('orientationchange', setRealViewportHeight);
+    };
+  }, []);
 }-e 
 ### FILE: ./src/hooks/use-veriff.ts
 
@@ -5436,7 +5652,7 @@ export default function GameCategoryLayout({
 					{index === 0 && (
 						<div className="h-[50vh] flex items-center justify-center w-full">
 							<div className="text-center pb-20">
-								<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">マルチプレイで笑い飛ばすｗｗ</h2>
+								<h2 className="text-xl md:text-4xl font-bold mb-4 mx-auto w-full">マルチプレイで盛り上がる！</h2>
 								<p className="text-lg text-muted-foreground mx-auto w-full">
 									Youtube実況で大人気のワイワイ系タイトル
 								</p>
@@ -6191,6 +6407,41 @@ export function CategoryPageContainer({
 			</PageTransition>
 		</div>
 	);
+}-e 
+### FILE: ./src/components/ui/ViewportInitializer.tsx
+
+'use client';
+
+import { useEffect } from 'react';
+
+/**
+ * ビューポート高さを初期化するためのクライアントコンポーネント
+ * レイアウトファイルなどのサーバーコンポーネントから利用可能
+ */
+export default function ViewportInitializer() {
+  useEffect(() => {
+    // 実際のビューポート高さを取得し、CSS変数として設定
+    const setRealViewportHeight = () => {
+      // 1vhの値をピクセル単位で計算
+      const vh = window.innerHeight * 0.01;
+      // CSS変数として設定
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    };
+
+    // 初期化時に実行
+    setRealViewportHeight();
+
+    // デバイスの向きが変わった時にも実行（オプション）
+    window.addEventListener('orientationchange', setRealViewportHeight);
+
+    // クリーンアップ関数
+    return () => {
+      window.removeEventListener('orientationchange', setRealViewportHeight);
+    };
+  }, []);
+
+  // このコンポーネントは何もレンダリングしない
+  return null;
 }-e 
 ### FILE: ./src/components/ui/loading-spinner.tsx
 
@@ -9387,7 +9638,6 @@ const SeatSelector: React.FC<SeatSelectorProps> = ({ onSeatSelect, date }) => {
 export default SeatSelector;-e 
 ### FILE: ./src/components/reservation/login-prompt.tsx
 
-// src/components/reservation/login-prompt.tsx
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Lock, UserPlus } from 'lucide-react';
@@ -9400,20 +9650,33 @@ interface LoginPromptProps {
 }
 
 const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }) => {
+	// Nextの最新バージョンのルーターを使用
 	const router = useRouter();
 
-	// Handle login button
+	// Handle login button - 直接window.locationを使用
 	const handleLogin = () => {
-		// Store reservation details in sessionStorage to retrieve after login
-		sessionStorage.setItem('pendingReservation', JSON.stringify(reservationDetails));
-		router.push('/login');
+		console.log("ログインボタンがクリックされました");
+		try {
+			// Store reservation details in sessionStorage to retrieve after login
+			sessionStorage.setItem('pendingReservation', JSON.stringify(reservationDetails));
+			// Next.jsルーターの代わりに直接リダイレクト
+			window.location.href = '/login';
+		} catch (error) {
+			console.error('Navigation error:', error);
+		}
 	};
 
-	// Handle register button
+	// Handle register button - 直接window.locationを使用
 	const handleRegister = () => {
-		// Store reservation details in sessionStorage to retrieve after registration
-		sessionStorage.setItem('pendingReservation', JSON.stringify(reservationDetails));
-		router.push('/register');
+		console.log("新規登録ボタンがクリックされました");
+		try {
+			// Store reservation details in sessionStorage to retrieve after registration
+			sessionStorage.setItem('pendingReservation', JSON.stringify(reservationDetails));
+			// Next.jsルーターの代わりに直接リダイレクト
+			window.location.href = '/register';
+		} catch (error) {
+			console.error('Navigation error:', error);
+		}
 	};
 
 	// Calculate total seats
@@ -9424,13 +9687,13 @@ const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
-			className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+			className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
 		>
 			<motion.div
 				initial={{ scale: 0.9, opacity: 0 }}
 				animate={{ scale: 1, opacity: 1 }}
 				exit={{ scale: 0.9, opacity: 0 }}
-				className="bg-background border border-border/20 rounded-lg shadow-lg p-6 max-w-md w-full"
+				className="bg-background border border-border/20 rounded-lg shadow-lg p-6 max-w-md w-full relative"
 			>
 				<h2 className="text-xl font-bold text-foreground mb-4">アカウントが必要です</h2>
 				<p className="text-foreground/70 mb-6">
@@ -9464,6 +9727,7 @@ const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }
 
 				<div className="flex flex-col space-y-3">
 					<button
+						type="button"
 						onClick={handleLogin}
 						className="flex items-center justify-center px-4 py-2 bg-accent text-white rounded-md hover:bg-accent/90 transition-colors"
 					>
@@ -9471,6 +9735,7 @@ const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }
 						ログイン
 					</button>
 					<button
+						type="button"
 						onClick={handleRegister}
 						className="flex items-center justify-center px-4 py-2 border border-accent text-accent bg-accent/5 rounded-md hover:bg-accent/10 transition-colors"
 					>
@@ -9478,6 +9743,7 @@ const LoginPrompt: React.FC<LoginPromptProps> = ({ onClose, reservationDetails }
 						新規登録
 					</button>
 					<button
+						type="button"
 						onClick={onClose}
 						className="px-4 py-2 text-foreground/70 hover:text-foreground hover:bg-border/10 rounded-md transition-colors"
 					>
@@ -10030,7 +10296,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 
 		// コンテキストを更新
 		setSelectedTimeSlots(newSelectedTimeSlots);
-	}, [seatRanges, selectedSeatIds, setSelectedTimeSlots, filteredSeats]);
+	}, [seatRanges, selectedSeatIds]);
 
 	// Handle continue to confirmation
 	const handleContinue = () => {
@@ -10213,6 +10479,33 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 		return '予約可能';
 	};
 
+	const renderSeatLayout = () => {
+		if (selectedBranch?.seatImagePath) {
+			return (
+				<div className="mb-6 rounded-lg overflow-hidden border border-border/20">
+					<div className="flex items-center justify-between p-3 bg-border/5 border-b border-border/20">
+						<div className="flex items-center gap-2">
+							<Users className="w-4 h-4 text-accent" />
+							<h3 className="font-medium text-foreground">{selectedBranch.branchName}の座席レイアウト</h3>
+						</div>
+						<span className="text-xs text-foreground/60">参考図</span>
+					</div>
+					<div className="relative w-full bg-black">
+						<img
+							src={selectedBranch.seatImagePath}
+							alt={`${selectedBranch.branchName}の座席レイアウト`}
+							className="w-full h-auto object-contain mx-auto"
+							style={{ aspectRatio: '16/9' }}
+						/>
+					</div>
+				</div>
+			);
+		}
+
+		return null;
+	};
+
+
 	return (
 		<div className="space-y-6 relative pb-5">
 			{/* Loading overlay */}
@@ -10231,14 +10524,14 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 					<p>{error}</p>
 				</div>
 			)}
-
+			{renderSeatLayout()}
 			<div
-				className="w-full overflow-x-auto border border-border/20 rounded-lg bg-background/30"
+				className="w-full overflow-x-auto border border-border/20 rounded-lg"
 			>
 				<div className="min-w-max">
 					{/* Time slots header */}
-					<div className="flex border-b border-border/30 bg-border/5">
-						<div className="w-32 flex-shrink-0 p-2 font-medium text-foreground sticky left-0 bg-border/5">座席</div>
+					<div className="flex border-b border-border/30">
+						<div className="w-20 flex-shrink-0 p-2 font-medium text-foreground sticky left-0 bg-background/80 z-20">座席</div>
 						{timeSlots.map((slot) => (
 							<div
 								key={slot.time}
@@ -10256,7 +10549,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 							className="flex border-b border-border/20 hover:bg-background/5"
 						>
 							{/* Seat name */}
-							<div className="w-32 flex-shrink-0 p-2 border-r border-border/20 flex flex-col sticky left-0 bg-background">
+							<div className="w-20 flex-shrink-0 p-2 flex flex-col sticky left-0 bg-background/80 z-10">
 								<div className="flex items-center justify-between">
 									<span className="font-medium text-foreground">{seat.name}</span>
 									{selectedSeatIds.includes(seat.seatId) && (
@@ -10283,7 +10576,7 @@ const TimeGrid: React.FC<TimeGridProps> = ({ date, onTimeSelect }) => {
 									<motion.div
 										key={`${seat.seatId}-${slot.time}`}
 										className={`
-        w-16 h-16 flex-shrink-0 border-l border-border/20
+        w-16 h-16 flex-shrink-0 border-l border-border/20 z-0
         ${getSlotStyle(seat.seatId, slot.time)}
         flex items-center justify-center relative
       `}
@@ -10418,8 +10711,9 @@ import AvailabilityCalendar from './availability-calendar';
 
 const AvailabilitySection: React.FC = () => {
 	return (
-		<section className="py-20 bg-background/70">
-			<div className="container mx-auto px-4">
+		// h-auto を追加し、min-h-real-screen-80 を使用して安定した高さを確保
+		<section className="py-20 bg-background/70 h-auto min-h-real-screen-80">
+			<div className="container mx-auto md:px-4">
 				{/* Section header */}
 				<div className="text-center mb-12">
 					<motion.h2
@@ -10432,7 +10726,7 @@ const AvailabilitySection: React.FC = () => {
 						空き状況をチェック
 					</motion.h2>
 					<motion.p
-						className="text-foreground/70 max-w-2xl mx-auto"
+						className="text-foreground/70 max-w-2xl mx-auto p-2"
 						initial={{ opacity: 0, y: 20 }}
 						whileInView={{ opacity: 1, y: 0 }}
 						viewport={{ once: true }}
@@ -10457,7 +10751,7 @@ const AvailabilitySection: React.FC = () => {
 
 					{/* Info column */}
 					<motion.div
-						className="w-full lg:w-1/3 space-y-8"
+						className="w-full lg:w-1/3 space-y-8 px-2"
 						initial={{ opacity: 0, x: 20 }}
 						whileInView={{ opacity: 1, x: 0 }}
 						viewport={{ once: true }}
@@ -10471,7 +10765,7 @@ const AvailabilitySection: React.FC = () => {
 							<div>
 								<h3 className="text-xl font-medium mb-2 text-foreground">事前予約</h3>
 								<p className="text-foreground/70">
-									最大14日先まで予約可能。お気に入りの座席を確保して、安心してご利用いただけます。
+									お気に入りの座席を確保して、安心してご利用いただけます。
 								</p>
 							</div>
 						</div>
@@ -10484,7 +10778,7 @@ const AvailabilitySection: React.FC = () => {
 							<div>
 								<h3 className="text-xl font-medium mb-2 text-foreground">柔軟な利用時間</h3>
 								<p className="text-foreground/70">
-									30分単位で予約可能。急な予定変更にも対応できます。キャンセルは予約時間の2時間前まで無料です。
+									30分単位で予約可能。急な予定変更にも対応できます。キャンセルは無料です。
 								</p>
 							</div>
 						</div>
@@ -10546,8 +10840,8 @@ export default function CtaSection() {
 					animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
 					transition={{ duration: 0.6 }}
 				>
-					<h2 className="text-5xl md:text-5xl font-bold mb-6">
-						ふらっと立ち寄って<span className="text-accent">みませんか？</span>
+					<h2 className="text-4xl md:text-5xl font-bold mb-6">
+						ふらっと立ち寄って<br/><span className="text-accent">みませんか？</span>
 					</h2>
 
 					<p className="text-xl text-foreground/80 mb-10">
@@ -10588,10 +10882,10 @@ export default function AccessSection() {
 	return (
 		<section
 			id="access"
-			className="py-20 bg-background/90"
+			className="py-20 bg-background/90 h-auto min-h-real-screen-80"
 			ref={ref}
 		>
-			<div className="container px-4">
+			<div className="container mx-auto px-4">
 				{/* セクションタイトル */}
 				<motion.div
 					className="text-center mb-16"
@@ -10641,7 +10935,7 @@ export default function AccessSection() {
 								<span className="text-highlight">無料</span>
 							</div>
 							<p className="text-sm text-foreground/60 mt-4">
-								※料金は1分単位で自動計算され、月末にまとめて登録支払い方法から引き落とされます。<br/>
+								※料金は1分単位で自動計算され、月末にまとめて登録支払い方法から引き落とされます。<br />
 							</p>
 						</div>
 					</motion.div>
@@ -10752,10 +11046,10 @@ export default function FaqSection() {
 	return (
 		<section
 			id="faq"
-			className="py-20 bg-gradient-to-b from-background/70 to-background/90"
+			className="py-20 bg-gradient-to-b from-background/70 to-background/90 h-auto min-h-real-screen-80"
 			ref={ref}
 		>
-			<div className="container mx-auto px-4">
+			<div className="container mx-auto md:px-4">
 				{/* セクションタイトル */}
 				<motion.div
 					className="text-center mb-16"
@@ -11024,7 +11318,7 @@ export default function SpecsSection() {
 	return (
 		<section
 			id="specs"
-			className="py-20 bg-gradient-to-b from-background/90 to-background/70"
+			className="py-20 bg-gradient-to-b from-background/90 to-background/70 h-auto min-h-real-screen-90"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
@@ -11602,7 +11896,7 @@ const usageSteps = [
 		number: 1,
 		title: "スマートロックの解除",
 		description: "会員ページからワンクリックで可能です！",
-		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/enter.webp`} alt="QRコードで入室" className="h-100 w-100" />
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/enter2.webp`} alt="QRコードで入室" className="h-100 w-100" />
 	},
 	{
 		number: 2,
@@ -11614,10 +11908,9 @@ const usageSteps = [
 		number: 3,
 		title: "そのまま帰るだけ",
 		description: "PCをシャットダウンして、そのまま帰るだけ。料金は自動計算され、登録されたカードにまとめて月末に請求されます。",
-		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/exit.webp`} alt="そのまま帰るだけ" className="h-100 w-100" />
+		icon: <img src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/exit2.webp`} alt="そのまま帰るだけ" className="h-100 w-100" />
 	}
 ];
-
 
 export default function StepsSection() {
 	const ref = useRef(null);
@@ -11626,7 +11919,7 @@ export default function StepsSection() {
 	return (
 		<section
 			id="steps"
-			className="pb-20 bg-background/90"
+			className="pb-20 bg-background/90 h-auto min-h-real-screen-80"
 			ref={ref}
 		>
 			<div className="container mx-auto px-4">
@@ -11637,7 +11930,7 @@ export default function StepsSection() {
 					transition={{ duration: 0.5 }}
 				>
 					<h2 className="text-3xl md:text-4xl font-bold mb-4">
-						利用は<span className="text-accent">めちゃ簡単</span><br/>3ステップで
+						利用は<span className="text-accent">めちゃ簡単</span><br />3ステップで
 					</h2>
 					<p className="text-foreground/70 max-w-3xl mx-auto">
 						面倒な手続きも、スタッフ対応も必要ありません。
@@ -11725,7 +12018,8 @@ export default function HeroSection() {
 	}, []);
 
 	return (
-		<section className="relative min-h-screen flex items-center overflow-hidden">
+		// min-h-screen を min-h-real-screen に変更して安定した高さを確保
+		<section className="relative min-h-real-screen flex items-center overflow-hidden">
 			<div className="fixed inset-0 z-[-1]">
 				<Image
 					src={`${process.env.NEXT_PUBLIC_CLOUDFRONT_URL}/hero-bg.webp`}
@@ -11742,7 +12036,7 @@ export default function HeroSection() {
 			<div className="container mx-auto px-4 relative z-10">
 				<div className="max-w-4xl">
 					{/* タイトル文字ごとのアニメーション */}
-					<h1 className="text-5xl md:text-6xl font-bold text-foreground mb-2">
+					<h1 className="text-4xl md:text-6xl font-bold text-foreground mb-1">
 						<div className="flex flex-wrap">
 							{/* 「疲れたから」の部分 */}
 							<span className="md:inline block w-full">
@@ -11795,7 +12089,7 @@ export default function HeroSection() {
 					</h1>
 
 					<motion.p
-						className="text-2xl md:text-3xl text-foreground/90 mb-8"
+						className="text-xl md:text-3xl text-foreground/90 mb-10"
 						initial={{ opacity: 0, scale: 0.9 }}
 						animate={{ opacity: 1, scale: 1 }}
 						transition={{ duration: 0.7, delay: 0.5 }}
@@ -12216,6 +12510,394 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ currentStep }) => {
 };
 
 export default ProgressTracker;-e 
+### FILE: ./src/components/payment/payment-method-manager.tsx
+
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useStripe, useElements, CardElement } from '@stripe/react-stripe-js';
+import { usePayment } from '@/context/payment-context';
+import { useAuth } from '@/context/auth-context';
+import Button from '@/components/ui/button';
+import LoadingSpinner from '@/components/ui/loading-spinner';
+import { CreditCard, Check, AlertCircle, X } from 'lucide-react';
+
+const PaymentMethodManager: React.FC = () => {
+	const { userData } = useAuth();
+	const {
+		paymentMethod,
+		isLoading,
+		error,
+		isUpdating,
+		showUpdateForm,
+		setShowUpdateForm,
+		fetchPaymentMethod,
+		createSetupIntent,
+		updatePaymentMethod,
+		deletePaymentMethod
+	} = usePayment();
+
+	const [cardError, setCardError] = useState<string | null>(null);
+	const [cardComplete, setCardComplete] = useState<boolean>(false);
+	const [processingCard, setProcessingCard] = useState<boolean>(false);
+	const [confirmResult, setConfirmResult] = useState<{ success: boolean; message: string } | null>(null);
+	const [isDeletingCard, setIsDeletingCard] = useState<boolean>(false);
+
+	const stripe = useStripe();
+	const elements = useElements();
+
+	// カード入力フォームのスタイル設定
+	const cardElementOptions = {
+		style: {
+			base: {
+				color: '#fefefe',
+				fontFamily: '"Noto Sans JP", sans-serif',
+				fontSmoothing: 'antialiased',
+				fontSize: '16px',
+				'::placeholder': {
+					color: '#6b7280',
+				},
+			},
+			invalid: {
+				color: '#ef4444',
+				iconColor: '#ef4444',
+			},
+		},
+	};
+	// payment-method-manager.tsx の修正
+	useEffect(() => {
+		// フォームがクローズされたときのクリーンアップ
+		return () => {
+			// コンポーネントのアンマウント時や更新フォームが閉じられたときの処理
+			setCardError(null);
+			setConfirmResult(null);
+			setCardComplete(false);
+		};
+	}, [showUpdateForm]);
+
+	// カード情報送信ハンドラー
+	const handleSubmit = async (event: React.FormEvent) => {
+		event.preventDefault();
+
+		if (!stripe || !elements) {
+			return setCardError('Stripeの読み込みに失敗しました。ページを再読み込みしてください。');
+		}
+
+		const cardElement = elements.getElement(CardElement);
+		if (!cardElement) {
+			return setCardError('カード情報の取得に失敗しました。');
+		}
+
+		try {
+			setProcessingCard(true);
+			setCardError(null);
+			setConfirmResult(null);
+
+			// SetupIntentの作成
+			const { clientSecret } = await createSetupIntent();
+
+			// カード情報の確認
+			const { setupIntent, error } = await stripe.confirmCardSetup(clientSecret, {
+				payment_method: {
+					card: cardElement,
+				},
+			});
+
+			if (error) {
+				// エラー表示の日本語化
+				let errorMessage = error.message || 'カード情報の確認に失敗しました。';
+				if (error.code === 'card_declined') {
+					errorMessage = 'カードが拒否されました。別のカードをお試しください。';
+				} else if (error.code === 'expired_card') {
+					errorMessage = 'カードの有効期限が切れています。';
+				} else if (error.code === 'incorrect_cvc') {
+					errorMessage = 'セキュリティコードが正しくありません。';
+				}
+				setCardError(errorMessage);
+				return;
+			}
+
+			if (!setupIntent) {
+				setCardError('予期せぬエラーが発生しました。もう一度お試しください。');
+				return;
+			}
+
+			// バックエンドでカード情報を更新
+			await updatePaymentMethod(setupIntent.id, setupIntent.payment_method as string);
+
+			// 成功メッセージの表示
+			setConfirmResult({
+				success: true,
+				message: 'カード情報が正常に更新されました。',
+			});
+
+			// フォームのリセット
+			//cardElement.clear();
+			setCardComplete(false);
+
+			// 少し待ってからフォームを閉じる
+			setTimeout(() => {
+				setShowUpdateForm(false);
+				setConfirmResult(null);
+				fetchPaymentMethod(); // 最新のカード情報を再取得
+			}, 2000);
+		} catch (err: any) {
+			setCardError(err.message || 'カード情報の処理中にエラーが発生しました。');
+			console.error('Card processing error:', err);
+		} finally {
+			setProcessingCard(false);
+		}
+	};
+
+	// カード情報削除ハンドラー
+	const handleDeleteCard = async () => {
+		if (window.confirm('本当にカード情報を削除しますか？この操作は取り消せません。')) {
+			try {
+				setIsDeletingCard(true);
+				await deletePaymentMethod();
+				fetchPaymentMethod(); // 最新状態を反映
+			} catch (err: any) {
+				console.error('Error deleting card:', err);
+			} finally {
+				setIsDeletingCard(false);
+			}
+		}
+	};
+
+	// paymentMethodの処理部分に追加
+	const isCardExpired = paymentMethod && paymentMethod.expiryMonth && paymentMethod.expiryYear ?
+		isExpired(Number(paymentMethod.expiryMonth), Number('20' + paymentMethod.expiryYear)) :
+		false;
+
+	const isCardExpiringSoon = paymentMethod && paymentMethod.expiryMonth && paymentMethod.expiryYear ?
+		isExpiringSoon(Number(paymentMethod.expiryMonth), Number('20' + paymentMethod.expiryYear)) :
+		false;
+
+	// 期限切れ判定関数
+	function isExpired(month: number, year: number) {
+		const now = new Date();
+		const currentMonth = now.getMonth() + 1; // JavaScriptの月は0始まり
+		const currentYear = now.getFullYear();
+
+		return (year < currentYear) || (year === currentYear && month < currentMonth);
+	}
+
+	// 間もなく期限切れ判定関数（3ヶ月以内）
+	function isExpiringSoon(month: number, year: number) {
+		const now = new Date();
+		const threeMonthsLater = new Date();
+		threeMonthsLater.setMonth(now.getMonth() + 3);
+
+		const expiryDate = new Date(year, month - 1, 1);
+		return !isExpired(month, year) && expiryDate <= threeMonthsLater;
+	}
+
+	// ローディング表示
+	if (isLoading) {
+		return (
+			<div className="p-4 text-center">
+				<LoadingSpinner />
+				<p className="mt-2 text-foreground/70">カード情報を読み込み中...</p>
+			</div>
+		);
+	}
+
+	return (
+		<div className="space-y-6">
+			<h2 className="text-lg font-semibold mb-4">決済情報管理</h2>
+
+			{/* エラー表示 */}
+			{error && (
+				<div className="bg-red-500/10 text-red-400 px-4 py-3 rounded-lg mb-4 flex items-start">
+					<AlertCircle className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
+					<p>{error}</p>
+				</div>
+			)}
+
+			{/* 現在のカード情報表示 */}
+			{paymentMethod ? (
+				<div className="p-4 border border-border/30 rounded-lg">
+					<div className="flex items-center justify-between mb-2">
+						<div className="flex items-center">
+							<CreditCard className="w-5 h-5 text-accent mr-2" />
+							<span className="font-medium">登録済みのカード</span>
+						</div>
+						<span className="text-xs bg-highlight/10 text-highlight px-2 py-1 rounded-full">
+							有効
+						</span>
+					</div>
+					<div className="text-sm text-foreground/70">
+						<p>
+							{paymentMethod.brand === 'visa' ? 'Visa' :
+								paymentMethod.brand === 'mastercard' ? 'Mastercard' :
+									paymentMethod.brand === 'amex' ? 'American Express' :
+										paymentMethod.brand === 'jcb' ? 'JCB' :
+											paymentMethod.brand.charAt(0).toUpperCase() + paymentMethod.brand.slice(1)}
+							•••• {paymentMethod.last4}
+							{paymentMethod.expiryMonth && paymentMethod.expiryYear &&
+								` (有効期限: ${paymentMethod.expiryMonth}/${paymentMethod.expiryYear})`}
+						</p>
+					</div>
+				</div>
+			) : userData?.stripe?.paymentSetupCompleted ? (
+				<div className="bg-red-500/10 text-red-400 px-4 py-3 rounded-lg">
+					<p>カード情報の取得に失敗しました。管理者にお問い合わせください。</p>
+				</div>
+			) : (
+				<div className="text-center py-8">
+					<CreditCard className="w-12 h-12 text-accent/40 mx-auto mb-4" />
+					<h3 className="text-lg font-medium mb-2">支払い方法が未登録です</h3>
+					<p className="text-foreground/60 mb-6 max-w-md mx-auto">
+						サービスをご利用いただくには、クレジットカードまたはデビットカードの登録が必要です。
+					</p>
+				</div>
+			)}
+
+			{/* アクションボタン */}
+			{!showUpdateForm && (
+				<div className="flex justify-between items-center">
+					<Button
+						onClick={() => setShowUpdateForm(true)}
+						variant="primary"
+						disabled={isUpdating}
+					>
+						{paymentMethod ? 'カード情報を更新' : 'カードを登録する'}
+					</Button>
+				</div>
+			)}
+			{/* 期限切れ警告 */}
+			{isCardExpired && (
+				<div className="bg-red-500/10 text-red-400 px-4 py-3 rounded-lg mt-3 flex items-start">
+					<AlertCircle className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
+					<p>このカードは有効期限が切れています。新しいカード情報を登録してください。</p>
+				</div>
+			)}
+
+			{/* 期限切れ間近警告 */}
+			{isCardExpiringSoon && !isCardExpired && (
+				<div className="bg-amber-500/10 text-amber-400 px-4 py-3 rounded-lg mt-3 flex items-start">
+					<AlertCircle className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
+					<p>このカードの有効期限が近づいています。更新をご検討ください。</p>
+				</div>
+			)}
+
+			{/* カード更新フォーム */}
+			{showUpdateForm && (
+				<div className="bg-border/5 rounded-xl p-6 border border-border/20 mt-4">
+					<div className="flex justify-between items-center mb-4">
+						<h3 className="font-medium">
+							{paymentMethod ? 'カード情報の更新' : 'カード情報の登録'}
+						</h3>
+						<button
+							onClick={() => {
+								setShowUpdateForm(false);
+								setCardError(null);
+								setConfirmResult(null);
+							}}
+							className="text-foreground/60 hover:text-foreground"
+							disabled={processingCard}
+						>
+							<X className="w-5 h-5" />
+						</button>
+					</div>
+
+
+					{/* 成功メッセージ */}
+					{confirmResult?.success && (
+						<div className="bg-highlight/10 text-highlight px-4 py-3 rounded-lg mb-4 flex items-center">
+							<Check className="w-5 h-5 mr-2" />
+							<p>{confirmResult.message}</p>
+						</div>
+					)}
+
+					{/* エラーメッセージ */}
+					{cardError && (
+						<div className="bg-red-500/10 text-red-400 px-4 py-3 rounded-lg mb-4 flex items-start">
+							<AlertCircle className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
+							<p>{cardError}</p>
+						</div>
+					)}
+
+					<form onSubmit={handleSubmit}>
+						<div className="mb-4">
+							<label className="block text-sm font-medium mb-2">
+								カード情報
+							</label>
+							<div className="bg-background border border-border/30 rounded-lg p-3 focus-within:ring-1 focus-within:ring-accent focus-within:border-accent">
+								<CardElement
+									options={cardElementOptions}
+									onChange={(e) => {
+										setCardComplete(e.complete);
+										if (e.error) {
+											setCardError(e.error.message);
+										} else {
+											setCardError(null);
+										}
+									}}
+								/>
+							</div>
+							<p className="mt-2 text-xs text-foreground/60">
+								カード情報は安全に保存され、Stripe社によって処理されます。
+							</p>
+						</div>
+
+						<div className="flex justify-end space-x-3 mt-6">
+							<Button
+								variant="outline"
+								onClick={() => {
+									setShowUpdateForm(false);
+									setCardError(null);
+									setConfirmResult(null);
+								}}
+								disabled={processingCard}
+							>
+								キャンセル
+							</Button>
+							<Button
+								variant="primary"
+								disabled={!cardComplete || processingCard || !stripe || !elements}
+							>
+								{processingCard ? (
+									<LoadingSpinner size="small" />
+								) : paymentMethod ? (
+									'カード情報を更新'
+								) : (
+									'カードを登録する'
+								)}
+							</Button>
+						</div>
+					</form>
+				</div>
+			)}
+
+			{/* 請求情報 */}
+			{paymentMethod && (
+				<div className="mt-6 border-t border-border/20 pt-6">
+					<h3 className="text-md font-medium mb-3">請求について</h3>
+					<p className="text-sm text-foreground/70 mb-4">
+						利用料金は月末にまとめて請求されます。従量課金制のため、実際に利用した分のみの請求となります。
+					</p>
+					<div className="bg-border/10 p-3 rounded-md text-sm">
+						<p className="font-medium">次回請求予定</p>
+						<p className="text-foreground/70 mt-1">
+							{new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toLocaleDateString('ja-JP')}
+						</p>
+					</div>
+				</div>
+			)}
+
+			{/* 注意事項 */}
+			<div className="text-xs text-foreground/50 mt-4">
+				<p>※ カード情報はお客様のブラウザからStripeの安全な環境に直接送信されます。</p>
+				<p>※ 当社のサーバーにカード情報が保存されることはありません。</p>
+				<p>※ 請求に関するご質問は、サポートまでお問い合わせください。</p>
+			</div>
+		</div>
+	);
+};
+
+// デフォルトエクスポートを明示的に追加
+export default PaymentMethodManager;-e 
 ### FILE: ./src/components/payment/enhanced-card-form.tsx
 
 // src/components/payment/enhanced-card-form.tsx
@@ -13070,6 +13752,257 @@ export default function CardForm({ onSuccess }: { onSuccess?: () => void }) {
 		</Elements>
 	);
 }-e 
+### FILE: ./src/context/payment-context.tsx
+
+'use client';
+
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useAuth } from '@/context/auth-context';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements } from '@stripe/react-stripe-js';
+
+// Stripe公開キーの設定
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
+
+interface PaymentMethod {
+	id: string;
+	last4: string;
+	brand: string;
+	expiryMonth?: string;
+	expiryYear?: string;
+	isDefault: boolean;
+}
+
+interface PaymentContextType {
+	paymentMethod: PaymentMethod | null;
+	isLoading: boolean;
+	error: string | null;
+	isUpdating: boolean;
+	showUpdateForm: boolean;
+	setShowUpdateForm: (show: boolean) => void;
+	fetchPaymentMethod: () => Promise<void>;
+	updatePaymentMethod: (setupIntentId: string, paymentMethodId: string) => Promise<void>;
+	createSetupIntent: () => Promise<{ clientSecret: string }>;
+	deletePaymentMethod: () => Promise<void>;
+}
+
+const PaymentContext = createContext<PaymentContextType | undefined>(undefined);
+
+export const usePayment = () => {
+	const context = useContext(PaymentContext);
+	if (!context) {
+		throw new Error('usePayment must be used within a PaymentProvider');
+	}
+	return context;
+};
+
+interface PaymentProviderProps {
+	children: ReactNode;
+}
+
+export const PaymentProvider: React.FC<PaymentProviderProps> = ({ children }) => {
+	const { user, userData } = useAuth();
+	const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
+	const [isLoading, setIsLoading] = useState<boolean>(true);
+	const [error, setError] = useState<string | null>(null);
+	const [isUpdating, setIsUpdating] = useState<boolean>(false);
+	const [showUpdateForm, setShowUpdateForm] = useState<boolean>(false);
+
+	// 支払い方法の取得
+	const fetchPaymentMethod = async () => {
+		if (!user) return;
+		try {
+			setIsLoading(true);
+			setError(null);
+			// 最新のトークンを取得
+			const token = await user.getIdToken(true);
+			console.log('Auth token available:', !!token);
+
+			const response = await fetch('/api/stripe/payment-methods', {
+				method: 'GET',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${token}`,
+				},
+			});
+
+			console.log('Response status:', response.status);
+
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({ message: '応答の解析に失敗しました' }));
+				throw new Error(errorData.message || 'カード情報の取得に失敗しました');
+			}
+
+			const data = await response.json();
+			setPaymentMethod(data.paymentMethod);
+		} catch (err: any) {
+			console.error('Payment method fetch error:', err);
+			setError('カード情報の取得に失敗しました。管理者にお問い合わせください。');
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	// SetupIntentの作成
+	const createSetupIntent = async () => {
+		if (!user) throw new Error('ログインが必要です');
+
+		try {
+			// Firebaseから最新の認証トークンを取得
+			const token = await user.getIdToken(true); // forceRefresh=true でトークンを確実に更新
+
+			const response = await fetch('/api/stripe/create-setup-intent', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${token}`, // 認証トークンを追加
+				},
+			});
+
+			if (!response.ok) {
+				if (response.status === 401) {
+					throw new Error('認証に失敗しました。再ログインしてください。');
+				}
+				const errorData = await response.json();
+				throw new Error(errorData.message || 'SetupIntentの作成に失敗しました');
+			}
+
+			const data = await response.json();
+			return { clientSecret: data.clientSecret };
+		} catch (err: any) {
+			console.error('Setup intent creation error:', err);
+			// エラー情報をより詳細に出力
+			if (err.response) {
+				console.error('Error response:', {
+					status: err.response.status,
+					data: err.response.data,
+					headers: err.response.headers,
+				});
+			}
+			setError(err.message || 'カード登録準備中にエラーが発生しました');
+			throw err;
+		}
+	};
+
+	// 支払い方法の更新
+	const updatePaymentMethod = async (setupIntentId: string, paymentMethodId: string) => {
+		if (!user) throw new Error('ログインが必要です');
+
+		try {
+			setIsUpdating(true);
+			setError(null);
+
+			// トークン取得
+			const token = await user.getIdToken(true);
+
+			const response = await fetch('/api/stripe/payment-methods', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${token}`,
+				},
+				body: JSON.stringify({
+					setupIntentId,
+					paymentMethodId,
+				}),
+			});
+
+			// 生のレスポンスを確認するためのデバッグコード
+			const responseText = await response.text();
+			console.log('Raw API response:', responseText);
+
+			// テキストをJSONに変換しようとする
+			let data;
+			try {
+				data = JSON.parse(responseText);
+			} catch (jsonError) {
+				console.error('JSON parse error:', jsonError);
+				throw new Error(`レスポンスの解析に失敗しました: ${responseText.substring(0, 100)}...`);
+			}
+
+			if (!response.ok) {
+				throw new Error(data.error || 'カード情報の更新に失敗しました');
+			}
+
+			await fetchPaymentMethod();
+			setShowUpdateForm(false);
+		} catch (err: any) {
+			setError(err.message || 'カード情報の更新中にエラーが発生しました');
+			console.error('Payment method update error:', err);
+			throw err;
+		} finally {
+			setIsUpdating(false);
+		}
+	};
+
+	// 支払い方法の削除
+	const deletePaymentMethod = async () => {
+		if (!user || !paymentMethod) throw new Error('カード情報が存在しません');
+
+		try {
+			setIsUpdating(true);
+			setError(null);
+
+			// トークン取得を追加
+			const token = await user.getIdToken(true);
+
+			const response = await fetch('/api/stripe/payment-methods', {
+				method: 'DELETE',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${token}`, // 認証トークンを追加
+				},
+			});
+
+			// レスポンスのログ出力（デバッグ用）
+			console.log('Delete response status:', response.status);
+
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({ message: '応答の解析に失敗しました' }));
+				throw new Error(errorData.message || 'カード情報の削除に失敗しました');
+			}
+
+			setPaymentMethod(null);
+		} catch (err: any) {
+			setError(err.message || 'カード情報の削除中にエラーが発生しました');
+			console.error('Payment method deletion error:', err);
+			throw err;
+		} finally {
+			setIsUpdating(false);
+		}
+	};
+
+	// 初期データ取得
+	useEffect(() => {
+		if (userData?.stripe?.paymentMethodId) {
+			fetchPaymentMethod();
+		} else {
+			setIsLoading(false);
+		}
+	}, [userData]);
+
+	// コンテキスト値の提供
+	const contextValue: PaymentContextType = {
+		paymentMethod,
+		isLoading,
+		error,
+		isUpdating,
+		showUpdateForm,
+		setShowUpdateForm,
+		fetchPaymentMethod,
+		updatePaymentMethod,
+		createSetupIntent,
+		deletePaymentMethod,
+	};
+
+	return (
+		<PaymentContext.Provider value={contextValue}>
+			<Elements stripe={stripePromise}>
+				{children}
+			</Elements>
+		</PaymentContext.Provider>
+	);
+};-e 
 ### FILE: ./src/context/AudioContext.tsx
 
 'use client';
@@ -14466,7 +15399,6 @@ export const useRegistration = () => useContext(RegistrationContext);
 -e 
 ### FILE: ./tailwind.config.js
 
-//tailwind.config.js
 /** @type {import('tailwindcss').Config} */
 module.exports = {
 	content: [
@@ -14493,6 +15425,28 @@ module.exports = {
 			},
 			boxShadow: {
 				soft: '0 4px 14px 0 rgba(0, 0, 0, 0.1)',
+			},
+			// Real Viewport Height のカスタムユーティリティを追加
+			height: {
+				'real-screen': 'calc(var(--vh, 1vh) * 100)',
+				'real-screen-90': 'calc(var(--vh, 1vh) * 90)',
+				'real-screen-80': 'calc(var(--vh, 1vh) * 80)',
+				'real-screen-70': 'calc(var(--vh, 1vh) * 70)',
+				'real-screen-60': 'calc(var(--vh, 1vh) * 60)',
+				'real-screen-50': 'calc(var(--vh, 1vh) * 50)',
+			},
+			minHeight: {
+				'real-screen': 'calc(var(--vh, 1vh) * 100)',
+				'real-screen-90': 'calc(var(--vh, 1vh) * 90)',
+				'real-screen-80': 'calc(var(--vh, 1vh) * 80)',
+				'real-screen-70': 'calc(var(--vh, 1vh) * 70)',
+				'real-screen-60': 'calc(var(--vh, 1vh) * 60)',
+				'real-screen-50': 'calc(var(--vh, 1vh) * 50)',
+			},
+			maxHeight: {
+				'real-screen': 'calc(var(--vh, 1vh) * 100)',
+				'real-screen-90': 'calc(var(--vh, 1vh) * 90)',
+				'real-screen-80': 'calc(var(--vh, 1vh) * 80)',
 			},
 		},
 	},

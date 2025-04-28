@@ -33,6 +33,8 @@
 │   │   │   │   │   └── route.ts
 │   │   │   │   ├── mock-payment-setup
 │   │   │   │   │   └── route.ts
+│   │   │   │   ├── payment-methods
+│   │   │   │   │   └── route.ts
 │   │   │   │   ├── register-payment-method
 │   │   │   │   │   └── route.ts
 │   │   │   │   └── webhook
@@ -112,6 +114,7 @@
 │   │   ├── payment
 │   │   │   ├── card-form.tsx
 │   │   │   ├── enhanced-card-form.tsx
+│   │   │   ├── payment-method-manager.tsx
 │   │   │   └── payment-method-selector.tsx
 │   │   ├── registration
 │   │   │   └── progress-tracker.tsx
@@ -124,15 +127,18 @@
 │   │   │   └── time-grid.tsx
 │   │   └── ui
 │   │       ├── PageTransition.tsx
+│   │       ├── ViewportInitializer.tsx
 │   │       ├── button.tsx
 │   │       └── loading-spinner.tsx
 │   ├── context
 │   │   ├── AudioContext.tsx
 │   │   ├── auth-context.tsx
+│   │   ├── payment-context.tsx
 │   │   ├── registration-context.tsx
 │   │   └── reservation-context.tsx
 │   ├── hooks
-│   │   └── use-veriff.ts
+│   │   ├── use-veriff.ts
+│   │   └── useRealViewportHeight.ts
 │   ├── lib
 │   │   ├── firebase-admin.ts
 │   │   ├── firebase-storage-rules.txt
@@ -150,4 +156,4 @@
 ├── tailwind.config.js
 └── tsconfig.json
 
-46 directories, 104 files
+47 directories, 109 files
