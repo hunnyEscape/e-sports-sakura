@@ -44,7 +44,8 @@ export default function UnlockDoorButton({
 				}
 				return prev - 1;
 			});
-		}, 1000);
+			//}, 1000);
+		}, 10);
 		return () => clearInterval(timer);
 	}, [cooldownActive]);
 
@@ -54,12 +55,14 @@ export default function UnlockDoorButton({
 		return `${m}:${s < 10 ? '0' : ''}${s}`;
 	};
 
+	// UnlockDoorButton.tsx の handleClick 関数の修正部分
 	const handleClick = async () => {
 		if (!memberId || cooldownActive || !isOnline) return;
 		setIsUnlocking(true);
 		setUnlockMessage(null);
 		try {
-			const { data } = await axios.post('/api/unlockDoorTACH', { memberID: memberId });
+			// ここを修正: unlockDoorTACH から unlockDoor へエンドポイント変更
+			const { data } = await axios.post('/api/unlockDoor', { memberID: memberId });
 			if (data.success) {
 				localStorage.setItem('lastUnlockTime', Date.now().toString());
 				setCooldownActive(true);
